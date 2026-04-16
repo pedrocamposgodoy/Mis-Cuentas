@@ -1,65 +1,78 @@
 import streamlit as st
 
-# Configuración de la página
+# 1. Configuración de página y Estilo Pastel
 st.set_page_config(page_title="Gestión Patrimonial Pedro Nolasco", layout="wide")
 
-st.set_page_config(page_title="Gestión Patrimonial Pedro Nolasco", layout="wide")
-st.title("Simulador de Tesorería Pedro Nolasco")
+st.markdown("""
+    <style>
+    /* Fondo crema pastel */
+    .stApp {
+        background-color: #FDF5E6;
+    }
+    /* Títulos en azul corporativo */
+    h1, h2, h3 {
+        color: #2E86C1 !important;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    /* Tarjetas de métricas resaltadas */
+    [data-testid="stMetricValue"] {
+        color: #E67E22;
+        font-weight: bold;
+    }
+    /* Estilo para las tablas */
+    .stTable {
+        background-color: white;
+        border-radius: 10px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-# --- BARRA LATERAL: ENTRADA DE DATOS ---
-st.sidebar.header("📥 Configuración de Ingresos")
-renta_abarqueros = st.sidebar.number_input("Abarqueros (Victor)", value=2200.0, step=50.0)
-renta_salon = st.sidebar.number_input("Paseo del Salón (Pool)", value=1591.80, step=50.0)
-huerto_1 = st.sidebar.number_input("Huerto 1 (Alain)", value=660.0, step=10.0)
-huerto_2 = st.sidebar.number_input("Huerto 2 (Laura)", value=800.0, step=10.0)
-huerto_3 = st.sidebar.number_input("Huerto 3 (Jose Manuel)", value=850.0, step=10.0)
-
-st.sidebar.header("💸 Gastos de Comunidad")
-comu_abarqueros = st.sidebar.number_input("C.P. Abarqueros 16", value=193.76, step=5.0)
-comu_salon = st.sidebar.number_input("C.P. Salón 1", value=175.18, step=5.0)
-comu_huertos = st.sidebar.number_input("C.P. Huerto Cecilio (Bloque)", value=223.87, step=5.0)
-
-st.sidebar.header("⚖️ Impuestos y Otros")
-irpf_mensual = st.sidebar.number_input("IRPF (Renta 23)", value=1100.0, step=100.0)
-iva_mensual = st.sidebar.number_input("IVA AEAT (Fijo)", value=325.0, step=5.0)
-ibi_granada = st.sidebar.number_input("IBI Granada (Si aplica)", value=0.0, step=10.0)
-autonomos = st.sidebar.number_input("Autónomos (TGSS)", value=314.0, step=5.0)
-
-st.sidebar.header("🏠 Gastos Estructura")
-hipoteca = st.sidebar.number_input("Hipoteca Abarqueros", value=554.73, step=5.0)
-seguro_hogar = st.sidebar.number_input("Seguro MyBox", value=96.43, step=5.0)
-seguro_vida = st.sidebar.number_input("Seguro Seviam", value=55.93, step=5.0)
-mantenimiento = st.sidebar.number_input("Mantenimiento Ascensor", value=65.44, step=5.0)
-sueldo_casa = st.sidebar.number_input("Asignación Personal", value=600.0, step=50.0)
-
-# --- CÁLCULOS ---
-total_ingresos = renta_abarqueros + renta_salon + huerto_1 + huerto_2 + huerto_3
-total_comunidades = comu_abarqueros + comu_salon + comu_huertos
-total_otros_gastos = hipoteca + seguro_hogar + seguro_vida + mantenimiento + autonomos + sueldo_casa + 18.15 # 18.15 de Holded
-total_impuestos = irpf_mensual + iva_mensual + ibi_granada
-
-total_gastos = total_comunidades + total_otros_gastos + total_impuestos
-beneficio_neto = total_ingresos - total_gastos
-
-# --- PANEL CENTRAL: RESULTADOS ---
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric("Ingresos Brutos", f"{total_ingresos:,.2f} €")
-with col2:
-    st.metric("Gastos Totales", f"-{total_gastos:,.2f} €", delta_color="inverse")
-with col3:
-    st.metric("EL VICIO (Neto)", f"{beneficio_neto:,.2f} €", delta=f"{((beneficio_neto/total_ingresos)*100):.1f}% Eficiencia")
-
+st.title("📊 Simulador de Tesorería - Pedro Nolasco")
 st.markdown("---")
 
-# Tabla de resumen
-st.subheader("📋 Resumen de Partidas")
-data = {
-    "Categoría": ["Ingresos", "Comunidades", "Fijos/Hipotecas", "Impuestos", "Asignación Casa"],
-    "Importe (€)": [total_ingresos, total_comunidades, total_otros_gastos-sueldo_casa, total_impuestos, sueldo_casa]
-}
-st.table(data)
+# --- BARRA LATERAL: ENTRADA DE DATOS ---
+with st.sidebar:
+    st.header("📥 Ingresos Mensuales")
+    renta_abarqueros = st.number_input("Abarqueros (Victor)", value=2200.0)
+    renta_salon = st.number_input("Paseo del Salón (Pool)", value=1591.80)
+    h1 = st.number_input("Huerto 1 (Alain)", value=660.0)
+    h2 = st.number_input("Huerto 2 (Laura)", value=800.0)
+    h3 = st.number_input("Huerto 3 (Jose Manuel)", value=850.0)
 
-if irpf_mensual > 0:
-    st.info(f"💡 Recuerda: En julio tu beneficio subirá un promedio de {irpf_mensual} € al finalizar el IRPF.")
+    st.header("🏢 Comunidades")
+    c_aba = st.number_input("C.P. Abarqueros 16", value=193.76)
+    c_sal = st.number_input("C.P. Salón 1", value=175.18)
+    c_hue = st.number_input("C.P. Huerto Cecilio (Total)", value=223.87)
+
+    st.header("⚖️ Fiscalidad y Fijos")
+    irpf = st.number_input("IRPF (Renta 23)", value=1100.0)
+    iva = st.number_input("IVA AEAT (Fijo)", value=325.0)
+    autonomos = st.number_input("Autónomos", value=314.0)
+    hipoteca = st.number_input("Hipoteca Abarqueros", value=554.73)
+    sueldo = st.number_input("Sueldo Pedro", value=600.0)
+
+# --- CÁLCULOS ---
+total_ingresos = renta_abarqueros + renta_salon + h1 + h2 + h3
+total_comu = c_aba + c_sal + c_hue
+# Otros fijos: Seguros (152.36), Ascensor (65.44), Holded (18.15)
+otros_fijos = 152.36 + 65.44 + 18.15 + autonomos + hipoteca + sueldo
+total_gastos = total_comu + otros_fijos + irpf + iva
+beneficio_neto = total_ingresos - total_gastos
+
+# --- PANEL CENTRAL ---
+c1, c2, c3 = st.columns(3)
+c1.metric("INGRESOS BRUTOS", f"{total_ingresos:,.2f} €")
+c2.metric("GASTOS TOTALES", f"-{total_gastos:,.2f} €")
+c3.metric("EL VICIO (Neto)", f"{beneficio_neto:,.2f} €", delta=f"{((beneficio_neto/total_ingresos)*100):.1f}% Eficiencia")
+
+st.markdown("---")
+st.subheader("📋 Desglose de Partidas")
+# Tabla informativa
+tabla_datos = {
+    "Concepto": ["Rentas Totales", "Gastos Comunidad", "Estructura e Hipoteca", "Impuestos (IVA/IRPF)", "Sueldo Personal"],
+    "Importe Mensual": [f"{total_ingresos:,.2f} €", f"{total_comu:,.2f} €", f"{(otros_fijos-sueldo):,.2f} €", f"{(irpf+iva):,.2f} €", f"{sueldo:,.2f} €"]
+}
+st.table(tabla_datos)
+
+if irpf > 0:
+    st.info(f"💡 Nota: Al finalizar el aplazamiento de IRPF, tu beneficio neto subirá a {beneficio_neto + irpf:,.2f} €")
