@@ -3,8 +3,8 @@ import streamlit as st
 # Configuración de la página
 st.set_page_config(page_title="Gestión Patrimonial Pedro Nolasco", layout="wide")
 
-st.title("📊 Simulador de Tesorería - Pedro Nolasco")
-st.markdown("---")
+st.set_page_config(page_title="Gestión Patrimonial Pedro Nolasco", layout="wide")
+st.title("Simulador de Tesorería Pedro Nolasco")
 
 # --- BARRA LATERAL: ENTRADA DE DATOS ---
 st.sidebar.header("📥 Configuración de Ingresos")
