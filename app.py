@@ -1,6 +1,5 @@
 import streamlit as st
 from streamlit_gsheets import GSheetConnection
-
 st.title("Control de Apartamentos - CurranteIA")
 
 # Intentar la conexión con Google Sheets
