@@ -1,21 +1,26 @@
 import streamlit as st
-# Cambio clave: ahora la conexión se llama de forma más directa
 from streamlit_gsheets import GSheetsConnection
 
-st.title("Control de Apartamentos - CurranteIA")
+st.title("Diagnóstico de Conexión - Pedro")
 
-# Intentar la conexión con Google Sheets
 try:
-    # Fíjate que ahora lleva una 's' al final: GSheetsConnection
+    # 1. Intentamos conectar
     conn = st.connection("gsheets", type=GSheetsConnection)
     
+    # 2. Intentamos leer solo para ver si hay error de permisos
     df = conn.read()
     
-    st.success("¡Conexión total, Pedro! Ya leo tu Google Sheets.")
-    st.write("Estos son los datos que tienes en la nube:")
+    st.success("¡POR FIN! Conexión exitosa.")
     st.dataframe(df)
 
 except Exception as e:
-    st.error("Todavía no puedo leer la hoja.")
-    st.info("Revisa si los Secrets de Streamlit están bien configurados.")
-    st.write("Error técnico para investigar:", e)
+    st.error("Error detectado")
+    # Este bloque nos dirá el email exacto que está intentando entrar
+    if "service_account" in st.secrets["connections"]["gsheets"]:
+        import json
+        info = json.loads(st.secrets["connections"]["gsheets"]["service_account"])
+        email_en_secrets = info.get("client_email")
+        st.warning(f"La app está intentando entrar con este email: {email_en_secrets}")
+        st.info("Copia ese email de arriba y asegúrate de que sea EXACTAMENTE el que tiene permiso de EDITOR en tu hoja de Google.")
+    
+    st.write("Detalle técnico del error:", e)
