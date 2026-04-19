@@ -53,7 +53,7 @@ with st.sidebar:
     st.header("➕ Nuevo Registro")
     # ... (el resto del formulario igual que antes)
     with st.form("nuevo_registro", clear_on_submit=True):
-        f_apto = st.selectbox("Inmueble", ["Abarqueros", "P. Salón", "Huerto 1", "Huerto 2", "Huerto 3"])
+        f_apto = st.selectbox("Inmueble", ["Abarqueros", "Paseo del Salón", "Huerto 1ºA", "Huerto 2ºC", "Huerto 3ºD"])
         f_tipo = st.radio("Tipo", ["Ingreso", "Gasto"], horizontal=True)
         f_con = st.text_input("Concepto")
         f_imp = st.number_input("Importe (€)", min_value=0.0)
