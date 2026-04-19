@@ -1,103 +1,93 @@
 import streamlit as st
 import pandas as pd
+import os
+from datetime import datetime
 
-# 1. Configuración de la página (estado de la barra lateral)
-st.set_page_config(page_title="Dashboard Patrimonial", page_icon="💼", layout="wide", initial_sidebar_state="expanded")
-
-# 2. Estilo Visual Corporativo
+# --- 1. CONFIGURACIÓN VISUAL (ESTILO GRIS CLARO) ---
+st.set_page_config(page_title="Curranteia - Gestión Patrimonial", layout="wide")
 st.markdown("""
     <style>
-    .stApp { background-color: #F4F6F9; }
-    h1, h2, h3 { color: #1A5276 !important; font-family: 'Helvetica Neue', sans-serif; }
-    /* Darle color a las métricas */
-    [data-testid="stMetricValue"] { color: #D35400; font-weight: 800; }
+    .stApp { background-color: #F0F2F6; }
+    h1, h2, h3 { color: #1A5276 !important; font-family: 'Segoe UI', sans-serif; }
+    [data-testid="stMetricValue"] { color: #E67E22; font-weight: bold; }
+    .stTable { background-color: white; border-radius: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("💼 Dashboard Patrimonial - Pedro Nolasco")
-st.markdown("*Análisis de rentabilidad y simulación de escenarios*")
-st.divider() # Una línea separadora más elegante
+# --- 2. GESTIÓN DE LA BASE DE DATOS LOCAL (CSV) ---
+DB_FILE = "base_datos_curranteia.csv"
 
-# 3. Conexión Estable (Lectura por Enlace Público)
-SHEET_ID = "1aI2Dg5FjEJjaFU4v37sw9ZM3inuB2apgUJ4e3IA4xF8"
-URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
+# Si el archivo no existe, la app lo crea automáticamente con la estructura necesaria
+if not os.path.exists(DB_FILE):
+    columnas = ["Fecha", "Apartamento", "Concepto", "Categoría", "Tipo", "Importe"]
+    # Creamos un par de datos de ejemplo para que no nazca vacía
+    df_inicial = pd.DataFrame([
+        {"Fecha": "2026-04-01", "Apartamento": "Abarqueros", "Concepto": "Renta Victor", "Categoría": "Alquiler", "Tipo": "Ingreso", "Importe": 2200.0},
+        {"Fecha": "2026-04-02", "Apartamento": "P. Salón", "Concepto": "Hipoteca", "Categoría": "Bancos", "Tipo": "Gasto", "Importe": 554.73}
+    ])
+    df_inicial.to_csv(DB_FILE, index=False)
 
-try:
-    df_excel = pd.read_csv(URL).dropna(how='all')
+def cargar_datos():
+    return pd.read_csv(DB_FILE)
 
-    # --- BARRA LATERAL (Con menús desplegables para limpiar la vista) ---
-    with st.sidebar:
-        st.header("⚙️ Simulador de Escenarios")
+def guardar_datos(df_datos):
+    df_datos.to_csv(DB_FILE, index=False)
+
+# --- 3. INTERFAZ Y LÓGICA ---
+st.title("🏙️ Curranteia: Gestión de Apartamentos con IA")
+st.markdown("---")
+
+df = cargar_datos()
+
+# --- BARRA LATERAL: ENTRADA DE DATOS (FRONTEND) ---
+with st.sidebar:
+    st.header("➕ Registro de Movimientos")
+    with st.form("nuevo_registro", clear_on_submit=True):
+        f_apto = st.selectbox("Inmueble", ["Abarqueros", "P. Salón", "Huerto 1", "Huerto 2", "Huerto 3"])
+        f_tipo = st.radio("Tipo", ["Ingreso", "Gasto"], horizontal=True)
+        f_cat = st.selectbox("Categoría", ["Alquiler", "Suministros", "Reparaciones", "Impuestos", "Hipoteca/Bancos", "Varios"])
+        f_con = st.text_input("Concepto (ej: Factura Endesa)")
+        f_imp = st.number_input("Importe (€)", min_value=0.0, step=10.0)
         
-        with st.expander("📥 Ingresos Mensuales", expanded=True):
-            renta_v = st.number_input("Abarqueros (Victor)", value=2200.0, step=50.0)
-            renta_p = st.number_input("Paseo del Salón (Pool)", value=1591.80, step=50.0)
-            h1 = st.number_input("Huerto 1 (Alain)", value=660.0, step=50.0)
-            h2 = st.number_input("Huerto 2 (Laura)", value=800.0, step=50.0)
-            h3 = st.number_input("Huerto 3 (Jose Manuel)", value=850.0, step=50.0)
+        if st.form_submit_button("Guardar en Backend"):
+            nueva_fila = {
+                "Fecha": datetime.now().strftime("%Y-%m-%d"),
+                "Apartamento": f_apto,
+                "Concepto": f_con,
+                "Categoría": f_cat,
+                "Tipo": f_tipo,
+                "Importe": f_imp
+            }
+            # Añadimos el dato y guardamos
+            df = pd.concat([df, pd.DataFrame([nueva_fila])], ignore_index=True)
+            guardar_datos(df)
+            st.success("¡Registro guardado con éxito!")
+            st.rerun()
 
-        with st.expander("🏢 Gastos Operativos", expanded=False):
-            hipoteca = st.number_input("Hipoteca Abarqueros", value=554.73)
-            comunidades = st.number_input("Total Comunidades", value=592.81)
-            sueldo = st.number_input("Sueldo Gestión", value=600.0)
+# --- PANEL CENTRAL: DASHBOARD DE CONTROL ---
+ingresos = df[df["Tipo"] == "Ingreso"]["Importe"].sum()
+gastos = df[df["Tipo"] == "Gasto"]["Importe"].sum()
+beneficio = ingresos - gastos
 
-        with st.expander("⚖️ Fiscalidad y Fijos", expanded=False):
-            irpf = st.number_input("IRPF (Aprox)", value=1100.0)
-            iva = st.number_input("IVA AEAT", value=325.0)
-            autonomos = st.number_input("Cuota Autónomos", value=314.0)
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.metric("INGRESOS TOTALES", f"{ingresos:,.2f} €")
+with c2:
+    st.metric("GASTOS TOTALES", f"-{gastos:,.2f} €")
+with c3:
+    eficiencia = (beneficio / ingresos * 100) if ingresos > 0 else 0
+    st.metric("EL VICIO (NETO)", f"{beneficio:,.2f} €", delta=f"{eficiencia:.1f}% Eficiencia")
 
-    # --- CÁLCULOS FINANCIEROS ---
-    total_ingresos = renta_v + renta_p + h1 + h2 + h3
-    total_gastos = hipoteca + comunidades + sueldo + irpf + iva + autonomos
-    beneficio_neto = total_ingresos - total_gastos
-    margen_neto = (beneficio_neto / total_ingresos) * 100 if total_ingresos > 0 else 0
+st.markdown("---")
 
-    # --- PANEL CENTRAL: TARJETAS DE RESULTADOS ---
-    col1, col2, col3, col4 = st.columns(4)
-    
-    # Envolvemos las métricas en "contenedores con borde" para que parezcan tarjetas
-    with col1:
-        with st.container(border=True):
-            st.metric("INGRESOS BRUTOS", f"{total_ingresos:,.2f} €")
-    with col2:
-        with st.container(border=True):
-            st.metric("GASTOS TOTALES", f"-{total_gastos:,.2f} €")
-    with col3:
-        with st.container(border=True):
-            st.metric("EL VICIO (NETO)", f"{beneficio_neto:,.2f} €")
-    with col4:
-        with st.container(border=True):
-            st.metric("MARGEN EFICIENCIA", f"{margen_neto:.1f} %")
+# --- EDICIÓN DE DATOS (PARA QUE NO SEA CUTRE) ---
+st.subheader("📝 Gestión del Histórico")
+st.write("Puedes editar cualquier celda directamente. Al terminar, pulsa el botón de abajo.")
 
-    st.write("") # Espacio en blanco
+# El editor interactivo permite borrar filas, cambiar precios, etc.
+df_editado = st.data_editor(df, use_container_width=True, num_rows="dynamic")
 
-    # --- ZONA DE GRÁFICOS Y DESGLOSE ---
-    col_grafico, col_tabla = st.columns([1.5, 1]) # El gráfico ocupará un poco más de espacio
-    
-    with col_grafico:
-        st.subheader("📈 Balance Estructural")
-        # Creamos un pequeño gráfico de barras comparativo
-        df_chart = pd.DataFrame({
-            "Categoría": ["Ingresos", "Gastos", "Beneficio Neto"],
-            "Importe (€)": [total_ingresos, total_gastos, beneficio_neto]
-        })
-        st.bar_chart(df_chart.set_index("Categoría"), color="#2E86C1")
-
-    with col_tabla:
-        st.subheader("📋 Estructura de Gastos")
-        # Creamos una tabla limpia solo para visualizar los gastos
-        df_gastos = pd.DataFrame({
-            "Concepto": ["Hipoteca", "Comunidades", "Impuestos (IRPF+IVA)", "Autónomos", "Sueldo Personal"],
-            "Importe (€)": [hipoteca, comunidades, irpf+iva, autonomos, sueldo]
-        })
-        st.dataframe(df_gastos, hide_index=True, use_container_width=True)
-
-    st.divider()
-
-    # --- AUDITORÍA DE DATOS (Oculta por defecto) ---
-    with st.expander("🔍 Ver Base de Datos Original (Conexión Excel)"):
-        st.write("Estos son los datos crudos que la aplicación está leyendo ahora mismo desde tu Google Sheets:")
-        st.dataframe(df_excel, use_container_width=True)
-
-except Exception as e:
-    st.error("No se pudo conectar con el Excel. Revisa el enlace público.")
+if st.button("💾 Sincronizar y Guardar Cambios"):
+    guardar_datos(df_editado)
+    st.success("Base de datos actualizada correctamente.")
+    st.balloons()
