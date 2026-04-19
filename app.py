@@ -9,7 +9,7 @@ st.markdown("""
     <style>
     /* Fondo crema pastel */
     .stApp {
-        background-color: #E0F2F1;
+        background-color: #F0F2F6;
     }
     /* Títulos en azul corporativo */
     h1, h2, h3 {
