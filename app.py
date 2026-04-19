@@ -1,65 +1,53 @@
 import streamlit as st
 import pandas as pd
 
-# Configuración de la página (más ancha y con icono)
-st.set_page_config(page_title="Dashboard Apartamentos", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="Gestión de Rentas", page_icon="💰", layout="wide")
 
-st.title("🏢 Panel de Control de Apartamentos - Granada")
+st.title("💰 Gestión de Rentas en Tiempo Real")
 st.markdown("---")
 
-# 1. Obtenemos los datos (tu URL pública)
+# 1. Conexión con tu hoja (ID que ya conocemos)
 SHEET_ID = "1aI2Dg5FjEJjaFU4v37sw9ZM3inuB2apgUJ4e3IA4xF8"
 URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
 
 try:
+    # Leemos los datos actuales
     df = pd.read_csv(URL).dropna(how='all')
-    
-    # 2. SECCIÓN VISUAL: Tarjetas de Resumen (KPIs)
-    st.subheader("📊 Resumen Financiero y de Ocupación")
-    
-    # Creamos 3 columnas para poner tarjetas de colores
-    col1, col2, col3 = st.columns(3)
-    
-    # Suponiendo que tienes una columna de precios, calculamos el total. 
-    # (Si no se llama 'Precio', cambia la palabra abajo por el nombre exacto de tu columna)
-    total_ingresos = 0
-    if 'Precio' in df.columns:
-        total_ingresos = df['Precio'].sum()
-        
-    with col1:
-        st.metric(label="Total Inquilinos", value=f"{len(df)} activos", delta="1 este mes")
-    with col2:
-        st.metric(label="Ingresos Estimados", value=f"{total_ingresos} €", delta="Estable", delta_color="normal")
-    with col3:
-        st.metric(label="Apartamentos Libres", value="0", delta="-1 ocupado hoy", delta_color="inverse")
 
-    st.markdown("---")
+    st.subheader("Control de Importes por Apartamento")
+    st.info("💡 Haz clic en la cifra de 'Renta' para cambiarla manualmente o usa las flechas que aparecen al pasar el ratón.")
 
-    # 3. SECCIÓN INTERACTIVA: La tabla editable
-    st.subheader("📝 Base de Datos Editable")
-    st.info("💡 Haz doble clic en cualquier celda para modificar el dato directamente.")
-    
-    # MAGIA: Usamos data_editor en lugar de dataframe
-    datos_modificados = st.data_editor(
+    # 2. LA MAGIA: Editor de datos con configuración de columnas
+    # Aquí definimos que la columna 'Renta' tenga botones y formato moneda
+    df_editado = st.data_editor(
         df,
+        column_config={
+            "Renta": st.column_config.NumberColumn(
+                "Importe Mensual (€)",
+                help="Sueldo mensual del apartamento",
+                min_value=0,
+                max_value=5000,
+                step=10, # Sube y baja de 10 en 10 con los botones
+                format="%d €", # Añade el símbolo de euro automáticamente
+            ),
+            "Inquilino": st.column_config.TextColumn("Nombre del Inquilino"),
+            "Estado": st.column_config.SelectboxColumn(
+                "Disponibilidad",
+                options=["Ocupado", "Libre", "En reforma"],
+            )
+        },
+        hide_index=True,
         use_container_width=True,
-        num_rows="dynamic" # Esto te permite añadir filas nuevas desde la propia tabla
     )
 
-    # 4. SECCIÓN FORMULARIO: Con botones de subir/bajar importes
+    # 3. Cálculo automático para tu análisis financiero
+    if "Renta" in df_editado.columns:
+        total_actual = df_editado["Renta"].sum()
+        st.metric("Total Ingresos Mensuales", f"{total_actual} €", delta=f"{total_actual - df['Renta'].sum()} € de diferencia")
+
     st.markdown("---")
-    st.subheader("⚙️ Ajuste Rápido de Renta")
-    
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.write("Usa los botones o escribe el importe exacto:")
-        # number_input tiene botones + y - integrados. 'step=50' hace que suba de 50 en 50.
-        nueva_renta = st.number_input("Modificar importe de renta (€)", min_value=0, value=650, step=50)
-    with col_b:
-        st.write(" ") # Espacio en blanco para alinear
-        st.write(" ") 
-        st.button(f"Aplicar {nueva_renta}€ al seleccionado", type="primary")
+    if st.button("💾 Guardar cambios de forma permanente"):
+        st.warning("⚠️ El diseño está listo. Para que este botón guarde los cambios en tu Google Sheets real, necesitamos activar de nuevo la 'Llave de Seguridad' (JSON) que configuramos al principio. ¿Quieres que lo intentemos ahora que la estructura está clara?")
 
 except Exception as e:
-    st.error("No se pudieron cargar los datos de la hoja pública.")
-    st.write(e)
+    st.error("Error al cargar la tabla interactiva.")
