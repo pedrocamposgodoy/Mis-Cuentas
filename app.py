@@ -5,12 +5,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # ─────────────────────────────────────────────
-# 1. CONFIGURACIÓN VISUAL PREMIUM
+# 1. CONFIGURACIÓN VISUAL PREMIUM (Tipografía Nolasco)
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
 
 st.markdown("""
 <style>
+/* Importación de las tipografías premium */
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
 
 :root {
@@ -30,18 +31,36 @@ html, body, [class*="css"] {
     color: var(--ink);
 }
 
-/* Sidebar */
-[data-testid="stSidebar"] { background: var(--ink) !important; border-right: 1px solid #222; }
-[data-testid="stSidebar"] * { color: #CCC !important; }
-[data-testid="stSidebar"] .stRadio label { font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; }
+/* ─────────────────────────────────────────────
+   DISEÑO EXCLUSIVO PARA LA BARRA LATERAL (SIDEBAR)
+   ───────────────────────────────────────────── */
+[data-testid="stSidebar"] { 
+    background: var(--ink) !important; 
+    border-right: 1px solid #222; 
+}
 
-/* Header brand */
+/* Aplicar DM Serif Display a los botones del menú */
+[data-testid="stSidebar"] .stRadio p { 
+    font-family: 'DM Serif Display', serif !important;
+    font-size: 1.15rem !important; 
+    letter-spacing: 0.02em; 
+    color: #E8E2D9 !important;
+    margin-bottom: 0.3rem;
+    transition: all 0.3s ease;
+}
+
+/* Efecto hover (dorado) al pasar el ratón por el menú */
+[data-testid="stSidebar"] .stRadio label:hover p {
+    color: var(--gold) !important;
+}
+
+/* Header brand y subtítulos */
 .brand-header { font-family: 'DM Serif Display', serif; font-size: 2.2rem; color: var(--ink); letter-spacing: -0.02em; border-bottom: 2px solid var(--gold); padding-bottom: 0.4rem; margin-bottom: 0.2rem; }
-.brand-sub { font-size: 0.75rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--slate); margin-bottom: 1.5rem; }
+.brand-sub { font-size: 0.75rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--slate); margin-bottom: 1.5rem; font-family: 'DM Sans', sans-serif;}
 
 /* KPI cards */
 .kpi-card { background: var(--card-bg); border: 1px solid var(--border); border-top: 3px solid var(--gold); border-radius: 4px; padding: 1.2rem 1.5rem; text-align: center; }
-.kpi-label { font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--slate); margin-bottom: 0.3rem; }
+.kpi-label { font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--slate); margin-bottom: 0.3rem; font-family: 'DM Sans', sans-serif;}
 .kpi-value { font-family: 'DM Serif Display', serif; font-size: 1.9rem; color: var(--ink); line-height: 1; }
 .kpi-value.positive { color: var(--emerald); }
 .kpi-value.negative { color: var(--crimson); }
@@ -105,10 +124,10 @@ df_mov = pd.read_csv(DB_MOVIMIENTOS)
 with st.sidebar:
     st.markdown("""
     <div style='padding: 1.5rem 0 1rem 0;'>
-        <div style='font-family:"DM Serif Display",serif; font-size:1.4rem; color:#C9A84C; letter-spacing:-0.01em;'>
+        <div style='font-family:"DM Serif Display",serif; font-size:1.8rem; color:#C9A84C; letter-spacing:-0.01em;'>
             NOLASCO
         </div>
-        <div style='font-size:0.6rem; letter-spacing:0.2em; color:#888; text-transform:uppercase; margin-top:2px;'>
+        <div style='font-size:0.6rem; letter-spacing:0.2em; color:#888; text-transform:uppercase; margin-top:2px; font-family:"DM Sans", sans-serif;'>
             Capital · Gestión de Activos
         </div>
     </div>
@@ -213,31 +232,26 @@ elif "Auditor" in menu:
     st.markdown('<div class="brand-header">Auditoría Automática</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Análisis algorítmico de la cartera (Local y Seguro)</div>', unsafe_allow_html=True)
     
-    # Cálculos internos del sistema
-    mejor_margen = 0
-    mejor_apto = ""
-    peor_margen = 100
-    peor_apto = ""
+    mejor_margen, peor_margen = 0, 100
+    mejor_apto, peor_apto = "", ""
     
     for _, row in df_inm.iterrows():
         g_esp = df_mov[(df_mov["Apartamento"] == row["Nombre"]) & (df_mov["Tipo"] == "Gasto")]["Importe"].sum()
         margen = ((row["Renta"] - row["Comunidad"] - g_esp) / row["Renta"] * 100) if row["Renta"] > 0 else 0
         if margen > mejor_margen:
-            mejor_margen = margen
-            mejor_apto = row["Nombre"]
+            mejor_margen, mejor_apto = margen, row["Nombre"]
         if margen < peor_margen:
-            peor_margen = margen
-            peor_apto = row["Nombre"]
+            peor_margen, peor_apto = margen, row["Nombre"]
             
     gasto_mayor_cat = df_mov.groupby("Categoría")["Importe"].sum().idxmax()
     gasto_mayor_val = df_mov.groupby("Categoría")["Importe"].sum().max()
 
     st.markdown(f"""
     <div class="ai-panel">
-        <span style="color:var(--gold); font-size:1.1rem; font-weight:bold;">🔍 Conclusiones del Sistema Nolasco:</span><br><br>
+        <span style="color:var(--gold); font-size:1.2rem; font-family:'DM Serif Display', serif;">🔍 Conclusiones del Sistema Nolasco:</span><br><br>
         1. <b>Activo Estrella:</b> "{mejor_apto}" es tu inmueble más eficiente con un margen operativo del {mejor_margen:.1f}%.<br>
         2. <b>Punto de Fuga:</b> "{peor_apto}" presenta el margen más ajustado ({peor_margen:.1f}%). Recomiendo revisar su cuota de comunidad o posibles gastos asociados.<br>
-        3. <b>Control de Costes:</b> Tu mayor pozo de gastos estructurales recae en la categoría "<b>{gasto_mayor_cat}</b>" ({gasto_mayor_val:,.2f} €). Como economista, este es el primer punto donde buscar optimización fiscal o reducción de costes el próximo trimestre.
+        3. <b>Control de Costes:</b> Tu mayor pozo de gastos estructurales recae en la categoría "<b>{gasto_mayor_cat}</b>" ({gasto_mayor_val:,.2f} €). Como economista, este es el primer punto donde buscar optimización fiscal.
     </div>
     """, unsafe_allow_html=True)
     
