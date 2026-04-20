@@ -2,182 +2,132 @@ import streamlit as st
 import pandas as pd
 import os
 import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
+from datetime import datetime
 
-# --- 1. CONFIGURACIÓN Y UX/UI PREMIUM ---
+# --- 1. CONFIGURACIÓN ESTÉTICA NOLASCO 1.1 ---
 st.set_page_config(page_title="Inmuebles Nolasco 1.1", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
-    /* Paleta Corporativa Nolasco */
     .stApp { background-color: #F4F6F9; }
-    h1, h2, h3 { color: #1A252F !important; font-family: 'Segoe UI', sans-serif; }
-    
-    /* Estilos de Tarjetas y Métricas */
-    div[data-testid="stMetricValue"] { font-size: 2rem; font-weight: 800; color: #1A252F; }
-    .card-ingreso { border-left: 5px solid #2ECC71; background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .card-alerta { border-left: 5px solid #E74C3C; background-color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    h1, h2, h3 { color: #1B2631 !important; font-family: 'Segoe UI', sans-serif; }
+    div[data-testid="stMetricValue"] { font-size: 2rem; font-weight: 800; color: #1B2631; }
+    .stTabs [aria-selected="true"] { background-color: #2E86C1 !important; color: white !important; }
     .card-ia { border-left: 5px solid #9B59B6; background-color: #F9E7FF; padding: 15px; border-radius: 8px; }
-    
-    /* Textos de estado */
-    .text-verde { color: #2ECC71; font-weight: bold; }
-    .text-rojo { color: #E74C3C; font-weight: bold; }
-    .text-naranja { color: #F39C12; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. GESTIÓN DE BASE DE DATOS LOCAL ---
+# --- 2. INICIALIZACIÓN DE LA CARTERA "NOLASCO 1.1" ---
 DB_INMUEBLES = "nolasco_inmuebles.csv"
 DB_MOVIMIENTOS = "nolasco_movimientos.csv"
 
-# Inicializar BD Inmuebles (Fichas Técnicas)
-if not os.path.exists(DB_INMUEBLES):
-    cols_inm = ["ID", "Nombre", "Inquilino", "Renta_Actual", "Fianza", "Inicio_Contrato", "Fin_Contrato", "Estado_Cobro"]
-    pd.DataFrame([
-        {"ID": 1, "Nombre": "Abarqueros", "Inquilino": "Juan Pérez", "Renta_Actual": 650, "Fianza": 650, "Inicio_Contrato": "2023-01-01", "Fin_Contrato": "2028-01-01", "Estado_Cobro": "Al Día"},
-        {"ID": 2, "Nombre": "Puerta Real", "Inquilino": "María Gómez", "Renta_Actual": 850, "Fianza": 1700, "Inicio_Contrato": "2024-03-15", "Fin_Contrato": "2029-03-15", "Estado_Cobro": "Impago"}
-    ]).to_csv(DB_INMUEBLES, index=False)
+# Datos Maestros de tu cartera
+datos_iniciales = [
+    {"ID": 1, "Nombre": "Abarqueros", "Inquilino": "Juan Pérez", "Renta_Actual": 650.0, "Fianza": 650.0, "Inicio_Contrato": "2023-01-01", "Fin_Contrato": "2028-01-01", "Estado_Cobro": "Al Día"},
+    {"ID": 2, "Nombre": "Puerta Real", "Inquilino": "María Gómez", "Renta_Actual": 850.0, "Fianza": 1700.0, "Inicio_Contrato": "2024-03-15", "Fin_Contrato": "2029-03-15", "Estado_Cobro": "Impago"},
+    {"ID": 3, "Nombre": "Huerto 1", "Inquilino": "Sin Inquilino", "Renta_Actual": 0.0, "Fianza": 0.0, "Inicio_Contrato": "N/A", "Fin_Contrato": "N/A", "Estado_Cobro": "Disponible"},
+    {"ID": 4, "Nombre": "Huerto 2", "Inquilino": "Sin Inquilino", "Renta_Actual": 0.0, "Fianza": 0.0, "Inicio_Contrato": "N/A", "Fin_Contrato": "N/A", "Estado_Cobro": "Disponible"},
+    {"ID": 5, "Nombre": "Huerto 3", "Inquilino": "Sin Inquilino", "Renta_Actual": 0.0, "Fianza": 0.0, "Inicio_Contrato": "N/A", "Fin_Contrato": "N/A", "Estado_Cobro": "Disponible"}
+]
 
-# Inicializar BD Movimientos (Flujo de Caja)
+if not os.path.exists(DB_INMUEBLES):
+    pd.DataFrame(datos_iniciales).to_csv(DB_INMUEBLES, index=False)
+
 if not os.path.exists(DB_MOVIMIENTOS):
-    cols_mov = ["Fecha", "Apartamento", "Concepto", "Categoría", "Tipo", "Importe"]
-    pd.DataFrame(columns=cols_mov).to_csv(DB_MOVIMIENTOS, index=False)
+    pd.DataFrame(columns=["Fecha", "Apartamento", "Concepto", "Categoría", "Tipo", "Importe"]).to_csv(DB_MOVIMIENTOS, index=False)
 
 df_inm = pd.read_csv(DB_INMUEBLES)
 df_mov = pd.read_csv(DB_MOVIMIENTOS)
 lista_aptos = df_inm["Nombre"].tolist()
 
-# --- 3. NAVEGACIÓN LATERAL (EL PMS) ---
+# --- 3. NAVEGACIÓN Y MENÚ ---
 with st.sidebar:
-    st.markdown("## 🏢 NOLASCO 1.1")
-    st.markdown("### Menú Principal")
-    menu = st.radio("", ["📊 Torre de Control", "🏠 Fichas de Activos", "📝 Libro Mayor", "⚙️ Ajustes"])
+    st.title("🏢 NOLASCO 1.1")
+    menu = st.radio("Gestión", ["📊 Torre de Control", "🏠 Fichas de Activos", "📝 Libro Mayor", "⚙️ Configuración"])
     
     st.divider()
-    st.markdown("### Acciones Rápidas")
-    with st.form("form_rapido", clear_on_submit=True):
-        f_apto = st.selectbox("Activo", lista_aptos)
-        f_tipo = st.radio("Operación", ["Ingreso (Renta)", "Gasto"], horizontal=True)
-        f_imp = st.number_input("Importe €", min_value=0.0)
+    st.subheader("Entrada Rápida")
+    with st.form("quick_form", clear_on_submit=True):
+        q_apto = st.selectbox("Activo", lista_aptos)
+        q_tipo = st.radio("Tipo", ["Ingreso", "Gasto"], horizontal=True)
+        q_imp = st.number_input("Importe (€)", min_value=0.0)
         if st.form_submit_button("Registrar"):
-            cat = "Renta" if f_tipo == "Ingreso (Renta)" else "Operativo"
-            tipo_bd = "Ingreso" if f_tipo == "Ingreso (Renta)" else "Gasto"
-            nuevo_reg = pd.DataFrame([{"Fecha": datetime.now().strftime("%Y-%m-%d"), "Apartamento": f_apto, "Concepto": "Anotación rápida", "Categoría": cat, "Tipo": tipo_bd, "Importe": f_imp}])
-            df_mov = pd.concat([df_mov, nuevo_reg], ignore_index=True)
+            nuevo = pd.DataFrame([{"Fecha": datetime.now().strftime("%Y-%m-%d"), "Apartamento": q_apto, "Concepto": "Registro rápido", "Categoría": "Varios", "Tipo": q_tipo, "Importe": q_imp}])
+            df_mov = pd.concat([df_mov, nuevo], ignore_index=True)
             df_mov.to_csv(DB_MOVIMIENTOS, index=False)
-            st.success("Guardado")
             st.rerun()
 
-# --- VISTA 1: TORRE DE CONTROL (DASHBOARD) ---
+# --- VISTA: TORRE DE CONTROL ---
 if menu == "📊 Torre de Control":
-    st.title("Radar de Control Patrimonial")
+    st.title("Radar Patrimonial Global")
     
-    # Cálculos globales
-    ing_tot = df_mov[df_mov["Tipo"] == "Ingreso"]["Importe"].sum()
-    gas_tot = df_mov[df_mov["Tipo"] == "Gasto"]["Importe"].sum()
-    neto = ing_tot - gas_tot
+    ing = df_mov[df_mov["Tipo"] == "Ingreso"]["Importe"].sum()
+    gas = df_mov[df_mov["Tipo"] == "Gasto"]["Importe"].sum()
     
-    # KPIs Superiores
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown('<div class="card-ingreso">', unsafe_allow_html=True)
-        st.metric("BENEFICIO NETO", f"{neto:,.0f} €", f"Margen: {(neto/ing_tot*100 if ing_tot>0 else 0):.1f}%")
-        st.markdown('</div>', unsafe_allow_html=True)
-    with c2:
-        ocupacion = len(df_inm[df_inm["Inquilino"].notna()]) / len(df_inm) * 100
-        st.metric("NIVEL DE OCUPACIÓN", f"{ocupacion:.0f}%")
-    with c3:
-        morosos = len(df_inm[df_inm["Estado_Cobro"] == "Impago"])
-        st.metric("MOROSIDAD", f"{morosos} Inmuebles")
-    with c4:
-        # Fondo IA sugerido: 5% del valor de rentas
-        fondo_ia = df_inm["Renta_Actual"].sum() * 12 * 0.05
-        st.metric("FONDO MANIOBRA (Sugerido)", f"{fondo_ia:,.0f} €")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("INGRESOS ACUMULADOS", f"{ing:,.2f} €")
+    c2.metric("GASTOS ACUMULADOS", f"-{gas:,.2f} €")
+    c3.metric("MARGEN NETO", f"{ing-gas:,.2f} €")
 
-    st.markdown("---")
+    st.divider()
     
-    # Radar de Alertas
-    st.subheader("⚠️ Radar de Alertas y Operaciones")
-    col_alerta1, col_alerta2 = st.columns(2)
-    
-    with col_alerta1:
-        st.markdown('<div class="card-alerta"><h4>🚨 Riesgo de Impago</h4>', unsafe_allow_html=True)
-        impagos = df_inm[df_inm["Estado_Cobro"] == "Impago"]
-        if not impagos.empty:
-            for index, row in impagos.iterrows():
-                st.write(f"• **{row['Nombre']}** ({row['Inquilino']}) - Falta cobro de {row['Renta_Actual']}€")
+    col_inf1, col_inf2 = st.columns(2)
+    with col_inf1:
+        st.subheader("⚠️ Alertas de Cobro")
+        morosos = df_inm[df_inm["Estado_Cobro"] == "Impago"]
+        if not morosos.empty:
+            for _, row in morosos.iterrows():
+                st.error(f"PAGO PENDIENTE: {row['Nombre']} - {row['Inquilino']} ({row['Renta_Actual']} €)")
         else:
-            st.write("✅ Todos los alquileres al día.")
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.success("Cartera al día. No se detectan impagos.")
 
-    with col_alerta2:
-        st.markdown('<div class="card-ia"><h4>🤖 Alertas de Mantenimiento (IA)</h4>', unsafe_allow_html=True)
-        st.write("• **Puerta Real:** Revisión de canalones sugerida antes del 15 de octubre (Previsión de lluvias).")
-        st.write("• **Abarqueros:** El contrato de Juan Pérez entra en periodo de renovación en 60 días. IPC estimado: +3.1%.")
-        st.markdown('</div>', unsafe_allow_html=True)
+    with col_inf2:
+        st.subheader("📅 Próximos Mantenimientos (IA)")
+        st.markdown("""
+        <div class="card-ia">
+        • <b>Huerto 1, 2 y 3:</b> Revisión de sistemas de climatización sugerida para Mayo.<br>
+        • <b>Abarqueros:</b> Actualización de renta por IPC prevista para Enero 2027.
+        </div>
+        """, unsafe_allow_html=True)
 
-# --- VISTA 2: FICHAS DE ACTIVOS ---
+# --- VISTA: FICHAS DE ACTIVOS ---
 elif menu == "🏠 Fichas de Activos":
-    st.title("Expedientes de Inmuebles")
+    st.title("Expedientes Individuales")
+    sel = st.selectbox("Seleccione inmueble:", lista_aptos)
+    ficha = df_inm[df_inm["Nombre"] == sel].iloc[0]
     
-    selector = st.selectbox("Seleccione un Inmueble para auditar:", lista_aptos)
-    datos_apto = df_inm[df_inm["Nombre"] == selector].iloc[0]
-    
-    c_ficha1, c_ficha2 = st.columns([1, 2])
-    
-    with c_ficha1:
-        st.subheader("Datos del Contrato")
-        st.write(f"**Inquilino:** {datos_apto['Inquilino']}")
-        st.write(f"**Renta Actual:** <span class='text-verde'>{datos_apto['Renta_Actual']} €/mes</span>", unsafe_allow_html=True)
-        st.write(f"**Fianza Depositada:** {datos_apto['Fianza']} €")
-        st.write(f"**Inicio Contrato:** {datos_apto['Inicio_Contrato']}")
-        st.write(f"**Vencimiento:** <span class='text-naranja'>{datos_apto['Fin_Contrato']}</span>", unsafe_allow_html=True)
+    f1, f2 = st.columns([1, 2])
+    with f1:
+        st.write(f"### Detalle: {sel}")
+        st.write(f"**Inquilino:** {ficha['Inquilino']}")
+        st.write(f"**Renta:** {ficha['Renta_Actual']} €")
+        st.write(f"**Contrato hasta:** {ficha['Fin_Contrato']}")
+        st.write(f"**Estado:** {ficha['Estado_Cobro']}")
         
-        estado_color = "text-verde" if datos_apto['Estado_Cobro'] == "Al Día" else "text-rojo"
-        st.write(f"**Estado de Pago:** <span class='{estado_color}'>{datos_apto['Estado_Cobro']}</span>", unsafe_allow_html=True)
-        
-        st.divider()
-        st.button(f"🧾 Marcar {selector} como PAGADO este mes")
+        if st.button("Marcar como PAGADO"):
+            df_inm.loc[df_inm["Nombre"] == sel, "Estado_Cobro"] = "Al Día"
+            df_inm.to_csv(DB_INMUEBLES, index=False)
+            st.rerun()
 
-    with c_ficha2:
-        # Pestañas internas para la IA y los gráficos
-        tab_ia, tab_graf = st.tabs(["🤖 Auditoría IA", "📊 Rentabilidad del Activo"])
-        
+    with f2:
+        tab_ia, tab_hist = st.tabs(["🤖 Auditoría IA", "📊 Historial"])
         with tab_ia:
-            st.markdown("### Análisis Predictivo y de Mercado")
-            st.info(f"**Análisis de Rentabilidad:** El activo {selector} está generando un margen neto del 65% sobre ingresos. El gasto en suministros ha subido un 12% este trimestre.")
-            st.warning("**Plan de Mantenimiento CAPEX:** Se recomienda una provisión de 450€ para pintura de fachada estimada para la próxima primavera, evitando degradación del activo.")
-            st.success(f"**Actualización IPC:** La renta de {datos_apto['Renta_Actual']}€ lleva 14 meses sin actualizarse. Aplicar el IPC actual (+3.2%) elevaría la cuota a {datos_apto['Renta_Actual']*1.032:.2f}€.")
-            
-        with tab_graf:
-            df_apto_mov = df_mov[df_mov["Apartamento"] == selector]
-            if not df_apto_mov.empty:
-                fig = px.bar(df_apto_mov, x="Fecha", y="Importe", color="Tipo", barmode="group",
-                             color_discrete_map={"Ingreso": "#2ECC71", "Gasto": "#E74C3C"},
-                             title=f"Flujo de Caja: {selector}")
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.write("No hay movimientos registrados para este inmueble aún.")
+            st.markdown(f"**Análisis de Rentabilidad para {sel}:**")
+            st.info("La IA sugiere revisar el mobiliario en este activo para mantener el valor competitivo en la zona de Granada.")
+        with tab_hist:
+            st.dataframe(df_mov[df_mov["Apartamento"] == sel], use_container_width=True)
 
-# --- VISTA 3: LIBRO MAYOR ---
+# --- VISTAS RESTANTES ---
 elif menu == "📝 Libro Mayor":
-    st.title("Control de Caja y Operaciones")
-    st.write("Edita directamente cualquier registro de ingresos, gastos de mantenimiento, CAPEX o impuestos.")
-    
-    df_editado = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True)
-    if st.button("💾 Guardar Cambios en Base de Datos"):
-        df_editado.to_csv(DB_MOVIMIENTOS, index=False)
-        st.success("Libro mayor actualizado.")
-        st.rerun()
+    st.title("Libro de Movimientos")
+    ed = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True)
+    if st.button("Guardar Cambios"):
+        ed.to_csv(DB_MOVIMIENTOS, index=False)
+        st.success("Guardado")
 
-# --- VISTA 4: AJUSTES ---
-elif menu == "⚙️ Ajustes":
-    st.title("Configuración de Maestros")
-    st.write("Aquí puedes añadir nuevos apartamentos a tu cartera.")
-    
-    df_inm_edit = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True)
-    if st.button("💾 Actualizar Cartera de Inmuebles"):
-        df_inm_edit.to_csv(DB_INMUEBLES, index=False)
-        st.success("Activos actualizados.")
-        st.rerun()
+elif menu == "⚙️ Configuración":
+    st.title("Maestro de Inmuebles")
+    ed_inm = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True)
+    if st.button("Actualizar Cartera"):
+        ed_inm.to_csv(DB_INMUEBLES, index=False)
+        st.success("Cartera Actualizada")
