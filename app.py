@@ -130,16 +130,30 @@ if "Torre" in menu:
         st.dataframe(df_cat.style.format({"Importe": "{:,.2f} €"}).set_properties(**{'font-size': '1.1rem', 'padding': '12px'}), hide_index=True, use_container_width=True)
     with col_r:
         # Tarta maximizada
+        with col_r:
         st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>🍰 Composición de Rentas</h3>", unsafe_allow_html=True)
+        
         fig_pie = go.Figure(go.Pie(
             labels=df_inm["Nombre"], 
             values=df_inm["Renta"], 
-            hole=0.45, 
+            hole=0.4, 
             marker=dict(colors=COLOR_PALETTE),
+            # Forzamos las etiquetas fuera y añadimos las líneas de conexión
             textinfo="label+percent",
-            textfont=dict(size=15, family="DM Sans", color="white")
+            textposition="outside",
+            insidetextorientation="radial",
+            textfont=dict(size=13, family="DM Sans", color=var("--ink"))
         ))
-        fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=20,r=20,t=20,b=20), showlegend=False, height=380)
+        
+        fig_pie.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", 
+            # Añadimos márgenes laterales (l y r) para que los nombres de fuera no se corten
+            margin=dict(l=80, r=80, t=30, b=30), 
+            showlegend=False, 
+            height=420,
+            # Activamos el margen automático para que el gráfico se ajuste a las etiquetas
+            autosize=True
+        )
         st.plotly_chart(fig_pie, use_container_width=True)
 
 # ── FICHAS DE ACTIVOS ─────────────────────────
