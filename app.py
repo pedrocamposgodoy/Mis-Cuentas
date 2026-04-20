@@ -180,22 +180,66 @@ elif "Auditor" in menu:
         if i < total_unidades - 1:
             st.markdown("<hr style='border: 0; border-top: 1px solid var(--gold); margin: 1.5rem 0;'>", unsafe_allow_html=True)
 
-# ── DIARIO CONTABLE (SUMAS) ───────────────────
+# ── DIARIO CONTABLE (CON DESPLEGABLES) ────────
 elif "Diario" in menu:
     st.markdown('<div class="brand-header">Registro de Operaciones</div>', unsafe_allow_html=True)
-    sum_ing = df_mov[df_mov["Tipo"]=="Ingreso"]["Importe"].sum() if "Ingreso" in df_mov["Tipo"].values else 0
-    sum_gas = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
     
-    met1, met2 = st.columns(2)
-    met1.metric("Total Ingresos en Diario", f"{sum_ing:,.2f} €")
-    met2.metric("Total Gastos en Diario", f"-{sum_gas:,.2f} €")
+    # Listados para los desplegables (aseguran consistencia contable)
+    lista_inmuebles = df_inm["Nombre"].tolist() + ["Global"]
+    lista_conceptos = [
+        "Renta Mensual", "Hipoteca (Intereses)", "Hipoteca (Capital)", 
+        "IBI", "Comunidad", "Seguro Hogar", "Seguro Vida", 
+        "Suministros (Luz/Agua)", "Reparaciones", "Mantenimiento", 
+        "Sueldo Pedro", "Impuestos (IVA/IRPF)", "Otros"
+    ]
     
-    st.markdown("<br>", unsafe_allow_html=True)
-    df_ed = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True, hide_index=True)
-    if st.button("Guardar Cambios"):
-        df_ed.to_csv(DB_MOVIMIENTOS, index=False)
-        st.rerun()
+    # Análisis de Sumas Dinámicas
+    # Nota: Usamos el dataframe editado para que la suma cambie en tiempo real al escribir
+    col_metric1, col_metric2, col_metric3 = st.columns(3)
+    
+    # Configuración de columnas con desplegables
+    config_columnas = {
+        "Apartamento": st.column_config.SelectboxColumn(
+            "Inmueble", help="Selecciona el activo", options=lista_inmuebles, required=True
+        ),
+        "Concepto": st.column_config.SelectboxColumn(
+            "Concepto", options=lista_conceptos, required=True
+        ),
+        "Tipo": st.column_config.SelectboxColumn(
+            "Tipo", options=["Ingreso", "Gasto"], required=True
+        ),
+        "Deducible": st.column_config.SelectboxColumn(
+            "Fiscal", help="¿Es deducible en IRPF?", options=["S", "N"], required=True
+        ),
+        "Importe": st.column_config.NumberColumn(
+            "Importe (€)", format="%.2f", min_value=0
+        )
+    }
 
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # El editor de datos ahora tiene los desplegables configurados
+    df_ed = st.data_editor(
+        df_mov, 
+        num_rows="dynamic", 
+        use_container_width=True, 
+        hide_index=True,
+        column_config=config_columnas
+    )
+
+    # Cálculos de los totales para las métricas superiores (basados en lo que hay en pantalla)
+    total_ing_act = df_ed[df_ed["Tipo"] == "Ingreso"]["Importe"].sum()
+    total_gas_act = df_ed[df_ed["Tipo"] == "Gasto"]["Importe"].sum()
+    balance_act   = total_ing_act - total_gas_act
+
+    col_metric1.metric("Ingresos Diario", f"{total_ing_act:,.2f} €")
+    col_metric2.metric("Gastos Diario", f"-{total_gas_act:,.2f} €")
+    col_metric3.metric("Balance Diario", f"{balance_act:,.2f} €", delta=f"{balance_act:,.2f} €")
+
+    if st.button("Guardar Cambios en el Diario"):
+        df_ed.to_csv(DB_MOVIMIENTOS, index=False)
+        st.success("✓ Registro de operaciones actualizado y guardado.")
+        st.rerun()
 # ── DATOS Y BACKUPS (SEGURIDAD) ───────────────
 elif "Datos" in menu:
     st.markdown('<div class="brand-header">Gestión de Datos y Backups</div>', unsafe_allow_html=True)
