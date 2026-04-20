@@ -11,7 +11,16 @@ st.markdown("""
     <style>
     .stApp { background-color: #F4F7F9; }
     h1, h2, h3 { color: #1B2631 !important; font-family: 'Segoe UI', sans-serif; }
-    .card { background-color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-top: 4px solid #2E86C1; }
+    /* Estilo de Tarjeta en Rejilla */
+    .apto-card {
+        background-color: white;
+        padding: 15px;
+        border-radius: 10px;
+        border-top: 4px solid #2E86C1;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        text-align: center;
+    }
+    .renta-val { color: #239B56; font-size: 1.4rem; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -19,7 +28,6 @@ st.markdown("""
 DB_INMUEBLES = "nolasco_inmuebles.csv"
 DB_MOVIMIENTOS = "nolasco_movimientos.csv"
 
-# Definición de tu cartera real
 DATOS_REALES_INM = [
     {"Nombre": "Casa Abarqueros", "Inquilino": "Victor Aguiluz", "Renta": 2200.0, "Comunidad": 193.76},
     {"Nombre": "Paseo del Salón", "Inquilino": "Pool Despachos", "Renta": 1591.8, "Comunidad": 175.18},
@@ -32,8 +40,6 @@ MOVIMIENTOS_ABRIL = [
     {"Fecha": "2026-04-01", "Concepto": "Hipoteca Abarqueros", "Categoría": "Financiero", "Tipo": "Gasto", "Importe": 554.73},
     {"Fecha": "2026-04-01", "Concepto": "Seguro MyBox (Hogar/Alarma)", "Categoría": "Seguros", "Tipo": "Gasto", "Importe": 96.43},
     {"Fecha": "2026-04-01", "Concepto": "Seguro Vida (Seviam)", "Categoría": "Seguros", "Tipo": "Gasto", "Importe": 55.93},
-    {"Fecha": "2026-04-01", "Concepto": "Mantenimiento Ascensor", "Categoría": "Mantenimiento", "Tipo": "Gasto", "Importe": 65.44},
-    {"Fecha": "2026-04-01", "Concepto": "Holded (Software)", "Categoría": "Sistemas", "Tipo": "Gasto", "Importe": 18.15},
     {"Fecha": "2026-04-01", "Concepto": "Autónomos (TGSS)", "Categoría": "Impuestos", "Tipo": "Gasto", "Importe": 314.00},
     {"Fecha": "2026-04-01", "Concepto": "Sueldo Pedro (Asignación)", "Categoría": "Personal", "Tipo": "Gasto", "Importe": 600.00},
     {"Fecha": "2026-04-01", "Concepto": "IRPF (Aplazamiento)", "Categoría": "Impuestos", "Tipo": "Gasto", "Importe": 1100.00},
@@ -51,27 +57,50 @@ df_inm = pd.read_csv(DB_INMUEBLES)
 df_mov = pd.read_csv(DB_MOVIMIENTOS)
 
 # --- NAVEGACIÓN ---
-menu = st.sidebar.radio("GESTIÓN", ["📊 Dashboard Global", "🏠 Fichas de Activos", "📝 Diario de Operaciones", "⚙️ Configuración"])
+menu = st.sidebar.radio("GESTIÓN", ["📊 Torre de Control", "🏠 Fichas de Activos", "📝 Diario de Operaciones", "⚙️ Configuración"])
 
-if menu == "📊 Dashboard Global":
-    st.title("Panel de Control: Inmuebles Nolasco 1.1")
+if menu == "📊 Torre de Control":
+    st.title("Torre de Control: Cartera Nolasco")
+    
+    # 1. KPIs Globales
     ing_b = df_inm["Renta"].sum()
     gas_f = df_mov[df_mov["Tipo"] == "Gasto"]["Importe"].sum()
     comu = df_inm["Comunidad"].sum()
     neto = ing_b - gas_f - comu
     
-    k1, k2, k3 = st.columns(3)
-    k1.metric("INGRESOS BRUTOS", f"{ing_b:,.2f} €")
-    k2.metric("GASTOS + TAX", f"-{gas_f + comu:,.2f} €")
-    k3.metric("EL VICIO (NETO)", f"{neto:,.2f} €")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("INGRESOS BRUTOS", f"{ing_b:,.2f} €")
+    c2.metric("GASTOS + TAX", f"-{gas_f + comu:,.2f} €")
+    c3.metric("EL VICIO (NETO)", f"{neto:,.2f} €")
     
     st.divider()
-    c_g1, c_g2 = st.columns(2)
-    with c_g1:
-        st.subheader("Rentas por Activo")
-        st.plotly_chart(px.bar(df_inm, x="Nombre", y="Renta", color="Nombre"), use_container_width=True)
-    with c_g2:
-        st.subheader("Estructura de Costes")
+
+    # 2. REJILLA DE APARTAMENTOS (Grid View)
+    st.subheader("🏢 Estado Actual de la Cartera")
+    cols_apto = st.columns(len(df_inm))
+    for i, row in df_inm.iterrows():
+        with cols_apto[i]:
+            st.markdown(f"""
+            <div class="apto-card">
+                <small>{row['Nombre']}</small><br>
+                <b>{row['Inquilino']}</b><br>
+                <span class="renta-val">{row['Renta']:,.0f} €</span>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    st.divider()
+
+    # 3. TABLA DETALLADA Y GRÁFICOS
+    col_l, col_r = st.columns([2, 1])
+    with col_l:
+        st.subheader("📋 Listado Detallado de Rentas")
+        st.table(df_inm[["Nombre", "Inquilino", "Renta"]])
+        
+        st.subheader("📈 Histograma de Ingresos")
+        st.plotly_chart(px.bar(df_inm, x="Nombre", y="Renta", color="Nombre", text_auto=True), use_container_width=True)
+    
+    with col_r:
+        st.subheader("🍰 Distribución de Costes")
         st.plotly_chart(px.pie(df_mov, values='Importe', names='Categoría', hole=0.5), use_container_width=True)
 
 elif menu == "🏠 Fichas de Activos":
@@ -85,8 +114,8 @@ elif menu == "📝 Diario de Operaciones":
     st.data_editor(df_mov, use_container_width=True)
 
 elif menu == "⚙️ Configuración":
-    st.title("Administración del Sistema")
+    st.title("Administración")
     if st.button("⚠️ REINICIAR Y CARGAR DATOS REALES"):
         inicializar_bd(force=True)
-        st.success("¡Datos actualizados correctamente! Recarga la página.")
+        st.success("Datos actualizados. Recarga la página.")
         st.rerun()
