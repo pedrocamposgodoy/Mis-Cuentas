@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # ─────────────────────────────────────────────
-# 1. ARQUITECTURA VISUAL "NOLASCO CAPITAL V8.2"
+# 1. ARQUITECTURA VISUAL "NOLASCO CAPITAL V8.3"
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
 
@@ -60,7 +60,7 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# 2. GESTIÓN DE DATOS (NÚCLEO ESTRATÉGICO)
+# 2. MOTOR DE DATOS
 # ─────────────────────────────────────────────
 DB_INMUEBLES   = "nolasco_inmuebles_v8.csv"
 DB_MOVIMIENTOS = "nolasco_movimientos_v8.csv"
@@ -78,9 +78,10 @@ def inicializar_bd(force=False):
     
     if force or not os.path.exists(DB_MOVIMIENTOS):
         pd.DataFrame([
+            {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Renta Mensual", "Categoría": "Ingresos", "Tipo": "Ingreso", "Importe": 2200.00, "Deducible": "N"},
             {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Hipoteca (Intereses)", "Categoría": "Financiero", "Tipo": "Gasto", "Importe": 250.00, "Deducible": "S"},
             {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Hipoteca (Capital)", "Categoría": "Financiero", "Tipo": "Gasto", "Importe": 304.73, "Deducible": "N"},
-            {"Fecha": "2026-04-01", "Apartamento": "Global", "Concepto": "Sueldo Pedro", "Categoría": "Personal", "Tipo": "Gasto", "Importe": 600.00, "Deducible": "N"}
+            {"Fecha": "2026-04-01", "Apartamento": "Global", "Concepto": "Sueldo Pedro", "Categoría": "Estructura", "Tipo": "Gasto", "Importe": 600.00, "Deducible": "N"}
         ]).to_csv(DB_MOVIMIENTOS, index=False)
 
 inicializar_bd()
@@ -109,7 +110,7 @@ if "Torre" in menu:
     st.markdown('<div class="section-title">Rentabilidad Detallada por Activo</div>', unsafe_allow_html=True)
     cols = st.columns(len(df_inm))
     for i, row in df_inm.iterrows():
-        g_esp = df_mov[(df_mov["Apartamento"] == row["Nombre"])]["Importe"].sum()
+        g_esp = df_mov[(df_mov["Apartamento"] == row["Nombre"]) & (df_mov["Tipo"] == "Gasto")]["Importe"].sum()
         gastos_unit = row['Comunidad'] + g_esp
         beneficio_unit = row['Renta'] - gastos_unit
         with cols[i]:
@@ -123,8 +124,8 @@ if "Torre" in menu:
 
     col_l, col_r = st.columns(2)
     with col_l:
-        st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>📋 Desglose de Gastos</h3>", unsafe_allow_html=True)
-        df_cat = df_mov.groupby("Categoría")["Importe"].sum().reset_index().sort_values("Importe", ascending=False)
+        st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>📋 Desglose Analítico de Gastos</h3>", unsafe_allow_html=True)
+        df_cat = df_mov[df_mov["Tipo"]=="Gasto"].groupby("Categoría")["Importe"].sum().reset_index().sort_values("Importe", ascending=False)
         st.dataframe(df_cat.style.format({"Importe": "{:,.2f} €"}).set_properties(**{'font-size': '1.1rem', 'padding': '12px'}), hide_index=True, use_container_width=True)
     
     with col_r:
@@ -141,7 +142,7 @@ if "Torre" in menu:
         fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=80,r=80,t=30,b=30), showlegend=False, height=420)
         st.plotly_chart(fig_pie, use_container_width=True)
 
-# ── FICHAS DE ACTIVOS (CRIBADO FISCAL) ────────
+# ── FICHAS DE ACTIVOS ─────────────────────────
 elif "Fichas" in menu:
     st.markdown('<div class="brand-header">Análisis Individual</div>', unsafe_allow_html=True)
     sel = st.selectbox("Inmueble a analizar:", df_inm["Nombre"].tolist())
@@ -149,7 +150,7 @@ elif "Fichas" in menu:
     
     col_a, col_b = st.columns([2, 1])
     with col_a:
-        df_g = df_mov[df_mov["Apartamento"] == sel]
+        df_g = df_mov[(df_mov["Apartamento"] == sel) & (df_mov["Tipo"] == "Gasto")]
         resumen = pd.concat([pd.DataFrame([{"Concepto": "Comunidad", "Importe": f["Comunidad"], "Deducible": "S"}]), df_g[["Concepto", "Importe", "Deducible"]]])
         total_suma = resumen["Importe"].sum()
         resumen_final = pd.concat([resumen, pd.DataFrame([{"Concepto": "TOTAL GASTOS (CAJA)", "Importe": total_suma, "Deducible": "-"}])])
@@ -167,91 +168,62 @@ elif "Fichas" in menu:
 
 # ── AUDITORÍA IA (MANTENIMIENTO) ──────────────
 elif "Auditor" in menu:
-    st.markdown('<div class="brand-header">Auditoría de Activos</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-header">Informe de Mantenimiento</div>', unsafe_allow_html=True)
     año_act = datetime.now().year
     total_unidades = len(df_inm)
     for i, row in df_inm.reset_index().iterrows():
         st.markdown(f"### 📍 {row['Nombre']}")
         consejos = []
-        if año_act - int(row["Año_Reforma"]) > 6: consejos.append(f"🎨 **Renovación:** Ciclo de pintura vencido ({año_act - int(row['Año_Reforma'])} años).")
-        if row["Mobiliario"] == "S": consejos.append("🔌 **Equipamiento:** Revisar amortización de electrodomésticos.")
-        if row["Tipo"] == "Casa": consejos.append("🏠 **Estructura:** Inspección de tejados recomendada.")
+        if pd.notna(row.get("Año_Reforma")) and año_act - int(row["Año_Reforma"]) > 6: consejos.append(f"🎨 **Renovación:** Ciclo de pintura vencido ({año_act - int(row['Año_Reforma'])} años).")
+        if row.get("Mobiliario") == "S": consejos.append("🔌 **Equipamiento:** Activo amueblado. Revisar fondo de reposición.")
+        if row.get("Tipo") == "Casa": consejos.append("🏠 **Estructura:** Inspección de tejados recomendada.")
         st.write("  \n".join(consejos) if consejos else "✅ Estado de conservación óptimo.")
         if i < total_unidades - 1:
             st.markdown("<hr style='border: 0; border-top: 1px solid var(--gold); margin: 1.5rem 0;'>", unsafe_allow_html=True)
 
-# ── DIARIO CONTABLE (CON DESPLEGABLES) ────────
+# ── DIARIO CONTABLE (CON VALIDACIÓN) ──────────
 elif "Diario" in menu:
     st.markdown('<div class="brand-header">Registro de Operaciones</div>', unsafe_allow_html=True)
     
-    # Listados para los desplegables (aseguran consistencia contable)
     lista_inmuebles = df_inm["Nombre"].tolist() + ["Global"]
-    lista_conceptos = [
-        "Renta Mensual", "Hipoteca (Intereses)", "Hipoteca (Capital)", 
-        "IBI", "Comunidad", "Seguro Hogar", "Seguro Vida", 
-        "Suministros (Luz/Agua)", "Reparaciones", "Mantenimiento", 
-        "Sueldo Pedro", "Impuestos (IVA/IRPF)", "Otros"
-    ]
+    lista_categorias = ["Ingresos", "Financiero", "Tributario", "Suministros", "Seguros", "Mantenimiento", "Estructura", "Comunidad", "Otros"]
+    lista_conceptos = ["Renta Mensual", "Hipoteca (Intereses)", "Hipoteca (Capital)", "IBI", "Tasa Basura", "Comunidad Ordinaria", "Derrama", "Seguro Hogar", "Seguro Vida", "Luz", "Agua", "Reparación/Avería", "Sueldo Pedro", "Autónomos"]
     
-    # Análisis de Sumas Dinámicas
-    # Nota: Usamos el dataframe editado para que la suma cambie en tiempo real al escribir
-    col_metric1, col_metric2, col_metric3 = st.columns(3)
-    
-    # Configuración de columnas con desplegables
     config_columnas = {
-        "Apartamento": st.column_config.SelectboxColumn(
-            "Inmueble", help="Selecciona el activo", options=lista_inmuebles, required=True
-        ),
-        "Concepto": st.column_config.SelectboxColumn(
-            "Concepto", options=lista_conceptos, required=True
-        ),
-        "Tipo": st.column_config.SelectboxColumn(
-            "Tipo", options=["Ingreso", "Gasto"], required=True
-        ),
-        "Deducible": st.column_config.SelectboxColumn(
-            "Fiscal", help="¿Es deducible en IRPF?", options=["S", "N"], required=True
-        ),
-        "Importe": st.column_config.NumberColumn(
-            "Importe (€)", format="%.2f", min_value=0
-        )
+        "Apartamento": st.column_config.SelectboxColumn("Inmueble", options=lista_inmuebles, required=True),
+        "Concepto": st.column_config.SelectboxColumn("Concepto", options=lista_conceptos, required=True),
+        "Categoría": st.column_config.SelectboxColumn("Categoría", options=lista_categorias, required=True),
+        "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Ingreso", "Gasto"], required=True),
+        "Deducible": st.column_config.SelectboxColumn("Fiscal (S/N)", options=["S", "N"], required=True),
+        "Importe": st.column_config.NumberColumn("Importe (€)", format="%.2f", min_value=0)
     }
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    df_ed = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True, hide_index=True, column_config=config_columnas)
     
-    # El editor de datos ahora tiene los desplegables configurados
-    df_ed = st.data_editor(
-        df_mov, 
-        num_rows="dynamic", 
-        use_container_width=True, 
-        hide_index=True,
-        column_config=config_columnas
-    )
-
-    # Cálculos de los totales para las métricas superiores (basados en lo que hay en pantalla)
     total_ing_act = df_ed[df_ed["Tipo"] == "Ingreso"]["Importe"].sum()
     total_gas_act = df_ed[df_ed["Tipo"] == "Gasto"]["Importe"].sum()
-    balance_act   = total_ing_act - total_gas_act
-
-    col_metric1.metric("Ingresos Diario", f"{total_ing_act:,.2f} €")
-    col_metric2.metric("Gastos Diario", f"-{total_gas_act:,.2f} €")
-    col_metric3.metric("Balance Diario", f"{balance_act:,.2f} €", delta=f"{balance_act:,.2f} €")
-
-    if st.button("Guardar Cambios en el Diario"):
+    
+    met1, met2, met3 = st.columns(3)
+    met1.metric("Total Ingresos", f"{total_ing_act:,.2f} €")
+    met2.metric("Total Gastos", f"-{total_gas_act:,.2f} €")
+    met3.metric("Balance", f"{total_ing_act - total_gas_act:,.2f} €")
+    
+    if st.button("Guardar Cambios"):
         df_ed.to_csv(DB_MOVIMIENTOS, index=False)
-        st.success("✓ Registro de operaciones actualizado y guardado.")
+        st.success("Operaciones guardadas.")
         st.rerun()
-# ── DATOS Y BACKUPS (SEGURIDAD) ───────────────
+
+# ── DATOS Y BACKUPS ───────────────────────────
 elif "Datos" in menu:
     st.markdown('<div class="brand-header">Gestión de Datos y Backups</div>', unsafe_allow_html=True)
-    st.subheader("Configuración de Cartera")
     df_inm_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True, hide_index=True)
     if st.button("Actualizar Cartera"):
         df_inm_ed.to_csv(DB_INMUEBLES, index=False)
         st.rerun()
 
     st.markdown('<div class="section-title">Copias de Seguridad</div>', unsafe_allow_html=True)
-    colb1, colb2 = st.columns(2)
-    with colb1:
-        with open(DB_INMUEBLES, "rb") as f_i: st.download_button("📥 Backup Inmuebles (CSV)", f_i, "inmuebles_backup.csv")
-    with colb2:
-        with open(DB_MOVIMIENTOS, "rb") as f_m: st.download_button("📥 Backup Movimientos (CSV)", f_m, "movimientos_backup.csv")
+    b_col1, b_col2 = st.columns(2)
+    with b_col1:
+        with open(DB_INMUEBLES, "rb") as f_i: st.download_button("📥 Backup Inmuebles", f_i, "inmuebles_backup.csv")
+    with b_col2:
+        with open(DB_MOVIMIENTOS, "rb") as f_m: st.download_button("📥 Backup Movimientos", f_m, "movimientos_backup.csv")
