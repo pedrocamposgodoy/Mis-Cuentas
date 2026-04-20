@@ -6,11 +6,11 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # ─────────────────────────────────────────────
-# 1. DISEÑO DE INTERFAZ "NOLASCO CAPITAL V8.1"
+# 1. ARQUITECTURA VISUAL "NOLASCO CAPITAL V8.2"
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
 
-# Paleta de 6 colores fijos por activo
+# Paleta de 6 colores fijos para identidad de activos
 COLOR_PALETTE = ["#C9A84C", "#1B5E3B", "#8B1A1A", "#4A5568", "#0D0F12", "#2E86C1"]
 
 st.markdown("""
@@ -28,24 +28,23 @@ st.markdown("""
     --border:    #E8E2D9;
 }
 
-/* ELIMINAR ESPACIO SUPERIOR EXCESIVO */
+/* OPTIMIZACIÓN DE ESPACIO SUPERIOR */
 .block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
 
 html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-color: var(--parchment) !important; color: var(--ink); }
 
-/* BARRA LATERAL PERSONALIZADA */
+/* BARRA LATERAL ESTILO BOUTIQUE */
 [data-testid="stSidebar"] { background: var(--ink) !important; border-right: 1px solid #222; min-width: 280px !important; }
 [data-testid="stSidebar"] .stRadio > label { display: none; }
 [data-testid="stSidebar"] .stRadio div[role="radiogroup"] { padding-top: 1.5rem; gap: 1rem; }
 
-/* Tipografía DM Sans para el menú lateral (fina y discreta) */
 [data-testid="stSidebar"] .stRadio p {
     font-family: 'DM Sans', sans-serif !important; font-size: 0.95rem !important; font-weight: 400 !important; color: #ADB5BD !important;
     letter-spacing: 0.02em !important; transition: all 0.3s ease; padding-left: 1rem; border-left: 0px solid var(--gold);
 }
 [data-testid="stSidebar"] .stRadio label[data-checked="true"] p { color: var(--gold) !important; font-weight: 500 !important; border-left: 3px solid var(--gold); padding-left: 1.2rem; }
 
-/* Headers y Componentes */
+/* Estructura de Títulos y Tarjetas */
 .brand-header { font-family: 'DM Serif Display', serif; font-size: 2.3rem; color: var(--ink); border-bottom: 2px solid var(--gold); padding-bottom: 0.5rem; margin-bottom: 0.2rem; }
 .brand-sub { font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--slate); margin-bottom: 1.5rem; }
 
@@ -61,7 +60,7 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# 2. MOTOR DE DATOS
+# 2. GESTIÓN DE DATOS (NÚCLEO ESTRATÉGICO)
 # ─────────────────────────────────────────────
 DB_INMUEBLES   = "nolasco_inmuebles_v8.csv"
 DB_MOVIMIENTOS = "nolasco_movimientos_v8.csv"
@@ -95,7 +94,7 @@ with st.sidebar:
     st.markdown("<div style='padding-bottom: 1rem;'><div style='font-family:\"DM Serif Display\",serif; font-size:2.2rem; color:#C9A84C; line-height:1;'>NOLASCO</div></div>", unsafe_allow_html=True)
     menu = st.radio("", ["📊 Torre de Control", "🏠 Fichas de Activos", "🤖 Auditoría IA", "📝 Diario Contable", "📂 Datos y Backups"], label_visibility="collapsed")
 
-# ── TORRE DE CONTROL ──────────────────────────
+# ── TORRE DE CONTROL (DASHBOARD) ──────────────
 if "Torre" in menu:
     st.markdown('<div class="brand-header">Torre de Control</div>', unsafe_allow_html=True)
     
@@ -103,63 +102,49 @@ if "Torre" in menu:
     gas_caja = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum() + df_inm["Comunidad"].sum()
     
     c1, c2, c3 = st.columns(3)
-    c1.markdown(f'<div class="kpi-card"><div class="kpi-label">Ingresos Mensuales</div><div class="kpi-value" style="color:var(--emerald)">{ing_b:,.0f}€</div></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Mensuales</div><div class="kpi-value" style="color:var(--crimson)">-{gas_caja:,.0f}€</div></div>', unsafe_allow_html=True)
+    c1.markdown(f'<div class="kpi-card"><div class="kpi-label">Ingresos Totales</div><div class="kpi-value" style="color:var(--emerald)">{ing_b:,.0f}€</div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Operativos</div><div class="kpi-value" style="color:var(--crimson)">-{gas_caja:,.0f}€</div></div>', unsafe_allow_html=True)
     c3.markdown(f'<div class="kpi-card"><div class="kpi-label">Beneficio Neto</div><div class="kpi-value">{ing_b - gas_caja:,.0f}€</div></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="section-title">Rendimiento por Activo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Rentabilidad Detallada por Activo</div>', unsafe_allow_html=True)
     cols = st.columns(len(df_inm))
     for i, row in df_inm.iterrows():
         g_esp = df_mov[(df_mov["Apartamento"] == row["Nombre"])]["Importe"].sum()
-        gastos_totales = row['Comunidad'] + g_esp
-        beneficio = row['Renta'] - gastos_totales
+        gastos_unit = row['Comunidad'] + g_esp
+        beneficio_unit = row['Renta'] - gastos_unit
         with cols[i]:
-            # Tarjetas con desglose: Ingreso (Verde), Gasto (Rojo pequeño), Beneficio (Naranja intermedio)
             st.markdown(f"""
             <div style="background:var(--card-bg); border:1px solid var(--border); border-radius:4px; border-top:4px solid {COLOR_PALETTE[i % 6]}; padding:1.2rem 0.8rem; text-align:center; height:100%;">
                 <div style="font-size:0.75rem; font-weight:600; text-transform:uppercase; color:var(--slate); margin-bottom:8px;">{row['Nombre']}</div>
                 <div style="font-size:1.15rem; font-weight:600; color:var(--emerald);">+{row['Renta']:,.0f}€</div>
-                <div style="font-size:0.85rem; font-weight:500; color:var(--crimson); margin-top:2px;">-{gastos_totales:,.0f}€</div>
-                <div style="font-family:'DM Serif Display',serif; font-size:1.45rem; color:#D35400; border-top:1px solid #eee; margin-top:8px; padding-top:5px;">{beneficio:,.0f}€</div>
+                <div style="font-size:0.85rem; font-weight:500; color:var(--crimson); margin-top:2px;">-{gastos_unit:,.0f}€</div>
+                <div style="font-family:'DM Serif Display',serif; font-size:1.45rem; color:#D35400; border-top:1px solid #eee; margin-top:8px; padding-top:5px;">{beneficio_unit:,.0f}€</div>
             </div>""", unsafe_allow_html=True)
+
     col_l, col_r = st.columns(2)
     with col_l:
-        st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>📋 Distribución de Gastos</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>📋 Desglose de Gastos</h3>", unsafe_allow_html=True)
         df_cat = df_mov.groupby("Categoría")["Importe"].sum().reset_index().sort_values("Importe", ascending=False)
-        # Tabla con letra aumentada y sin índice
         st.dataframe(df_cat.style.format({"Importe": "{:,.2f} €"}).set_properties(**{'font-size': '1.1rem', 'padding': '12px'}), hide_index=True, use_container_width=True)
+    
     with col_r:
-        # Tarta maximizada
-        with col_r:
-        st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>🍰 Composición de Rentas</h3>", unsafe_allow_html=True)
-        
+        st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>🍰 Composición de la Cartera</h3>", unsafe_allow_html=True)
         fig_pie = go.Figure(go.Pie(
             labels=df_inm["Nombre"], 
             values=df_inm["Renta"], 
             hole=0.4, 
             marker=dict(colors=COLOR_PALETTE),
-            # Forzamos las etiquetas fuera y añadimos las líneas de conexión
             textinfo="label+percent",
             textposition="outside",
-            insidetextorientation="radial",
-            textfont=dict(size=13, family="DM Sans", color=var("--ink"))
+            textfont=dict(size=13, family="DM Sans")
         ))
-        
-        fig_pie.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", 
-            # Añadimos márgenes laterales (l y r) para que los nombres de fuera no se corten
-            margin=dict(l=80, r=80, t=30, b=30), 
-            showlegend=False, 
-            height=420,
-            # Activamos el margen automático para que el gráfico se ajuste a las etiquetas
-            autosize=True
-        )
+        fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=80,r=80,t=30,b=30), showlegend=False, height=420)
         st.plotly_chart(fig_pie, use_container_width=True)
 
-# ── FICHAS DE ACTIVOS ─────────────────────────
+# ── FICHAS DE ACTIVOS (CRIBADO FISCAL) ────────
 elif "Fichas" in menu:
-    st.markdown('<div class="brand-header">Detalle del Activo</div>', unsafe_allow_html=True)
-    sel = st.selectbox("Seleccionar Inmueble:", df_inm["Nombre"].tolist())
+    st.markdown('<div class="brand-header">Análisis Individual</div>', unsafe_allow_html=True)
+    sel = st.selectbox("Inmueble a analizar:", df_inm["Nombre"].tolist())
     f = df_inm[df_inm["Nombre"] == sel].iloc[0]
     
     col_a, col_b = st.columns([2, 1])
@@ -174,63 +159,55 @@ elif "Fichas" in menu:
         st.markdown('<div class="fiscal-panel">', unsafe_allow_html=True)
         amort = (f["Valor_Construccion"] * 0.03) / 12
         gastos_fisc = resumen[resumen['Deducible']=='S']['Importe'].sum()
-        st.write(f"**Gastos Deducibles:** {gastos_fisc:,.2f}€")
-        st.write(f"**Amortización Anual prorrateada:** {amort:,.2f}€")
+        st.write(f"**Gastos Deducibles IRPF:** {gastos_fisc:,.2f}€")
+        st.write(f"**Amortización (3% s/Const.):** {amort:,.2f}€")
         st.divider()
-        st.write(f"**Rendimiento Neto Fiscal:** {f['Renta'] - gastos_fisc - amort:,.2f}€")
+        st.write(f"**Base Imponible Real:** {f['Renta'] - gastos_fisc - amort:,.2f}€")
         st.markdown('</div>', unsafe_allow_html=True)
 
-# ── AUDITORÍA IA ──────────────────────────────
+# ── AUDITORÍA IA (MANTENIMIENTO) ──────────────
 elif "Auditor" in menu:
-    st.markdown('<div class="brand-header">Informe de Mantenimiento</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-header">Auditoría de Activos</div>', unsafe_allow_html=True)
     año_act = datetime.now().year
-    total_inm = len(df_inm)
+    total_unidades = len(df_inm)
     for i, row in df_inm.reset_index().iterrows():
         st.markdown(f"### 📍 {row['Nombre']}")
         consejos = []
-        if pd.notna(row.get("Año_Reforma")) and año_act - int(row["Año_Reforma"]) > 6: consejos.append(f"🎨 **Pintura:** Ciclo vencido ({año_act - int(row['Año_Reforma'])} años).")
-        if row.get("Mobiliario") == "S": consejos.append("🔌 **Equipamiento:** Activo amueblado. Revisar fondo de reposición.")
-        if row.get("Tipo") == "Casa": consejos.append("🏠 **Fachada:** Revisión de cubiertas recomendada.")
-        st.write("  \n".join(consejos) if consejos else "✅ Mantenimiento al día.")
-        # Línea dorada separadora (excepto en el último)
-        if i < total_inm - 1:
+        if año_act - int(row["Año_Reforma"]) > 6: consejos.append(f"🎨 **Renovación:** Ciclo de pintura vencido ({año_act - int(row['Año_Reforma'])} años).")
+        if row["Mobiliario"] == "S": consejos.append("🔌 **Equipamiento:** Revisar amortización de electrodomésticos.")
+        if row["Tipo"] == "Casa": consejos.append("🏠 **Estructura:** Inspección de tejados recomendada.")
+        st.write("  \n".join(consejos) if consejos else "✅ Estado de conservación óptimo.")
+        if i < total_unidades - 1:
             st.markdown("<hr style='border: 0; border-top: 1px solid var(--gold); margin: 1.5rem 0;'>", unsafe_allow_html=True)
 
-# ── DIARIO CONTABLE ───────────────────────────
+# ── DIARIO CONTABLE (SUMAS) ───────────────────
 elif "Diario" in menu:
     st.markdown('<div class="brand-header">Registro de Operaciones</div>', unsafe_allow_html=True)
-    
-    # Análisis de Sumas en Diario
     sum_ing = df_mov[df_mov["Tipo"]=="Ingreso"]["Importe"].sum() if "Ingreso" in df_mov["Tipo"].values else 0
     sum_gas = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
     
     met1, met2 = st.columns(2)
-    met1.metric("Ingresos Registrados en Diario", f"{sum_ing:,.2f} €")
-    met2.metric("Gastos Registrados en Diario", f"-{sum_gas:,.2f} €")
+    met1.metric("Total Ingresos en Diario", f"{sum_ing:,.2f} €")
+    met2.metric("Total Gastos en Diario", f"-{sum_gas:,.2f} €")
     
     st.markdown("<br>", unsafe_allow_html=True)
     df_ed = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True, hide_index=True)
-    if st.button("Guardar Cambios en el Diario"):
+    if st.button("Guardar Cambios"):
         df_ed.to_csv(DB_MOVIMIENTOS, index=False)
-        st.success("Operaciones guardadas.")
         st.rerun()
 
-# ── DATOS Y BACKUPS ───────────────────────────
+# ── DATOS Y BACKUPS (SEGURIDAD) ───────────────
 elif "Datos" in menu:
-    st.markdown('<div class="brand-header">Gestión de Datos y Seguridad</div>', unsafe_allow_html=True)
-    
-    # Editor de Cartera
-    st.subheader("Datos Maestros de Inmuebles")
+    st.markdown('<div class="brand-header">Gestión de Datos y Backups</div>', unsafe_allow_html=True)
+    st.subheader("Configuración de Cartera")
     df_inm_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True, hide_index=True)
-    if st.button("Actualizar Parámetros de Cartera"):
+    if st.button("Actualizar Cartera"):
         df_inm_ed.to_csv(DB_INMUEBLES, index=False)
-        st.success("Cartera actualizada.")
         st.rerun()
 
-    st.markdown('<div class="section-title">Copias de Seguridad Externas</div>', unsafe_allow_html=True)
-    st.info("Descarga estos archivos frecuentemente para tener un backup físico de tu contabilidad y rentas en tu ordenador.")
-    b_col1, b_col2 = st.columns(2)
-    with b_col1:
-        with open(DB_INMUEBLES, "rb") as f_inm: st.download_button("📥 Backup Maestro Inmuebles", f_inm, "nolasco_inmuebles.csv")
-    with b_col2:
-        with open(DB_MOVIMIENTOS, "rb") as f_mov: st.download_button("📥 Backup Maestro Movimientos", f_mov, "nolasco_movimientos.csv")
+    st.markdown('<div class="section-title">Copias de Seguridad</div>', unsafe_allow_html=True)
+    colb1, colb2 = st.columns(2)
+    with colb1:
+        with open(DB_INMUEBLES, "rb") as f_i: st.download_button("📥 Backup Inmuebles (CSV)", f_i, "inmuebles_backup.csv")
+    with colb2:
+        with open(DB_MOVIMIENTOS, "rb") as f_m: st.download_button("📥 Backup Movimientos (CSV)", f_m, "movimientos_backup.csv")
