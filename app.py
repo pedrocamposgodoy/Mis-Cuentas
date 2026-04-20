@@ -6,11 +6,11 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # ─────────────────────────────────────────────
-# 1. DISEÑO DE INTERFAZ "NOLASCO CAPITAL V7.0"
+# 1. DISEÑO DE INTERFAZ "NOLASCO CAPITAL V8.0"
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
 
-# Mapeo de colores fijos por activo para consistencia visual
+# Paleta de 6 colores fijos por activo
 COLOR_PALETTE = ["#C9A84C", "#1B5E3B", "#8B1A1A", "#4A5568", "#0D0F12", "#2E86C1"]
 
 st.markdown("""
@@ -28,13 +28,15 @@ st.markdown("""
     --border:    #E8E2D9;
 }
 
+/* ELIMINAR ESPACIO SUPERIOR EXCESIVO */
+.block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
+
 html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-color: var(--parchment) !important; color: var(--ink); }
 
 /* BARRA LATERAL PERSONALIZADA */
 [data-testid="stSidebar"] { background: var(--ink) !important; border-right: 1px solid #222; min-width: 280px !important; }
 [data-testid="stSidebar"] .stRadio > label { display: none; }
 [data-testid="stSidebar"] .stRadio div[role="radiogroup"] { padding-top: 1.5rem; gap: 1rem; }
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { background: transparent !important; border: none !important; padding: 0 !important; }
 
 /* Tipografía DM Sans para el menú lateral (fina y discreta) */
 [data-testid="stSidebar"] .stRadio p {
@@ -42,36 +44,25 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
     letter-spacing: 0.02em !important; transition: all 0.3s ease; padding-left: 1rem; border-left: 0px solid var(--gold);
 }
 [data-testid="stSidebar"] .stRadio label[data-checked="true"] p { color: var(--gold) !important; font-weight: 500 !important; border-left: 3px solid var(--gold); padding-left: 1.2rem; }
-[data-testid="stSidebar"] .stRadio label:hover p { color: var(--gold) !important; }
 
 /* Headers y Componentes */
-.brand-header { font-family: 'DM Serif Display', serif; font-size: 2.5rem; color: var(--ink); border-bottom: 2px solid var(--gold); padding-bottom: 0.5rem; margin-bottom: 0.2rem; }
-.brand-sub { font-size: 0.8rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--slate); margin-bottom: 2rem; }
+.brand-header { font-family: 'DM Serif Display', serif; font-size: 2.3rem; color: var(--ink); border-bottom: 2px solid var(--gold); padding-bottom: 0.5rem; margin-bottom: 0.2rem; }
+.brand-sub { font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--slate); margin-bottom: 1.5rem; }
 
-.kpi-card { background: var(--card-bg); border: 1px solid var(--border); border-top: 3px solid var(--gold); border-radius: 4px; padding: 1.5rem; text-align: center; }
-.kpi-label { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate); margin-bottom: 0.3rem; }
-.kpi-value { font-family: 'DM Serif Display', serif; font-size: 2.2rem; line-height: 1; }
+.kpi-card { background: var(--card-bg); border: 1px solid var(--border); border-top: 3px solid var(--gold); border-radius: 4px; padding: 1.2rem; text-align: center; }
+.kpi-label { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate); margin-bottom: 0.2rem; }
+.kpi-value { font-family: 'DM Serif Display', serif; font-size: 2rem; line-height: 1; }
 
-.asset-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 4px; padding: 1.1rem; height: 100%; position: relative; overflow: hidden; }
-.asset-name { font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--slate); margin-bottom: 0.2rem; }
-.asset-tenant { font-size: 0.9rem; font-weight: 600; color: var(--ink); margin-bottom: 0.8rem; }
-.asset-income { color: var(--emerald); font-weight: 600; font-size: 1.15rem; }
-.asset-expense { color: var(--crimson); font-size: 0.9rem; margin-top: 0.2rem; }
-.asset-net { font-family: 'DM Serif Display', serif; font-size: 1.3rem; color: var(--ink); border-top: 1px solid var(--border); margin-top: 0.7rem; padding-top: 0.5rem; }
-
-.section-title { font-family: 'DM Serif Display', serif; font-size: 1.4rem; color: var(--ink); border-left: 3px solid var(--gold); padding-left: 0.7rem; margin: 2rem 0 1rem 0; }
+.asset-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 4px; padding: 1rem; height: 100%; position: relative; overflow: hidden; }
+.section-title { font-family: 'DM Serif Display', serif; font-size: 1.3rem; color: var(--ink); border-left: 3px solid var(--gold); padding-left: 0.7rem; margin: 1.5rem 0 1rem 0; }
 .fiscal-panel { background: #F0F7F3; border: 1px solid #C3DDD0; border-radius: 6px; padding: 1.5rem; }
-
-/* Ajuste fino de la auditoría */
-.ai-report-unit { padding: 1rem 0; border-bottom: 1px solid var(--gold); margin-bottom: 1rem; }
-.ai-report-unit:last-child { border-bottom: none; }
 
 #MainMenu, footer, header { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# 2. MOTOR DE DATOS (VERSION 7)
+# 2. MOTOR DE DATOS
 # ─────────────────────────────────────────────
 DB_INMUEBLES   = "nolasco_inmuebles_v7.csv"
 DB_MOVIMIENTOS = "nolasco_movimientos_v7.csv"
@@ -91,9 +82,6 @@ def inicializar_bd(force=False):
         pd.DataFrame([
             {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Hipoteca (Intereses)", "Categoría": "Financiero", "Tipo": "Gasto", "Importe": 250.00, "Deducible": "S"},
             {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Hipoteca (Capital)", "Categoría": "Financiero", "Tipo": "Gasto", "Importe": 304.73, "Deducible": "N"},
-            {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Seguro MyBox (Hogar)", "Categoría": "Seguros", "Tipo": "Gasto", "Importe": 96.43, "Deducible": "S"},
-            {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Seguro Vida (Seviam)", "Categoría": "Seguros", "Tipo": "Gasto", "Importe": 55.93, "Deducible": "S"},
-            {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Mantenimiento Ascensor", "Categoría": "Mantenimiento", "Tipo": "Gasto", "Importe": 65.44, "Deducible": "S"},
             {"Fecha": "2026-04-01", "Apartamento": "Global", "Concepto": "Sueldo Pedro", "Categoría": "Personal", "Tipo": "Gasto", "Importe": 600.00, "Deducible": "N"}
         ]).to_csv(DB_MOVIMIENTOS, index=False)
 
@@ -105,120 +93,114 @@ df_mov = pd.read_csv(DB_MOVIMIENTOS)
 # 3. NAVEGACIÓN
 # ─────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("""
-    <div style='padding-bottom: 2rem;'>
-        <div style='font-family:"DM Serif Display",serif; font-size:2.2rem; color:#C9A84C; line-height:1;'>NOLASCO</div>
-        <div style='font-family:"DM Sans", sans-serif; font-size:0.7rem; letter-spacing:0.3em; color:#888; text-transform:uppercase;'>Capital Management</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    menu = st.radio("", ["📊 Torre de Control", "🏠 Fichas de Activos", "🤖 Auditoría IA", "📝 Diario Contable", "📂 Datos de la cartera"], label_visibility="collapsed")
+    st.markdown("<div style='padding-bottom: 1rem;'><div style='font-family:\"DM Serif Display\",serif; font-size:2.2rem; color:#C9A84C; line-height:1;'>NOLASCO</div></div>", unsafe_allow_html=True)
+    menu = st.radio("", ["📊 Torre de Control", "🏠 Fichas de Activos", "🤖 Auditoría IA", "📝 Diario Contable", "📂 Datos y Backups"], label_visibility="collapsed")
 
 # ── TORRE DE CONTROL ──────────────────────────
 if "Torre" in menu:
     st.markdown('<div class="brand-header">Torre de Control</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Cartera Consolidada (6 Activos)</div>', unsafe_allow_html=True)
     
     ing_b = df_inm["Renta"].sum()
     gas_caja = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum() + df_inm["Comunidad"].sum()
     
     c1, c2, c3 = st.columns(3)
-    c1.markdown(f'<div class="kpi-card"><div class="kpi-label">Ingreso Bruto</div><div class="kpi-value" style="color:var(--emerald)">{ing_b:,.0f}€</div></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Salida de Caja</div><div class="kpi-value" style="color:var(--crimson)">-{gas_caja:,.0f}€</div></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="kpi-card"><div class="kpi-label">Resultado Neto</div><div class="kpi-value">{ing_b - gas_caja:,.0f}€</div></div>', unsafe_allow_html=True)
+    c1.markdown(f'<div class="kpi-card"><div class="kpi-label">Ingresos Mensuales</div><div class="kpi-value" style="color:var(--emerald)">{ing_b:,.0f}€</div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Mensuales</div><div class="kpi-value" style="color:var(--crimson)">-{gas_caja:,.0f}€</div></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="kpi-card"><div class="kpi-label">Beneficio Neto</div><div class="kpi-value">{ing_b - gas_caja:,.0f}€</div></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="section-title">Rentabilidad por Activo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Rendimiento por Activo</div>', unsafe_allow_html=True)
     cols = st.columns(len(df_inm))
     for i, row in df_inm.iterrows():
         g_esp = df_mov[(df_mov["Apartamento"] == row["Nombre"])]["Importe"].sum()
         with cols[i]:
-            st.markdown(f"""
-            <div class="asset-card" style="border-top: 3px solid {COLOR_PALETTE[i % 6]};">
-                <div class="asset-name">{row['Nombre']}</div>
-                <div class="asset-income">+{row['Renta']:,.0f}€</div>
-                <div class="asset-expense">-{row['Comunidad']+g_esp:,.0f}€</div>
-                <div class="asset-net">{row['Renta'] - row['Comunidad'] - g_esp:,.0f}€</div>
+            st.markdown(f"""<div class="asset-card" style="border-top: 3px solid {COLOR_PALETTE[i % 6]};">
+                <div style="font-size:0.6rem; text-transform:uppercase; color:var(--slate);">{row['Nombre']}</div>
+                <div style="font-weight:600; color:var(--emerald);">+{row['Renta']:,.0f}€</div>
+                <div style="font-family:'DM Serif Display',serif; font-size:1.2rem; border-top:1px solid #eee; margin-top:5px;">{row['Renta'] - row['Comunidad'] - g_esp:,.0f}€</div>
             </div>""", unsafe_allow_html=True)
 
-    st.markdown('<div class="section-title">Análisis de Costes y Distribución</div>', unsafe_allow_html=True)
     col_l, col_r = st.columns(2)
     with col_l:
-        st.subheader("📋 Gastos por Tipología")
+        st.subheader("📋 Distribución de Gastos")
         df_cat = df_mov.groupby("Categoría")["Importe"].sum().reset_index().sort_values("Importe", ascending=False)
-        st.table(df_cat.style.format({"Importe": "{:,.2f} €"}))
+        st.dataframe(df_cat.style.format({"Importe": "{:,.2f} €"}), hide_index=True, use_container_width=True)
     with col_r:
-        st.subheader("🍰 Distribución de Rentas")
-        fig_pie = go.Figure(go.Pie(labels=df_inm["Nombre"], values=df_inm["Renta"], hole=0.55, marker=dict(colors=COLOR_PALETTE), textinfo="label+percent"))
-        fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=10, b=10), showlegend=False, height=300)
+        fig_pie = go.Figure(go.Pie(labels=df_inm["Nombre"], values=df_inm["Renta"], hole=0.5, marker=dict(colors=COLOR_PALETTE)))
+        fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=0,r=0,t=0,b=0), showlegend=False, height=250)
         st.plotly_chart(fig_pie, use_container_width=True)
 
 # ── FICHAS DE ACTIVOS ─────────────────────────
 elif "Fichas" in menu:
-    st.markdown('<div class="brand-header">Fichas de Activos</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-header">Detalle del Activo</div>', unsafe_allow_html=True)
     sel = st.selectbox("Seleccionar Inmueble:", df_inm["Nombre"].tolist())
     f = df_inm[df_inm["Nombre"] == sel].iloc[0]
     
     col_a, col_b = st.columns([2, 1])
     with col_a:
-        st.markdown(f"### Desglose de Gastos: {sel}")
         df_g = df_mov[df_mov["Apartamento"] == sel]
         resumen = pd.concat([pd.DataFrame([{"Concepto": "Comunidad", "Importe": f["Comunidad"], "Deducible": "S"}]), df_g[["Concepto", "Importe", "Deducible"]]])
-        
-        # Fila de Total
         total_suma = resumen["Importe"].sum()
-        resumen_final = pd.concat([resumen, pd.DataFrame([{"Concepto": "TOTAL GASTOS CAJA", "Importe": total_suma, "Deducible": "-"}])])
-        
-        st.table(resumen_final.style.format({"Importe": "{:,.2f}€"}))
+        resumen_final = pd.concat([resumen, pd.DataFrame([{"Concepto": "TOTAL GASTOS (CAJA)", "Importe": total_suma, "Deducible": "-"}])])
+        st.dataframe(resumen_final.style.format({"Importe": "{:,.2f}€"}), hide_index=True, use_container_width=True)
         
     with col_b:
         st.markdown('<div class="fiscal-panel">', unsafe_allow_html=True)
-        st.markdown("### ⚖️ Balance Fiscal vs Caja")
-        total_deducible = resumen[resumen["Deducible"]=="S"]["Importe"].sum()
         amort = (f["Valor_Construccion"] * 0.03) / 12
-        
-        st.write(f"**Salida de Caja (Total):** {total_suma:,.2f}€")
-        st.write(f"**Gasto Fiscal Deducible:** {total_deducible:,.2f}€")
-        st.write(f"**Amortización (3%):** {amort:,.2f}€")
+        gastos_fisc = resumen[resumen['Deducible']=='S']['Importe'].sum()
+        st.write(f"**Gastos Deducibles:** {gastos_fisc:,.2f}€")
+        st.write(f"**Amortización Anual prorrateada:** {amort:,.2f}€")
         st.divider()
-        st.write(f"**Rendimiento Neto Fiscal:** {f['Renta'] - total_deducible - amort:,.2f}€")
+        st.write(f"**Rendimiento Neto Fiscal:** {f['Renta'] - gastos_fisc - amort:,.2f}€")
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ── AUDITORÍA IA ──────────────────────────────
 elif "Auditor" in menu:
-    st.markdown('<div class="brand-header">Auditoría Automática</div>', unsafe_allow_html=True)
-    año_actual = datetime.now().year
-    
-    for _, row in df_inm.iterrows():
-        st.markdown(f'<div class="ai-report-unit">', unsafe_allow_html=True)
+    st.markdown('<div class="brand-header">Informe de Mantenimiento</div>', unsafe_allow_html=True)
+    año_act = datetime.now().year
+    total_inm = len(df_inm)
+    for i, row in df_inm.reset_index().iterrows():
         st.markdown(f"### 📍 {row['Nombre']}")
-        
         consejos = []
-        if año_actual - int(row["Año_Reforma"]) > 6:
-            consejos.append(f"🎨 **Estética:** Han pasado {año_actual - int(row['Año_Reforma'])} años. Una renovación de pintura y textiles revalorizará el activo.")
-        
-        if row["Mobiliario"] == "S":
-            consejos.append("🔌 **Mobiliario:** Activo amueblado. Se recomienda provisión para reposición de electrodomésticos.")
-        
-        if row["Tipo"] == "Casa":
-            consejos.append("🏠 **Estructura:** Recomendada limpieza de canalones y revisión de cubiertas pre-invierno.")
-        
-        if not consejos: consejos.append("✅ Activo en ciclo óptimo de mantenimiento.")
-        
-        st.write("  \n".join(consejos))
-        st.markdown('</div>', unsafe_allow_html=True)
+        if año_act - int(row["Año_Reforma"]) > 6: consejos.append(f"🎨 **Pintura:** Ciclo vencido ({año_act - int(row['Año_Reforma'])} años).")
+        if row["Mobiliario"] == "S": consejos.append("🔌 **Equipamiento:** Activo amueblado. Revisar fondo de reposición.")
+        if row["Tipo"] == "Casa": consejos.append("🏠 **Fachada:** Revisión de cubiertas recomendada.")
+        st.write("  \n".join(consejos) if consejos else "✅ Mantenimiento al día.")
+        if i < total_inm - 1: st.markdown("<hr style='border:0; border-top:1px solid var(--gold); margin:1.5rem 0;'>", unsafe_allow_html=True)
 
-# ── DIARIO Y DATOS CARTERA ────────────────────
+# ── DIARIO CONTABLE ───────────────────────────
 elif "Diario" in menu:
-    st.markdown('<div class="brand-header">Diario Contable</div>', unsafe_allow_html=True)
-    df_ed = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True)
-    if st.button("Guardar Cambios"):
+    st.markdown('<div class="brand-header">Registro de Operaciones</div>', unsafe_allow_html=True)
+    
+    # Análisis de Sumas en Diario
+    sum_ing = df_mov[df_mov["Tipo"]=="Ingreso"]["Importe"].sum() if "Ingreso" in df_mov["Tipo"].values else 0
+    sum_gas = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
+    
+    met1, met2 = st.columns(2)
+    met1.metric("Ingresos Registrados", f"{sum_ing:,.2f} €")
+    met2.metric("Gastos Registrados", f"-{sum_gas:,.2f} €")
+    
+    df_ed = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True, hide_index=True)
+    if st.button("Guardar Cambios en el Diario"):
         df_ed.to_csv(DB_MOVIMIENTOS, index=False)
+        st.success("Operaciones guardadas.")
         st.rerun()
 
+# ── DATOS Y BACKUPS ───────────────────────────
 elif "Datos" in menu:
-    st.markdown('<div class="brand-header">Datos de la cartera</div>', unsafe_allow_html=True)
-    df_inm_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True)
-    if st.button("Guardar Datos de Cartera"):
+    st.markdown('<div class="brand-header">Gestión de Datos y Seguridad</div>', unsafe_allow_html=True)
+    
+    # Editor de Cartera
+    st.subheader("Datos Maestros de Inmuebles")
+    df_inm_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True, hide_index=True)
+    if st.button("Actualizar Parámetros de Cartera"):
         df_inm_ed.to_csv(DB_INMUEBLES, index=False)
-        st.success("✓ Base de datos actualizada.")
+        st.success("Cartera actualizada.")
         st.rerun()
+
+    st.markdown('<div class="section-title">Copias de Seguridad Externas</div>', unsafe_allow_html=True)
+    st.info("Descarga estos archivos para tener un backup físico en tu ordenador.")
+    b_col1, b_col2 = st.columns(2)
+    with b_col1:
+        with open(DB_INMUEBLES, "rb") as f_inm: st.download_button("📥 Backup Maestro Inmuebles", f_inm, "nolasco_inmuebles.csv")
+    with b_col2:
+        with open(DB_MOVIMIENTOS, "rb") as f_mov: st.download_button("📥 Backup Maestro Movimientos", f_mov, "nolasco_movimientos.csv")
