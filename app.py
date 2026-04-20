@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # ─────────────────────────────────────────────
-# 1. DISEÑO DE INTERFAZ "NOLASCO CAPITAL V8.0"
+# 1. DISEÑO DE INTERFAZ "NOLASCO CAPITAL V8.1"
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
 
@@ -53,8 +53,7 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 .kpi-label { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate); margin-bottom: 0.2rem; }
 .kpi-value { font-family: 'DM Serif Display', serif; font-size: 2rem; line-height: 1; }
 
-.asset-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 4px; padding: 1rem; height: 100%; position: relative; overflow: hidden; }
-.section-title { font-family: 'DM Serif Display', serif; font-size: 1.3rem; color: var(--ink); border-left: 3px solid var(--gold); padding-left: 0.7rem; margin: 1.5rem 0 1rem 0; }
+.section-title { font-family: 'DM Serif Display', serif; font-size: 1.5rem; color: var(--ink); border-left: 3px solid var(--gold); padding-left: 0.7rem; margin: 1.5rem 0 1rem 0; }
 .fiscal-panel { background: #F0F7F3; border: 1px solid #C3DDD0; border-radius: 6px; padding: 1.5rem; }
 
 #MainMenu, footer, header { visibility: hidden; }
@@ -64,8 +63,8 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 # ─────────────────────────────────────────────
 # 2. MOTOR DE DATOS
 # ─────────────────────────────────────────────
-DB_INMUEBLES   = "nolasco_inmuebles_v7.csv"
-DB_MOVIMIENTOS = "nolasco_movimientos_v7.csv"
+DB_INMUEBLES   = "nolasco_inmuebles_v8.csv"
+DB_MOVIMIENTOS = "nolasco_movimientos_v8.csv"
 
 def inicializar_bd(force=False):
     if force or not os.path.exists(DB_INMUEBLES):
@@ -113,20 +112,32 @@ if "Torre" in menu:
     for i, row in df_inm.iterrows():
         g_esp = df_mov[(df_mov["Apartamento"] == row["Nombre"])]["Importe"].sum()
         with cols[i]:
-            st.markdown(f"""<div class="asset-card" style="border-top: 3px solid {COLOR_PALETTE[i % 6]};">
-                <div style="font-size:0.6rem; text-transform:uppercase; color:var(--slate);">{row['Nombre']}</div>
-                <div style="font-weight:600; color:var(--emerald);">+{row['Renta']:,.0f}€</div>
-                <div style="font-family:'DM Serif Display',serif; font-size:1.2rem; border-top:1px solid #eee; margin-top:5px;">{row['Renta'] - row['Comunidad'] - g_esp:,.0f}€</div>
+            # Tarjetas de activos maximizadas y legibles
+            st.markdown(f"""
+            <div style="background:var(--card-bg); border:1px solid var(--border); border-radius:4px; border-top:4px solid {COLOR_PALETTE[i % 6]}; padding:1.4rem 1rem; text-align:center; height:100%;">
+                <div style="font-size:0.85rem; font-weight:600; text-transform:uppercase; color:var(--slate); margin-bottom:5px;">{row['Nombre']}</div>
+                <div style="font-size:1.2rem; font-weight:600; color:var(--emerald);">+{row['Renta']:,.0f}€</div>
+                <div style="font-family:'DM Serif Display',serif; font-size:1.7rem; color:var(--ink); border-top:1px solid #eee; margin-top:8px; padding-top:5px;">{row['Renta'] - row['Comunidad'] - g_esp:,.0f}€</div>
             </div>""", unsafe_allow_html=True)
 
     col_l, col_r = st.columns(2)
     with col_l:
-        st.subheader("📋 Distribución de Gastos")
+        st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>📋 Distribución de Gastos</h3>", unsafe_allow_html=True)
         df_cat = df_mov.groupby("Categoría")["Importe"].sum().reset_index().sort_values("Importe", ascending=False)
-        st.dataframe(df_cat.style.format({"Importe": "{:,.2f} €"}), hide_index=True, use_container_width=True)
+        # Tabla con letra aumentada y sin índice
+        st.dataframe(df_cat.style.format({"Importe": "{:,.2f} €"}).set_properties(**{'font-size': '1.1rem', 'padding': '12px'}), hide_index=True, use_container_width=True)
     with col_r:
-        fig_pie = go.Figure(go.Pie(labels=df_inm["Nombre"], values=df_inm["Renta"], hole=0.5, marker=dict(colors=COLOR_PALETTE)))
-        fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=0,r=0,t=0,b=0), showlegend=False, height=250)
+        # Tarta maximizada
+        st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>🍰 Composición de Rentas</h3>", unsafe_allow_html=True)
+        fig_pie = go.Figure(go.Pie(
+            labels=df_inm["Nombre"], 
+            values=df_inm["Renta"], 
+            hole=0.45, 
+            marker=dict(colors=COLOR_PALETTE),
+            textinfo="label+percent",
+            textfont=dict(size=15, family="DM Sans", color="white")
+        ))
+        fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=20,r=20,t=20,b=20), showlegend=False, height=380)
         st.plotly_chart(fig_pie, use_container_width=True)
 
 # ── FICHAS DE ACTIVOS ─────────────────────────
@@ -161,11 +172,13 @@ elif "Auditor" in menu:
     for i, row in df_inm.reset_index().iterrows():
         st.markdown(f"### 📍 {row['Nombre']}")
         consejos = []
-        if año_act - int(row["Año_Reforma"]) > 6: consejos.append(f"🎨 **Pintura:** Ciclo vencido ({año_act - int(row['Año_Reforma'])} años).")
-        if row["Mobiliario"] == "S": consejos.append("🔌 **Equipamiento:** Activo amueblado. Revisar fondo de reposición.")
-        if row["Tipo"] == "Casa": consejos.append("🏠 **Fachada:** Revisión de cubiertas recomendada.")
+        if pd.notna(row.get("Año_Reforma")) and año_act - int(row["Año_Reforma"]) > 6: consejos.append(f"🎨 **Pintura:** Ciclo vencido ({año_act - int(row['Año_Reforma'])} años).")
+        if row.get("Mobiliario") == "S": consejos.append("🔌 **Equipamiento:** Activo amueblado. Revisar fondo de reposición.")
+        if row.get("Tipo") == "Casa": consejos.append("🏠 **Fachada:** Revisión de cubiertas recomendada.")
         st.write("  \n".join(consejos) if consejos else "✅ Mantenimiento al día.")
-        if i < total_inm - 1: st.markdown("<hr style='border:0; border-top:1px solid var(--gold); margin:1.5rem 0;'>", unsafe_allow_html=True)
+        # Línea dorada separadora (excepto en el último)
+        if i < total_inm - 1:
+            st.markdown("<hr style='border: 0; border-top: 1px solid var(--gold); margin: 1.5rem 0;'>", unsafe_allow_html=True)
 
 # ── DIARIO CONTABLE ───────────────────────────
 elif "Diario" in menu:
@@ -176,9 +189,10 @@ elif "Diario" in menu:
     sum_gas = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
     
     met1, met2 = st.columns(2)
-    met1.metric("Ingresos Registrados", f"{sum_ing:,.2f} €")
-    met2.metric("Gastos Registrados", f"-{sum_gas:,.2f} €")
+    met1.metric("Ingresos Registrados en Diario", f"{sum_ing:,.2f} €")
+    met2.metric("Gastos Registrados en Diario", f"-{sum_gas:,.2f} €")
     
+    st.markdown("<br>", unsafe_allow_html=True)
     df_ed = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True, hide_index=True)
     if st.button("Guardar Cambios en el Diario"):
         df_ed.to_csv(DB_MOVIMIENTOS, index=False)
@@ -198,7 +212,7 @@ elif "Datos" in menu:
         st.rerun()
 
     st.markdown('<div class="section-title">Copias de Seguridad Externas</div>', unsafe_allow_html=True)
-    st.info("Descarga estos archivos para tener un backup físico en tu ordenador.")
+    st.info("Descarga estos archivos frecuentemente para tener un backup físico de tu contabilidad y rentas en tu ordenador.")
     b_col1, b_col2 = st.columns(2)
     with b_col1:
         with open(DB_INMUEBLES, "rb") as f_inm: st.download_button("📥 Backup Maestro Inmuebles", f_inm, "nolasco_inmuebles.csv")
