@@ -11,23 +11,22 @@ st.markdown("""
     <style>
     .stApp { background-color: #F4F7F9; }
     h1, h2, h3 { color: #1B2631 !important; font-family: 'Segoe UI', sans-serif; }
-    /* Estilo de Tarjeta en Rejilla */
     .apto-card {
-        background-color: white;
-        padding: 15px;
-        border-radius: 10px;
-        border-top: 4px solid #2E86C1;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        text-align: center;
+        background-color: white; padding: 15px; border-radius: 10px;
+        border-top: 4px solid #2E86C1; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        text-align: center; height: 100%;
     }
-    .renta-val { color: #239B56; font-size: 1.4rem; font-weight: bold; }
+    .renta-val { color: #239B56; font-size: 1.2rem; font-weight: bold; }
+    .gasto-val { color: #CB4335; font-size: 1.1rem; }
+    .neto-val { color: #1B2631; font-size: 1.3rem; font-weight: bold; border-top: 1px solid #eee; margin-top: 10px; padding-top: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- CONFIGURACIÓN DE DATOS REALES ---
+# --- MOTOR DE DATOS ---
 DB_INMUEBLES = "nolasco_inmuebles.csv"
 DB_MOVIMIENTOS = "nolasco_movimientos.csv"
 
+# Cartera real
 DATOS_REALES_INM = [
     {"Nombre": "Casa Abarqueros", "Inquilino": "Victor Aguiluz", "Renta": 2200.0, "Comunidad": 193.76},
     {"Nombre": "Paseo del Salón", "Inquilino": "Pool Despachos", "Renta": 1591.8, "Comunidad": 175.18},
@@ -36,6 +35,7 @@ DATOS_REALES_INM = [
     {"Nombre": "Huerto Unidad 3", "Inquilino": "Jose Manuel", "Renta": 850.0, "Comunidad": 74.63}
 ]
 
+# Gastos de Abril agrupados por tipología
 MOVIMIENTOS_ABRIL = [
     {"Fecha": "2026-04-01", "Concepto": "Hipoteca Abarqueros", "Categoría": "Financiero", "Tipo": "Gasto", "Importe": 554.73},
     {"Fecha": "2026-04-01", "Concepto": "Seguro MyBox (Hogar/Alarma)", "Categoría": "Seguros", "Tipo": "Gasto", "Importe": 96.43},
@@ -62,52 +62,71 @@ menu = st.sidebar.radio("GESTIÓN", ["📊 Torre de Control", "🏠 Fichas de Ac
 if menu == "📊 Torre de Control":
     st.title("Torre de Control: Cartera Nolasco")
     
-    # 1. KPIs Globales
+    # KPIs Globales
     ing_b = df_inm["Renta"].sum()
-    gas_f = df_mov[df_mov["Tipo"] == "Gasto"]["Importe"].sum()
-    comu = df_inm["Comunidad"].sum()
-    neto = ing_b - gas_f - comu
+    comu_total = df_inm["Comunidad"].sum()
+    gastos_otros = df_mov[df_mov["Tipo"] == "Gasto"]["Importe"].sum()
+    gas_total = comu_total + gastos_otros
     
     c1, c2, c3 = st.columns(3)
     c1.metric("INGRESOS BRUTOS", f"{ing_b:,.2f} €")
-    c2.metric("GASTOS + TAX", f"-{gas_f + comu:,.2f} €")
-    c3.metric("EL VICIO (NETO)", f"{neto:,.2f} €")
+    c2.metric("GASTOS TOTALES", f"-{gas_total:,.2f} €")
+    c3.metric("RESULTADO NETO", f"{ing_b - gas_total:,.2f} €")
     
     st.divider()
 
-    # 2. REJILLA DE APARTAMENTOS (Grid View)
-    st.subheader("🏢 Estado Actual de la Cartera")
+    # REJILLA DE ACTIVOS (RESUMEN RÁPIDO)
+    st.subheader("🏢 Balance por Activo (Ingreso - Comunidad)")
     cols_apto = st.columns(len(df_inm))
     for i, row in df_inm.iterrows():
         with cols_apto[i]:
+            neto_apto = row['Renta'] - row['Comunidad']
             st.markdown(f"""
             <div class="apto-card">
                 <small>{row['Nombre']}</small><br>
                 <b>{row['Inquilino']}</b><br>
-                <span class="renta-val">{row['Renta']:,.0f} €</span>
+                <div class="renta-val">+{row['Renta']:,.0f}€</div>
+                <div class="gasto-val">-{row['Comunidad']:,.0f}€</div>
+                <div class="neto-val">{neto_apto:,.0f}€</div>
             </div>
             """, unsafe_allow_html=True)
     
     st.divider()
 
-    # 3. TABLA DETALLADA Y GRÁFICOS
-    col_l, col_r = st.columns([2, 1])
+    # ANÁLISIS DE GASTOS POR TIPOLOGÍA
+    col_l, col_r = st.columns([1, 1])
     with col_l:
-        st.subheader("📋 Listado Detallado de Rentas")
-        st.table(df_inm[["Nombre", "Inquilino", "Renta"]])
-        
-        st.subheader("📈 Histograma de Ingresos")
-        st.plotly_chart(px.bar(df_inm, x="Nombre", y="Renta", color="Nombre", text_auto=True), use_container_width=True)
+        st.subheader("📋 Gastos por Tipología")
+        # Agrupamos por Categoría para la tabla
+        df_tipologia = df_mov.groupby("Categoría")["Importe"].sum().reset_index()
+        df_tipologia = df_tipologia.sort_values("Importe", ascending=False)
+        st.table(df_tipologia.style.format({"Importe": "{:,.2f} €"}))
     
     with col_r:
-        st.subheader("🍰 Distribución de Costes")
-        st.plotly_chart(px.pie(df_mov, values='Importe', names='Categoría', hole=0.5), use_container_width=True)
+        st.subheader("🍰 Distribución del Gasto")
+        fig_p = px.pie(df_mov, values='Importe', names='Categoría', hole=0.4, 
+                       color_discrete_sequence=px.colors.qualitative.Pastel)
+        st.plotly_chart(fig_p, use_container_width=True)
 
 elif menu == "🏠 Fichas de Activos":
     sel = st.selectbox("Activo:", df_inm["Nombre"].tolist())
     f = df_inm[df_inm["Nombre"] == sel].iloc[0]
-    st.write(f"### {sel}")
-    st.info(f"**Inquilino:** {f['Inquilino']} | **Renta:** {f['Renta']} € | **Comunidad:** {f['Comunidad']} €")
+    
+    st.write(f"### Expediente: {sel}")
+    
+    # Ficha Técnica Detallada
+    c_f1, c_f2, c_f3 = st.columns(3)
+    with c_f1:
+        st.markdown(f"**Inquilino:** {f['Inquilino']}")
+        st.markdown(f"**Renta Mensual:** {f['Renta']:,} €")
+    with c_f2:
+        st.markdown(f"**Gasto Directo (Comunidad):** -{f['Comunidad']:,} €")
+        st.markdown(f"**Margen Operativo Activo:** {((f['Renta']-f['Comunidad'])/f['Renta']*100):.1f}%")
+    with c_f3:
+        neto_f = f['Renta'] - f['Comunidad']
+        st.metric("RESULTADO ACTIVO", f"{neto_f:,.2f} €")
+
+    st.info("💡 Próximamente: Podrás asignar gastos variables específicos (reparaciones, averías) directamente a esta ficha.")
 
 elif menu == "📝 Diario de Operaciones":
     st.subheader("Libro de Movimientos")
