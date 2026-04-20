@@ -35,15 +35,19 @@ DATOS_REALES_INM = [
     {"Nombre": "Huerto Unidad 3", "Inquilino": "Jose Manuel", "Renta": 850.0, "Comunidad": 74.63}
 ]
 
-# Gastos de Abril agrupados por tipología
+# Gastos de Abril asignados por Activo / Global
 MOVIMIENTOS_ABRIL = [
-    {"Fecha": "2026-04-01", "Concepto": "Hipoteca Abarqueros", "Categoría": "Financiero", "Tipo": "Gasto", "Importe": 554.73},
-    {"Fecha": "2026-04-01", "Concepto": "Seguro MyBox (Hogar/Alarma)", "Categoría": "Seguros", "Tipo": "Gasto", "Importe": 96.43},
-    {"Fecha": "2026-04-01", "Concepto": "Seguro Vida (Seviam)", "Categoría": "Seguros", "Tipo": "Gasto", "Importe": 55.93},
-    {"Fecha": "2026-04-01", "Concepto": "Autónomos (TGSS)", "Categoría": "Impuestos", "Tipo": "Gasto", "Importe": 314.00},
-    {"Fecha": "2026-04-01", "Concepto": "Sueldo Pedro (Asignación)", "Categoría": "Personal", "Tipo": "Gasto", "Importe": 600.00},
-    {"Fecha": "2026-04-01", "Concepto": "IRPF (Aplazamiento)", "Categoría": "Impuestos", "Tipo": "Gasto", "Importe": 1100.00},
-    {"Fecha": "2026-04-01", "Concepto": "IVA (Cuota Fija)", "Categoría": "Impuestos", "Tipo": "Gasto", "Importe": 325.00}
+    # Asignados a Casa Abarqueros
+    {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Hipoteca Abarqueros", "Categoría": "Financiero", "Tipo": "Gasto", "Importe": 554.73},
+    {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Seguro MyBox (Hogar/Alarma)", "Categoría": "Seguros", "Tipo": "Gasto", "Importe": 96.43},
+    {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Seguro Vida (Seviam)", "Categoría": "Seguros", "Tipo": "Gasto", "Importe": 55.93},
+    {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Mantenimiento Ascensor", "Categoría": "Mantenimiento", "Tipo": "Gasto", "Importe": 65.44},
+    # Gastos Globales / Estructurales
+    {"Fecha": "2026-04-01", "Apartamento": "Global", "Concepto": "Holded (Software)", "Categoría": "Sistemas", "Tipo": "Gasto", "Importe": 18.15},
+    {"Fecha": "2026-04-01", "Apartamento": "Global", "Concepto": "Autónomos (TGSS)", "Categoría": "Impuestos", "Tipo": "Gasto", "Importe": 314.00},
+    {"Fecha": "2026-04-01", "Apartamento": "Global", "Concepto": "Sueldo Pedro (Asignación)", "Categoría": "Personal", "Tipo": "Gasto", "Importe": 600.00},
+    {"Fecha": "2026-04-01", "Apartamento": "Global", "Concepto": "IRPF (Aplazamiento)", "Categoría": "Impuestos", "Tipo": "Gasto", "Importe": 1100.00},
+    {"Fecha": "2026-04-01", "Apartamento": "Global", "Concepto": "IVA (Cuota Fija)", "Categoría": "Impuestos", "Tipo": "Gasto", "Importe": 325.00}
 ]
 
 def inicializar_bd(force=False):
@@ -75,66 +79,89 @@ if menu == "📊 Torre de Control":
     
     st.divider()
 
-    # REJILLA DE ACTIVOS (RESUMEN RÁPIDO)
-    st.subheader("🏢 Balance por Activo (Ingreso - Comunidad)")
+    # REJILLA DE ACTIVOS (Margen Real por Inmueble)
+    st.subheader("🏢 Balance por Activo")
     cols_apto = st.columns(len(df_inm))
     for i, row in df_inm.iterrows():
         with cols_apto[i]:
-            neto_apto = row['Renta'] - row['Comunidad']
+            # Ahora el grid suma los gastos específicos de cada piso
+            gastos_especificos = df_mov[(df_mov["Apartamento"] == row['Nombre']) & (df_mov["Tipo"] == "Gasto")]["Importe"].sum()
+            total_cargas = row['Comunidad'] + gastos_especificos
+            neto_apto = row['Renta'] - total_cargas
+            
             st.markdown(f"""
             <div class="apto-card">
                 <small>{row['Nombre']}</small><br>
                 <b>{row['Inquilino']}</b><br>
                 <div class="renta-val">+{row['Renta']:,.0f}€</div>
-                <div class="gasto-val">-{row['Comunidad']:,.0f}€</div>
+                <div class="gasto-val">-{total_cargas:,.0f}€</div>
                 <div class="neto-val">{neto_apto:,.0f}€</div>
             </div>
             """, unsafe_allow_html=True)
     
     st.divider()
 
-    # ANÁLISIS DE GASTOS POR TIPOLOGÍA
     col_l, col_r = st.columns([1, 1])
     with col_l:
         st.subheader("📋 Gastos por Tipología")
-        # Agrupamos por Categoría para la tabla
-        df_tipologia = df_mov.groupby("Categoría")["Importe"].sum().reset_index()
-        df_tipologia = df_tipologia.sort_values("Importe", ascending=False)
+        df_tipologia = df_mov.groupby("Categoría")["Importe"].sum().reset_index().sort_values("Importe", ascending=False)
         st.table(df_tipologia.style.format({"Importe": "{:,.2f} €"}))
-    
     with col_r:
         st.subheader("🍰 Distribución del Gasto")
-        fig_p = px.pie(df_mov, values='Importe', names='Categoría', hole=0.4, 
-                       color_discrete_sequence=px.colors.qualitative.Pastel)
+        fig_p = px.pie(df_mov, values='Importe', names='Categoría', hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
         st.plotly_chart(fig_p, use_container_width=True)
 
 elif menu == "🏠 Fichas de Activos":
-    sel = st.selectbox("Activo:", df_inm["Nombre"].tolist())
+    sel = st.selectbox("Seleccione Expediente:", df_inm["Nombre"].tolist())
     f = df_inm[df_inm["Nombre"] == sel].iloc[0]
     
-    st.write(f"### Expediente: {sel}")
+    # Calcular cargas específicas del inmueble seleccionado
+    df_gastos_apto = df_mov[(df_mov["Apartamento"] == sel) & (df_mov["Tipo"] == "Gasto")]
+    total_gastos_apto = df_gastos_apto["Importe"].sum()
+    neto_real = f['Renta'] - f['Comunidad'] - total_gastos_apto
+    margen_porcentaje = (neto_real / f['Renta'] * 100) if f['Renta'] > 0 else 0
+
+    st.write(f"### 🏢 {sel}")
     
-    # Ficha Técnica Detallada
     c_f1, c_f2, c_f3 = st.columns(3)
     with c_f1:
         st.markdown(f"**Inquilino:** {f['Inquilino']}")
-        st.markdown(f"**Renta Mensual:** {f['Renta']:,} €")
+        st.markdown(f"**Renta Mensual:** {f['Renta']:,.2f} €")
     with c_f2:
-        st.markdown(f"**Gasto Directo (Comunidad):** -{f['Comunidad']:,} €")
-        st.markdown(f"**Margen Operativo Activo:** {((f['Renta']-f['Comunidad'])/f['Renta']*100):.1f}%")
+        st.markdown(f"**Comunidad:** -{f['Comunidad']:,.2f} €")
+        st.markdown(f"**Gastos Asignados:** -{total_gastos_apto:,.2f} €")
     with c_f3:
-        neto_f = f['Renta'] - f['Comunidad']
-        st.metric("RESULTADO ACTIVO", f"{neto_f:,.2f} €")
+        st.metric("BENEFICIO NETO DEL ACTIVO", f"{neto_real:,.2f} €")
+        st.markdown(f"**Margen de Rentabilidad:** {margen_porcentaje:.1f}%")
 
-    st.info("💡 Próximamente: Podrás asignar gastos variables específicos (reparaciones, averías) directamente a esta ficha.")
+    st.divider()
+    
+    if not df_gastos_apto.empty:
+        st.subheader("Desglose de Gastos Operativos del Inmueble")
+        st.table(df_gastos_apto[["Fecha", "Concepto", "Categoría", "Importe"]].style.format({"Importe": "{:,.2f} €"}))
+    else:
+        st.info("Este inmueble no tiene gastos adicionales registrados aparte de la comunidad.")
 
 elif menu == "📝 Diario de Operaciones":
     st.subheader("Libro de Movimientos")
+    # Formulario rápido para añadir gastos a un piso específico
+    with st.expander("➕ Añadir Nuevo Movimiento", expanded=False):
+        with st.form("form_nuevo_mov", clear_on_submit=True):
+            f_apto = st.selectbox("Asignar a Inmueble (o Global)", ["Global"] + df_inm["Nombre"].tolist())
+            f_conc = st.text_input("Concepto (ej. Reparación fontanería)")
+            f_cat = st.selectbox("Categoría", ["Mantenimiento", "Seguros", "Impuestos", "Financiero", "Varios"])
+            f_imp = st.number_input("Importe (€)", min_value=0.0)
+            if st.form_submit_button("Registrar"):
+                nuevo = pd.DataFrame([{"Fecha": datetime.now().strftime("%Y-%m-%d"), "Apartamento": f_apto, "Concepto": f_conc, "Categoría": f_cat, "Tipo": "Gasto", "Importe": f_imp}])
+                df_mov = pd.concat([df_mov, nuevo], ignore_index=True)
+                df_mov.to_csv(DB_MOVIMIENTOS, index=False)
+                st.rerun()
+                
     st.data_editor(df_mov, use_container_width=True)
 
 elif menu == "⚙️ Configuración":
     st.title("Administración")
     if st.button("⚠️ REINICIAR Y CARGAR DATOS REALES"):
         inicializar_bd(force=True)
-        st.success("Datos actualizados. Recarga la página.")
+        st.success("Base de datos reseteada con las asignaciones por inmueble. Recarga la página.")
         st.rerun()
