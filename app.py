@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # ─────────────────────────────────────────────
-# 1. DISEÑO DE INTERFAZ "NOLASCO COUTURE"
+# 1. DISEÑO DE INTERFAZ "NOLASCO CAPITAL V6.1"
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
 
@@ -30,15 +30,15 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 /* BARRA LATERAL PERSONALIZADA */
 [data-testid="stSidebar"] { background: var(--ink) !important; border-right: 1px solid #222; min-width: 280px !important; }
 [data-testid="stSidebar"] .stRadio > label { display: none; }
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] { padding-top: 1.5rem; gap: 1.2rem; }
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] { padding-top: 1.5rem; gap: 1rem; }
 [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label { background: transparent !important; border: none !important; padding: 0 !important; }
 
-/* Tipografía DM Sans para el menú, tamaño reducido y limpio */
+/* Tipografía DM Sans para el menú lateral (fina y discreta) */
 [data-testid="stSidebar"] .stRadio p {
-    font-family: 'DM Sans', sans-serif !important; font-size: 1.05rem !important; font-weight: 400 !important; color: #E8E2D9 !important;
-    letter-spacing: 0.03em !important; transition: all 0.3s ease; padding-left: 1rem; border-left: 0px solid var(--gold);
+    font-family: 'DM Sans', sans-serif !important; font-size: 0.95rem !important; font-weight: 400 !important; color: #ADB5BD !important;
+    letter-spacing: 0.02em !important; transition: all 0.3s ease; padding-left: 1rem; border-left: 0px solid var(--gold);
 }
-[data-testid="stSidebar"] .stRadio label[data-checked="true"] p { color: var(--gold) !important; font-weight: 500 !important; border-left: 3px solid var(--gold); padding-left: 1.5rem; }
+[data-testid="stSidebar"] .stRadio label[data-checked="true"] p { color: var(--gold) !important; font-weight: 500 !important; border-left: 3px solid var(--gold); padding-left: 1.2rem; }
 [data-testid="stSidebar"] .stRadio label:hover p { color: var(--gold) !important; }
 
 /* Headers y Componentes */
@@ -66,34 +66,30 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# 2. MOTOR DE DATOS (ESTRUCTURA FISCAL IRPF)
+# 2. MOTOR DE DATOS
 # ─────────────────────────────────────────────
 DB_INMUEBLES   = "nolasco_inmuebles_v6.csv"
 DB_MOVIMIENTOS = "nolasco_movimientos_v6.csv"
 
 def inicializar_bd(force=False):
     if force or not os.path.exists(DB_INMUEBLES):
-        # Añadidos todos los campos de la plantilla Excel IRPF
-        base_inmuebles = [
+        pd.DataFrame([
             {"Nombre": "Casa Abarqueros", "Titular": "Pedro Nolasco", "Ref_Catastral": "", "Inquilino": "Victor Aguiluz", "DNI_Inquilino": "", "Fecha_Contrato": "", "Fecha_Adquisicion": "", "Inmueble_Accesorio": "No", "Renta": 2200.0, "Comunidad": 193.76, "IBI_Anual": 0.0, "Valor_Construccion": 150000.0, "Año_Reforma": 2018, "Mobiliario": "S", "Tipo": "Casa"},
             {"Nombre": "Paseo del Salón", "Titular": "Pedro Nolasco", "Ref_Catastral": "", "Inquilino": "Pool Despachos", "DNI_Inquilino": "", "Fecha_Contrato": "", "Fecha_Adquisicion": "", "Inmueble_Accesorio": "No", "Renta": 1591.8, "Comunidad": 175.18, "IBI_Anual": 0.0, "Valor_Construccion": 120000.0, "Año_Reforma": 2020, "Mobiliario": "N", "Tipo": "Piso"},
             {"Nombre": "Huerto Unidad 1", "Titular": "Pedro Nolasco", "Ref_Catastral": "", "Inquilino": "Alain", "DNI_Inquilino": "", "Fecha_Contrato": "", "Fecha_Adquisicion": "", "Inmueble_Accesorio": "No", "Renta": 660.0, "Comunidad": 74.62, "IBI_Anual": 0.0, "Valor_Construccion": 45000.0, "Año_Reforma": 2022, "Mobiliario": "S", "Tipo": "Piso"},
             {"Nombre": "Huerto Unidad 2", "Titular": "Pedro Nolasco", "Ref_Catastral": "", "Inquilino": "Laura/Alex", "DNI_Inquilino": "", "Fecha_Contrato": "", "Fecha_Adquisicion": "", "Inmueble_Accesorio": "No", "Renta": 800.0, "Comunidad": 74.62, "IBI_Anual": 0.0, "Valor_Construccion": 45000.0, "Año_Reforma": 2022, "Mobiliario": "S", "Tipo": "Piso"},
             {"Nombre": "Huerto Unidad 3", "Titular": "Pedro Nolasco", "Ref_Catastral": "", "Inquilino": "Jose Manuel", "DNI_Inquilino": "", "Fecha_Contrato": "", "Fecha_Adquisicion": "", "Inmueble_Accesorio": "No", "Renta": 850.0, "Comunidad": 74.63, "IBI_Anual": 0.0, "Valor_Construccion": 45000.0, "Año_Reforma": 2021, "Mobiliario": "S", "Tipo": "Piso"}
-        ]
-        pd.DataFrame(base_inmuebles).to_csv(DB_INMUEBLES, index=False)
+        ]).to_csv(DB_INMUEBLES, index=False)
     
     if force or not os.path.exists(DB_MOVIMIENTOS):
-        # Hipoteca dividida en Capital (No deducible) e Intereses (Sí deducible) para el modelo 100
-        base_movimientos = [
+        pd.DataFrame([
             {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Hipoteca (Intereses)", "Categoría": "Financiero", "Tipo": "Gasto", "Importe": 250.00, "Deducible": "S"},
-            {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Hipoteca (Amortización Capital)", "Categoría": "Financiero", "Tipo": "Gasto", "Importe": 304.73, "Deducible": "N"},
+            {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Hipoteca (Capital)", "Categoría": "Financiero", "Tipo": "Gasto", "Importe": 304.73, "Deducible": "N"},
             {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Seguro MyBox (Hogar)", "Categoría": "Seguros", "Tipo": "Gasto", "Importe": 96.43, "Deducible": "S"},
             {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Seguro Vida (Seviam)", "Categoría": "Seguros", "Tipo": "Gasto", "Importe": 55.93, "Deducible": "S"},
             {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Mantenimiento Ascensor", "Categoría": "Mantenimiento", "Tipo": "Gasto", "Importe": 65.44, "Deducible": "S"},
             {"Fecha": "2026-04-01", "Apartamento": "Global", "Concepto": "Sueldo Pedro", "Categoría": "Personal", "Tipo": "Gasto", "Importe": 600.00, "Deducible": "N"}
-        ]
-        pd.DataFrame(base_movimientos).to_csv(DB_MOVIMIENTOS, index=False)
+        ]).to_csv(DB_MOVIMIENTOS, index=False)
 
 inicializar_bd()
 df_inm = pd.read_csv(DB_INMUEBLES)
@@ -133,7 +129,6 @@ if "Torre" in menu:
             st.markdown(f"""
             <div class="asset-card">
                 <div class="asset-name">{row['Nombre']}</div>
-                <div class="asset-tenant">{row['Inquilino']}</div>
                 <div class="asset-income">+{row['Renta']:,.0f}€</div>
                 <div class="asset-expense">-{row['Comunidad']+g_esp:,.0f}€</div>
                 <div class="asset-net">{row['Renta'] - row['Comunidad'] - g_esp:,.0f}€</div>
@@ -148,7 +143,7 @@ if "Torre" in menu:
     with col_r:
         st.subheader("🍰 Distribución de Rentas")
         fig_pie = go.Figure(go.Pie(labels=df_inm["Nombre"], values=df_inm["Renta"], hole=0.55, marker=dict(colors=["#C9A84C","#1B5E3B","#8B1A1A","#4A5568","#0D0F12"]), textinfo="label+percent"))
-        fig_pie.update_layout(paper_bgcolor="transparent", margin=dict(l=10, r=10, t=10, b=10), showlegend=False, height=300)
+        fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=10, b=10), showlegend=False, height=300)
         st.plotly_chart(fig_pie, use_container_width=True)
 
 # ── FICHAS DE ACTIVOS ─────────────────────────
@@ -157,19 +152,18 @@ elif "Fichas" in menu:
     sel = st.selectbox("Seleccionar Inmueble:", df_inm["Nombre"].tolist())
     f = df_inm[df_inm["Nombre"] == sel].iloc[0]
     
-    with st.expander("📄 Datos Fiscales y Registrales (Modelo 100)"):
-        cf1, cf2, cf3, cf4 = st.columns(4)
-        cf1.write(f"**Titular:** {f.get('Titular', '')}")
-        cf1.write(f"**Ref. Catastral:** {f.get('Ref_Catastral', '')}")
-        cf2.write(f"**DNI Inquilino:** {f.get('DNI_Inquilino', '')}")
-        cf2.write(f"**Fecha Contrato:** {f.get('Fecha_Contrato', '')}")
-        cf3.write(f"**Fecha Adquisición:** {f.get('Fecha_Adquisicion', '')}")
-        cf3.write(f"**Inmueble Accesorio:** {f.get('Inmueble_Accesorio', '')}")
-        cf4.write(f"**IBI Anual:** {f.get('IBI_Anual', 0):,.2f}€")
+    with st.expander("📄 Datos Fiscales y Registrales"):
+        cf1, cf2, cf3 = st.columns(3)
+        cf1.write(f"**Titular:** {f['Titular']}")
+        cf1.write(f"**Ref. Catastral:** {f['Ref_Catastral']}")
+        cf2.write(f"**DNI Inquilino:** {f['DNI_Inquilino']}")
+        cf2.write(f"**Contrato:** {f['Fecha_Contrato']}")
+        cf3.write(f"**Adquisición:** {f['Fecha_Adquisicion']}")
+        cf3.write(f"**IBI:** {f['IBI_Anual']}€")
 
     col_a, col_b = st.columns([2, 1])
     with col_a:
-        st.markdown(f"### Gastos Operativos: {sel}")
+        st.markdown(f"### Desglose de Gastos: {sel}")
         df_g = df_mov[df_mov["Apartamento"] == sel]
         resumen = pd.concat([pd.DataFrame([{"Concepto": "Comunidad", "Importe": f["Comunidad"], "Deducible": "S"}]), df_g[["Concepto", "Importe", "Deducible"]]])
         st.table(resumen.style.format({"Importe": "{:,.2f}€"}))
@@ -181,11 +175,11 @@ elif "Fichas" in menu:
         total_deducible = resumen[resumen["Deducible"]=="S"]["Importe"].sum()
         amort = (f["Valor_Construccion"] * 0.03) / 12
         
-        st.write(f"**Gasto Total (Caja):** {total_caja:,.2f}€")
-        st.write(f"**Gasto Deducible:** {total_deducible:,.2f}€")
-        st.write(f"**Amortización Fiscal:** {amort:,.2f}€")
+        st.write(f"**Salida de Caja (Total):** {total_caja:,.2f}€")
+        st.write(f"**Gasto Fiscal Deducible:** {total_deducible:,.2f}€")
+        st.write(f"**Amortización (3%):** {amort:,.2f}€")
         st.divider()
-        st.write(f"**Base Imponible Mensual:** {f['Renta'] - total_deducible - amort:,.2f}€")
+        st.write(f"**Rendimiento Neto Fiscal:** {f['Renta'] - total_deducible - amort:,.2f}€")
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ── AUDITORÍA IA ──────────────────────────────
@@ -199,14 +193,14 @@ elif "Auditor" in menu:
             st.markdown(f"### 📍 {row['Nombre']}")
             
             consejos = []
-            if pd.notna(row.get("Año_Reforma")) and (año_actual - float(row["Año_Reforma"]) > 6):
-                consejos.append(f"🎨 **Pintura y Estética:** Han pasado {año_actual - int(row['Año_Reforma'])} años. Renovar estética justifica mantener rentas frente al IPC.")
+            if año_actual - int(row["Año_Reforma"]) > 6:
+                consejos.append(f"🎨 **Estética:** Han pasado {año_actual - int(row['Año_Reforma'])} años. Una renovación de pintura y textiles revalorizará el activo.")
             
-            if row.get("Mobiliario") == "S":
-                consejos.append("🔌 **Electrodomésticos y Cocina:** Activo amueblado. Reservar fondo de reposición anual para averías de línea blanca.")
+            if row["Mobiliario"] == "S":
+                consejos.append("🔌 **Mobiliario:** Activo amueblado. Se recomienda provisión para reposición de electrodomésticos.")
             
-            if row.get("Tipo") == "Casa":
-                consejos.append("🏠 **Estructura:** Revisión de tejados y sumideros recomendada antes de temporada de lluvias.")
+            if row["Tipo"] == "Casa":
+                consejos.append("🏠 **Estructura:** Recomendada limpieza de canalones y revisión de cubiertas pre-invierno.")
             
             if not consejos: consejos.append("✅ Activo en ciclo óptimo de mantenimiento.")
             
@@ -222,8 +216,7 @@ elif "Diario" in menu:
         st.rerun()
 
 elif "Datos" in menu:
-    st.markdown('<div class="brand-header">Datos de la cartera del inmueble</div>', unsafe_allow_html=True)
-    st.write("Rellena aquí los datos registrales y fiscales requeridos para el volcado de la declaración de la renta.")
+    st.markdown('<div class="brand-header">Datos de la cartera</div>', unsafe_allow_html=True)
     df_inm_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True)
     if st.button("Guardar Datos de Cartera"):
         df_inm_ed.to_csv(DB_INMUEBLES, index=False)
