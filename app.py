@@ -111,15 +111,17 @@ if "Torre" in menu:
     cols = st.columns(len(df_inm))
     for i, row in df_inm.iterrows():
         g_esp = df_mov[(df_mov["Apartamento"] == row["Nombre"])]["Importe"].sum()
+        gastos_totales = row['Comunidad'] + g_esp
+        beneficio = row['Renta'] - gastos_totales
         with cols[i]:
-            # Tarjetas de activos maximizadas y legibles
+            # Tarjetas con desglose: Ingreso (Verde), Gasto (Rojo pequeño), Beneficio (Naranja intermedio)
             st.markdown(f"""
-            <div style="background:var(--card-bg); border:1px solid var(--border); border-radius:4px; border-top:4px solid {COLOR_PALETTE[i % 6]}; padding:1.4rem 1rem; text-align:center; height:100%;">
-                <div style="font-size:0.85rem; font-weight:600; text-transform:uppercase; color:var(--slate); margin-bottom:5px;">{row['Nombre']}</div>
-                <div style="font-size:1.2rem; font-weight:600; color:var(--emerald);">+{row['Renta']:,.0f}€</div>
-                <div style="font-family:'DM Serif Display',serif; font-size:1.7rem; color:var(--ink); border-top:1px solid #eee; margin-top:8px; padding-top:5px;">{row['Renta'] - row['Comunidad'] - g_esp:,.0f}€</div>
+            <div style="background:var(--card-bg); border:1px solid var(--border); border-radius:4px; border-top:4px solid {COLOR_PALETTE[i % 6]}; padding:1.2rem 0.8rem; text-align:center; height:100%;">
+                <div style="font-size:0.75rem; font-weight:600; text-transform:uppercase; color:var(--slate); margin-bottom:8px;">{row['Nombre']}</div>
+                <div style="font-size:1.15rem; font-weight:600; color:var(--emerald);">+{row['Renta']:,.0f}€</div>
+                <div style="font-size:0.85rem; font-weight:500; color:var(--crimson); margin-top:2px;">-{gastos_totales:,.0f}€</div>
+                <div style="font-family:'DM Serif Display',serif; font-size:1.45rem; color:#D35400; border-top:1px solid #eee; margin-top:8px; padding-top:5px;">{beneficio:,.0f}€</div>
             </div>""", unsafe_allow_html=True)
-
     col_l, col_r = st.columns(2)
     with col_l:
         st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>📋 Distribución de Gastos</h3>", unsafe_allow_html=True)
