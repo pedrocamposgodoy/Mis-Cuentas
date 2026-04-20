@@ -6,9 +6,9 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # ─────────────────────────────────────────────
-# 1. ARQUITECTURA VISUAL "NOLASCO CAPITAL V9.0 - MVP"
+# 1. ARQUITECTURA VISUAL "NOLASCO CAPITAL V9.1"
 # ─────────────────────────────────────────────
-st.set_page_config(page_title="Nolasco Capital MVP", layout="wide", page_icon="🏛️")
+st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
 
 COLOR_PALETTE = ["#C9A84C", "#1B5E3B", "#8B1A1A", "#4A5568", "#0D0F12", "#2E86C1"]
 
@@ -24,24 +24,37 @@ st.markdown("""
     --crimson:   #8B1A1A;
     --slate:     #4A5568;
     --card-bg:   #FFFFFF;
+    --border:    #E8E2D9;
 }
 
-.block-container { padding-top: 1rem !important; }
+/* ELIMINAR ESPACIO SUPERIOR EXCESIVO */
+.block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; }
+
 html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-color: var(--parchment) !important; color: var(--ink); }
 
-/* BARRA LATERAL */
-[data-testid="stSidebar"] { background: var(--ink) !important; min-width: 280px !important; }
+/* BARRA LATERAL ESTILO BOUTIQUE */
+[data-testid="stSidebar"] { background: var(--ink) !important; border-right: 1px solid #222; min-width: 280px !important; }
+[data-testid="stSidebar"] .stRadio > label { display: none; }
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] { padding-top: 1.5rem; gap: 1rem; }
+
 [data-testid="stSidebar"] .stRadio p {
-    font-family: 'DM Sans', sans-serif !important; font-size: 0.95rem !important; color: #ADB5BD !important;
+    font-family: 'DM Sans', sans-serif !important; font-size: 0.95rem !important; font-weight: 400 !important; color: #ADB5BD !important;
+    letter-spacing: 0.02em !important; transition: all 0.3s ease; padding-left: 1rem; border-left: 0px solid var(--gold);
 }
-[data-testid="stSidebar"] .stRadio label[data-checked="true"] p { color: var(--gold) !important; border-left: 3px solid var(--gold); padding-left: 1.2rem; }
+[data-testid="stSidebar"] .stRadio label[data-checked="true"] p { color: var(--gold) !important; font-weight: 500 !important; border-left: 3px solid var(--gold); padding-left: 1.2rem; }
 
-/* COMPONENTES MVP */
-.brand-header { font-family: 'DM Serif Display', serif; font-size: 2.3rem; color: var(--ink); border-bottom: 2px solid var(--gold); padding-bottom: 0.5rem; }
-.section-title { font-family: 'DM Serif Display', serif; font-size: 1.5rem; color: var(--ink); border-left: 3px solid var(--gold); padding-left: 0.7rem; margin: 1.5rem 0; }
-.fiscal-panel { background: #F0F7F3; border: 1px solid #C3DDD0; border-radius: 6px; padding: 1.2rem; }
+/* Estructura de Títulos y Tarjetas */
+.brand-header { font-family: 'DM Serif Display', serif; font-size: 2.3rem; color: var(--ink); border-bottom: 2px solid var(--gold); padding-bottom: 0.5rem; margin-bottom: 0.2rem; }
+.brand-sub { font-size: 0.75rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--slate); margin-bottom: 1.5rem; }
 
-/* CAJAS DE BENCHMARK */
+.kpi-card { background: var(--card-bg); border: 1px solid var(--border); border-top: 3px solid var(--gold); border-radius: 4px; padding: 1.2rem; text-align: center; }
+.kpi-label { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate); margin-bottom: 0.2rem; }
+.kpi-value { font-family: 'DM Serif Display', serif; font-size: 2rem; line-height: 1; }
+
+.section-title { font-family: 'DM Serif Display', serif; font-size: 1.5rem; color: var(--ink); border-left: 3px solid var(--gold); padding-left: 0.7rem; margin: 1.5rem 0 1rem 0; }
+.fiscal-panel { background: #F0F7F3; border: 1px solid #C3DDD0; border-radius: 6px; padding: 1.5rem; }
+
+/* CAJAS DE BENCHMARK (Fichas) */
 .status-red { background: #FDECEA; border-left: 5px solid var(--crimson); padding: 1.5rem; border-radius: 4px; }
 .status-yellow { background: #FFF9E6; border-left: 5px solid #F39C12; padding: 1.5rem; border-radius: 4px; }
 .status-green { background: #EDF7F1; border-left: 5px solid var(--emerald); padding: 1.5rem; border-radius: 4px; }
@@ -51,7 +64,7 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# 2. MOTOR DE DATOS (INCLUYE RENTA DE MERCADO)
+# 2. MOTOR DE DATOS
 # ─────────────────────────────────────────────
 DB_INMUEBLES   = "nolasco_inmuebles_v9.csv"
 DB_MOVIMIENTOS = "nolasco_movimientos_v9.csv"
@@ -77,11 +90,14 @@ inicializar_bd()
 df_inm = pd.read_csv(DB_INMUEBLES)
 df_mov = pd.read_csv(DB_MOVIMIENTOS)
 
+# ─────────────────────────────────────────────
+# 3. NAVEGACIÓN
+# ─────────────────────────────────────────────
 with st.sidebar:
     st.markdown("<div style='padding-bottom: 1rem;'><div style='font-family:\"DM Serif Display\",serif; font-size:2.2rem; color:#C9A84C; line-height:1;'>NOLASCO</div></div>", unsafe_allow_html=True)
     menu = st.radio("", ["📊 Torre de Control", "🏠 Fichas (Benchmark)", "🤖 Auditoría IA", "📝 Diario Contable", "📂 Datos y Backups"], label_visibility="collapsed")
 
-# ── TORRE DE CONTROL ──────────────────────────
+# ── TORRE DE CONTROL (DASHBOARD ANTERIOR RECUPERADO) ──
 if "Torre" in menu:
     st.markdown('<div class="brand-header">Torre de Control</div>', unsafe_allow_html=True)
     
@@ -89,14 +105,44 @@ if "Torre" in menu:
     gas_caja = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum() + df_inm["Comunidad"].sum()
     
     c1, c2, c3 = st.columns(3)
-    c1.metric("Ingresos Cartera", f"{ing_b:,.0f}€")
-    c2.metric("Gastos Totales", f"-{gas_caja:,.0f}€")
-    c3.metric("Beneficio Neto", f"{ing_b - gas_caja:,.0f}€")
+    c1.markdown(f'<div class="kpi-card"><div class="kpi-label">Ingresos Totales</div><div class="kpi-value" style="color:var(--emerald)">{ing_b:,.0f}€</div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Operativos</div><div class="kpi-value" style="color:var(--crimson)">-{gas_caja:,.0f}€</div></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="kpi-card"><div class="kpi-label">Beneficio Neto</div><div class="kpi-value">{ing_b - gas_caja:,.0f}€</div></div>', unsafe_allow_html=True)
 
-    # Tarta de Composición
-    fig_pie = go.Figure(go.Pie(labels=df_inm["Nombre"], values=df_inm["Renta"], hole=0.4, marker=dict(colors=COLOR_PALETTE), textinfo="label+percent", textposition="outside"))
-    fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=80,r=80,t=30,b=30), showlegend=False, height=450)
-    st.plotly_chart(fig_pie, use_container_width=True)
+    st.markdown('<div class="section-title">Rendimiento por Activo (Cashflow)</div>', unsafe_allow_html=True)
+    cols = st.columns(len(df_inm))
+    for i, row in df_inm.iterrows():
+        g_esp = df_mov[(df_mov["Apartamento"] == row["Nombre"]) & (df_mov["Tipo"] == "Gasto")]["Importe"].sum()
+        gastos_unit = row['Comunidad'] + g_esp
+        beneficio_unit = row['Renta'] - gastos_unit
+        with cols[i]:
+            st.markdown(f"""
+            <div style="background:var(--card-bg); border:1px solid var(--border); border-radius:4px; border-top:4px solid {COLOR_PALETTE[i % 6]}; padding:1.2rem 0.8rem; text-align:center; height:100%;">
+                <div style="font-size:0.75rem; font-weight:600; text-transform:uppercase; color:var(--slate); margin-bottom:8px;">{row['Nombre']}</div>
+                <div style="font-size:1.15rem; font-weight:600; color:var(--emerald);">+{row['Renta']:,.0f}€</div>
+                <div style="font-size:0.85rem; font-weight:500; color:var(--crimson); margin-top:2px;">-{gastos_unit:,.0f}€</div>
+                <div style="font-family:'DM Serif Display',serif; font-size:1.45rem; color:#D35400; border-top:1px solid #eee; margin-top:8px; padding-top:5px;">{beneficio_unit:,.0f}€</div>
+            </div>""", unsafe_allow_html=True)
+
+    col_l, col_r = st.columns(2)
+    with col_l:
+        st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>📋 Gastos por Tipología</h3>", unsafe_allow_html=True)
+        df_cat = df_mov[df_mov["Tipo"]=="Gasto"].groupby("Categoría")["Importe"].sum().reset_index().sort_values("Importe", ascending=False)
+        st.dataframe(df_cat.style.format({"Importe": "{:,.2f} €"}).set_properties(**{'font-size': '1.1rem', 'padding': '12px'}), hide_index=True, use_container_width=True)
+    
+    with col_r:
+        st.markdown("<h3 style='font-family: \"DM Serif Display\", serif; font-size: 1.5rem; color: var(--ink); margin: 2rem 0 1rem 0; border-left: 3px solid var(--gold); padding-left: 0.7rem;'>🍰 Composición de la Cartera</h3>", unsafe_allow_html=True)
+        fig_pie = go.Figure(go.Pie(
+            labels=df_inm["Nombre"], 
+            values=df_inm["Renta"], 
+            hole=0.4, 
+            marker=dict(colors=COLOR_PALETTE),
+            textinfo="label+percent",
+            textposition="outside",
+            textfont=dict(size=13, family="DM Sans")
+        ))
+        fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=80,r=80,t=30,b=30), showlegend=False, height=420)
+        st.plotly_chart(fig_pie, use_container_width=True)
 
 # ── FICHAS DE ACTIVOS (BENCHMARK MVP) ─────────
 elif "Fichas" in menu:
@@ -104,14 +150,12 @@ elif "Fichas" in menu:
     sel = st.selectbox("Inmueble a auditar:", df_inm["Nombre"].tolist())
     f = df_inm[df_inm["Nombre"] == sel].iloc[0]
     
-    # 🎯 Lógica del Benchmark
     renta_actual = f["Renta"]
     renta_mercado = f["Renta_Mercado"]
     desviacion = ((renta_actual - renta_mercado) / renta_mercado) * 100
     perdida_mensual = renta_mercado - renta_actual if renta_actual < renta_mercado else 0
     
     col1, col2 = st.columns([1, 1])
-    
     with col1:
         st.markdown('<div class="section-title">Análisis de Renta</div>', unsafe_allow_html=True)
         st.metric("Renta Actual", f"{renta_actual:,.2f} €")
@@ -119,8 +163,6 @@ elif "Fichas" in menu:
         
     with col2:
         st.markdown('<div class="section-title">Diagnóstico MVP</div>', unsafe_allow_html=True)
-        
-        # Sistema de Colores (Semáforo)
         if desviacion < -15:
             clase, status, icono = "status-red", "Muy por debajo del mercado", "🔴"
         elif desviacion < -5:
@@ -131,33 +173,36 @@ elif "Fichas" in menu:
         st.markdown(f"""
         <div class="{clase}">
             <b style="font-size:1.2rem;">{icono} {status}</b><br><br>
-            La desviación actual es del <b>{desviacion:.1f}%</b>.<br>
-            Estás dejando de ingresar <b>{perdida_mensual:,.2f} €</b> mensuales ({perdida_mensual*12:,.2f} €/año).
+            Desviación actual: <b>{desviacion:.1f}%</b>.<br>
+            Ingreso mensual perdido: <b>{perdida_mensual:,.2f} €</b>.
         </div>
         """, unsafe_allow_html=True)
 
-    # Bloque IA de Recomendación
-    st.markdown('<div class="section-title">Comentario Inteligente</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Comentario Estratégico</div>', unsafe_allow_html=True)
     if desviacion < -5:
-        st.info(f"💡 **Recomendación:** Este inmueble presenta una infravaloración clara. Se recomienda revisar el contrato en la próxima renovación o realizar una actualización estética mínima para alcanzar los {renta_mercado:,.0f} € de mercado.")
+        st.info(f"💡 Este inmueble está un {abs(desviacion):.1f}% por debajo de su zona. Se recomienda revisar el contrato o actualizar el activo para alcanzar los {renta_mercado:,.0f}€ mensuales.")
     else:
-        st.success("✅ **Optimización:** El inmueble está correctamente posicionado. El foco debe ser el control de gastos operativos para maximizar el neto.")
+        st.success("✅ El inmueble está perfectamente alineado con el mercado local.")
 
-# ── RESTO DE PÁGINAS (AUDITORÍA, DIARIO, DATOS) ──
+# ── AUDITORÍA IA ──────────────────────────────
 elif "Auditor" in menu:
     st.markdown('<div class="brand-header">Informe de Mantenimiento</div>', unsafe_allow_html=True)
     for i, row in df_inm.reset_index().iterrows():
         st.markdown(f"### 📍 {row['Nombre']}")
-        st.write("✅ Estado de conservación óptimo.")
+        st.write("✅ Mantenimiento preventivo al día.")
         if i < len(df_inm)-1: st.markdown("<hr style='border:0; border-top:1px solid var(--gold); margin:1.5rem 0;'>", unsafe_allow_html=True)
 
+# ── DIARIO CONTABLE ───────────────────────────
 elif "Diario" in menu:
     st.markdown('<div class="brand-header">Registro de Operaciones</div>', unsafe_allow_html=True)
     df_ed = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True, hide_index=True)
     if st.button("Guardar"): df_ed.to_csv(DB_MOVIMIENTOS, index=False)
 
+# ── DATOS Y BACKUPS ───────────────────────────
 elif "Datos" in menu:
     st.markdown('<div class="brand-header">Configuración Cartera</div>', unsafe_allow_html=True)
-    st.info("ℹ️ Edita aquí la 'Renta_Mercado' basándote en Idealista o Fotocasa para actualizar el Benchmark.")
+    st.info("ℹ️ Edita aquí 'Renta_Mercado' para que el Benchmark se calcule correctamente.")
     df_inm_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True, hide_index=True)
-    if st.button("Actualizar Cartera"): df_inm_ed.to_csv(DB_INMUEBLES, index=False)
+    if st.button("Actualizar Cartera"): 
+        df_inm_ed.to_csv(DB_INMUEBLES, index=False)
+        st.success("✓ Datos actualizados.")
