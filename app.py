@@ -192,12 +192,37 @@ elif "Auditor" in menu:
         st.write("✅ Mantenimiento preventivo al día.")
         if i < len(df_inm)-1: st.markdown("<hr style='border:0; border-top:1px solid var(--gold); margin:1.5rem 0;'>", unsafe_allow_html=True)
 
-# ── DIARIO CONTABLE ───────────────────────────
+# ── DIARIO CONTABLE (CON VALIDACIÓN Y DESPLEGABLES) ──
 elif "Diario" in menu:
     st.markdown('<div class="brand-header">Registro de Operaciones</div>', unsafe_allow_html=True)
-    df_ed = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True, hide_index=True)
-    if st.button("Guardar"): df_ed.to_csv(DB_MOVIMIENTOS, index=False)
+    
+    lista_inmuebles = df_inm["Nombre"].tolist() + ["Global"]
+    lista_categorias = ["Ingresos", "Financiero", "Tributario", "Suministros", "Seguros", "Mantenimiento", "Estructura", "Comunidad", "Otros"]
+    lista_conceptos = ["Renta Mensual", "Hipoteca (Intereses)", "Hipoteca (Capital)", "IBI", "Tasa Basura", "Comunidad Ordinaria", "Derrama", "Seguro Hogar", "Seguro Vida", "Luz", "Agua", "Reparación/Avería", "Sueldo Pedro", "Autónomos"]
+    
+    config_columnas = {
+        "Apartamento": st.column_config.SelectboxColumn("Inmueble", options=lista_inmuebles, required=True),
+        "Concepto": st.column_config.SelectboxColumn("Concepto", options=lista_conceptos, required=True),
+        "Categoría": st.column_config.SelectboxColumn("Categoría", options=lista_categorias, required=True),
+        "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Ingreso", "Gasto"], required=True),
+        "Deducible": st.column_config.SelectboxColumn("Fiscal (S/N)", options=["S", "N"], required=True),
+        "Importe": st.column_config.NumberColumn("Importe (€)", format="%.2f", min_value=0)
+    }
 
+    df_ed = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True, hide_index=True, column_config=config_columnas)
+    
+    total_ing_act = df_ed[df_ed["Tipo"] == "Ingreso"]["Importe"].sum()
+    total_gas_act = df_ed[df_ed["Tipo"] == "Gasto"]["Importe"].sum()
+    
+    met1, met2, met3 = st.columns(3)
+    met1.metric("Total Ingresos", f"{total_ing_act:,.2f} €")
+    met2.metric("Total Gastos", f"-{total_gas_act:,.2f} €")
+    met3.metric("Balance", f"{total_ing_act - total_gas_act:,.2f} €")
+    
+    if st.button("Guardar Cambios"):
+        df_ed.to_csv(DB_MOVIMIENTOS, index=False)
+        st.success("✓ Operaciones guardadas correctamente.")
+        st.rerun()
 # ── DATOS Y BACKUPS ───────────────────────────
 elif "Datos" in menu:
     st.markdown('<div class="brand-header">Configuración Cartera</div>', unsafe_allow_html=True)
