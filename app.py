@@ -38,24 +38,16 @@ html, body, [class*="css"] {{
     border-right: 1px solid #1a3a5c;
     min-width: 260px !important;
 }}
-[data-testid="stSidebar"] .stRadio > label {{ display: none; }}
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] {{ padding-top: 1rem; gap: 0.5rem; }}
-[data-testid="stSidebar"] .stRadio p {{
-    font-family: 'DM Sans', sans-serif !important;
-    font-size: 0.92rem !important;
-    font-weight: 400 !important;
-    color: #4a6f96 !important;
-    letter-spacing: 0.02em !important;
-    padding-left: 1rem;
-    border-left: 3px solid transparent;
-    transition: all 0.2s ease;
-}}
-[data-testid="stSidebar"] .stRadio label[data-checked="true"] p {{
-    color: #60B4FF !important;
-    font-weight: 500 !important;
-    border-left: 3px solid {ACCENT};
-    padding-left: 1.2rem;
-    background: rgba(96,180,255,0.06);
+
+/* OCULTAR BOTONES SIDEBAR — invisibles pero clickables */
+[data-testid="stSidebar"] .stButton button {{
+    position: absolute !important;
+    opacity: 0 !important;
+    height: 44px !important;
+    margin-top: -44px !important;
+    width: 100% !important;
+    cursor: pointer !important;
+    z-index: 999 !important;
 }}
 
 /* TIPOGRAFÍA */
@@ -82,27 +74,19 @@ html, body, [class*="css"] {{
     background: {CARD_BG}; border: 1px solid {BORDER};
     border-radius: 10px; padding: 1.2rem 1.3rem; text-align: left;
 }}
-.kpi-card.highlight {{
-    background: {ACCENT}; border-color: {ACCENT};
-}}
+.kpi-card.highlight {{ background: {ACCENT}; border-color: {ACCENT}; }}
 .kpi-label {{
     font-size: 0.62rem; letter-spacing: 0.1em;
     text-transform: uppercase; color: {TEXT_SEC}; margin-bottom: 0.4rem;
 }}
 .kpi-card.highlight .kpi-label {{ color: #B5D4F4; }}
-.kpi-value {{
-    font-family: 'DM Serif Display', serif;
-    font-size: 2rem; line-height: 1; color: {TEXT_PRI};
-}}
+.kpi-value {{ font-family: 'DM Serif Display', serif; font-size: 2rem; line-height: 1; color: {TEXT_PRI}; }}
 .kpi-card.highlight .kpi-value {{ color: #fff; }}
 .kpi-sub {{ font-size: 0.7rem; color: {TEXT_SEC}; margin-top: 0.3rem; }}
 .kpi-card.highlight .kpi-sub {{ color: #B5D4F4; }}
 
 /* ASSET CARDS */
-.asset-card {{
-    background: {CARD_BG}; border: 1px solid {BORDER};
-    border-radius: 10px; overflow: hidden;
-}}
+.asset-card {{ background: {CARD_BG}; border: 1px solid {BORDER}; border-radius: 10px; overflow: hidden; }}
 .asset-top {{ height: 4px; }}
 .asset-body {{ padding: 1rem 1.1rem; }}
 .asset-name {{ font-size: 0.82rem; font-weight: 600; color: {TEXT_PRI}; margin-bottom: 2px; }}
@@ -112,10 +96,7 @@ html, body, [class*="css"] {{
 .asset-mv {{ font-size: 0.82rem; font-weight: 500; }}
 .asset-div {{ height: 0.5px; background: {BORDER}; margin: 7px 0; }}
 .asset-neto {{ font-size: 1rem; font-weight: 600; color: {TEXT_PRI}; }}
-.pill {{
-    display: inline-block; font-size: 0.65rem;
-    padding: 2px 7px; border-radius: 20px; margin-top: 5px;
-}}
+.pill {{ display: inline-block; font-size: 0.65rem; padding: 2px 7px; border-radius: 20px; margin-top: 5px; }}
 .pill-red   {{ background: #FCEBEB; color: #A32D2D; }}
 .pill-amber {{ background: #FAEEDA; color: #854F0B; }}
 .pill-green {{ background: #EAF3DE; color: #3B6D11; }}
@@ -130,13 +111,12 @@ html, body, [class*="css"] {{
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# 2. MOTOR DE DATOS  (bug fix: force=False)
+# 2. MOTOR DE DATOS
 # ─────────────────────────────────────────────
 DB_INMUEBLES   = "nolasco_inmuebles_v10.csv"
 DB_MOVIMIENTOS = "nolasco_movimientos_v10.csv"
 
 def inicializar_bd():
-    """Solo crea los CSV si NO existen. Nunca sobreescribe datos del usuario."""
     if not os.path.exists(DB_INMUEBLES):
         pd.DataFrame([
             {"Nombre": "Casa Abarqueros",  "Inquilino": "Victor Aguiluz", "Renta": 2200.0, "Renta_Mercado": 2600.0, "Comunidad": 193.76, "Valor_Construccion": 150000.0, "Año_Reforma": 2018, "Año_Construccion": 1975, "Mobiliario": "S", "Tipo": "Casa",  "Ref_Catastral": "", "Titular": "Pedro Nolasco", "M2_Construidos": 180, "Habitaciones": 5, "CP": "18001", "Planta": 0,  "Parking": "N", "Estado": "Reformado"},
@@ -154,12 +134,11 @@ def inicializar_bd():
         ]).to_csv(DB_MOVIMIENTOS, index=False)
 
 inicializar_bd()
-
 df_inm = pd.read_csv(DB_INMUEBLES)
 df_mov = pd.read_csv(DB_MOVIMIENTOS)
 
 # ─────────────────────────────────────────────
-# 3. NAVEGACIÓN
+# 3. NAVEGACIÓN CON BOTONES
 # ─────────────────────────────────────────────
 if "menu" not in st.session_state:
     st.session_state.menu = "Torre de Control"
@@ -186,7 +165,7 @@ with st.sidebar:
         bg     = "rgba(96,180,255,0.12)" if active else "transparent"
         color  = "#FFFFFF" if active else "#A8C4E0"
         weight = "600" if active else "400"
-        border = f"3px solid #60B4FF" if active else "3px solid transparent"
+        border = "3px solid #60B4FF" if active else "3px solid transparent"
         st.markdown(f"""
         <div style='border-left:{border};background:{bg};padding:0.7rem 1.4rem;
                     margin-bottom:2px;cursor:pointer;border-radius:0 6px 6px 0;'>
@@ -215,6 +194,25 @@ def bench_pill(desv):
     if desv < -5:   return "pill-amber", "🟡"
     return "pill-green", "🟢"
 
+PRECIOS_CP = {
+    "18001": 12.5, "18002": 11.8, "18003": 10.2, "18004": 10.8,
+    "18005": 11.2, "18006": 10.0, "18007": 9.5,  "18008": 10.4,
+    "18009": 8.2,  "18010": 9.8,  "18011": 10.1, "18012": 9.6,
+    "18013": 9.0,  "18014": 9.3,  "18015": 8.8,
+}
+
+def tasacion(row):
+    precio_m2 = PRECIOS_CP.get(str(row.get("CP", "18005")), 10.0)
+    m2        = float(row.get("M2_Construidos", 80))
+    adj_mob   = 1.05 if row.get("Mobiliario") == "S" else 1.0
+    adj_park  = 1.04 if row.get("Parking")    == "S" else 1.0
+    adj_est   = {"Reformado": 1.08, "Bueno": 1.0, "Regular": 0.92}.get(row.get("Estado", "Bueno"), 1.0)
+    planta    = int(row.get("Planta", 1))
+    adj_pl    = 0.95 if planta == 0 else (1.03 if planta >= 3 else 1.0)
+    hab       = int(row.get("Habitaciones", 2))
+    adj_hab   = 1.05 if hab >= 4 else (0.97 if hab == 1 else 1.0)
+    return round(precio_m2 * m2 * adj_mob * adj_park * adj_est * adj_pl * adj_hab, 2)
+
 # ══════════════════════════════════════════════
 # TORRE DE CONTROL
 # ══════════════════════════════════════════════
@@ -223,10 +221,7 @@ if menu == "Torre de Control":
     st.markdown('<div class="brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
 
     ing_b   = df_inm["Renta"].sum()
-    # Bug fix: gastos = comunidad + movimientos de gasto (sin duplicar comunidad del diario)
-    gas_mov = df_mov[df_mov["Tipo"] == "Gasto"]["Importe"].sum()
     gas_com = df_inm["Comunidad"].sum()
-    # Solo sumamos comunidad del CSV maestro; el diario contable puede tener entradas adicionales
     gastos  = gas_com + df_mov[(df_mov["Tipo"] == "Gasto") & (df_mov["Categoría"] != "Comunidad")]["Importe"].sum()
     neto    = ing_b - gastos
     margen  = (neto / ing_b * 100) if ing_b > 0 else 0
@@ -235,33 +230,29 @@ if menu == "Torre de Control":
     c1.markdown(f'''<div class="kpi-card">
         <div class="kpi-label">Ingresos Brutos</div>
         <div class="kpi-value" style="color:{GREEN};">{ing_b:,.0f} €</div>
-        <div class="kpi-sub">Renta mensual total</div>
-    </div>''', unsafe_allow_html=True)
+        <div class="kpi-sub">Renta mensual total</div></div>''', unsafe_allow_html=True)
     c2.markdown(f'''<div class="kpi-card">
         <div class="kpi-label">Gastos Operativos</div>
         <div class="kpi-value" style="color:{RED};">−{gastos:,.0f} €</div>
-        <div class="kpi-sub">Comunidad + registrados</div>
-    </div>''', unsafe_allow_html=True)
+        <div class="kpi-sub">Comunidad + registrados</div></div>''', unsafe_allow_html=True)
     c3.markdown(f'''<div class="kpi-card highlight">
         <div class="kpi-label">Beneficio Neto</div>
         <div class="kpi-value">{neto:,.0f} €</div>
-        <div class="kpi-sub">Margen {margen:.1f}%</div>
-    </div>''', unsafe_allow_html=True)
+        <div class="kpi-sub">Margen {margen:.1f}%</div></div>''', unsafe_allow_html=True)
 
-    # ── Tarjetas por activo ──
     st.markdown('<div class="section-title">Rentabilidad por Activo</div>', unsafe_allow_html=True)
     cols = st.columns(len(df_inm))
     for i, row in df_inm.iterrows():
-        g_esp  = df_mov[(df_mov["Apartamento"] == row["Nombre"]) & (df_mov["Tipo"] == "Gasto") & (df_mov["Categoría"] != "Comunidad")]["Importe"].sum()
+        g_esp    = df_mov[(df_mov["Apartamento"] == row["Nombre"]) & (df_mov["Tipo"] == "Gasto") & (df_mov["Categoría"] != "Comunidad")]["Importe"].sum()
         gastos_u = row["Comunidad"] + g_esp
         neto_u   = row["Renta"] - gastos_u
-        desv     = (row["Renta"] - row["Renta_Mercado"]) / row["Renta_Mercado"] * 100
+        renta_mer = tasacion(row)
+        desv     = (row["Renta"] - renta_mer) / renta_mer * 100
         pill_cls, _ = bench_pill(desv)
-        color_top = COLOR_TOPS[i % len(COLOR_TOPS)]
         with cols[i]:
             st.markdown(f'''
             <div class="asset-card">
-                <div class="asset-top" style="background:{color_top};"></div>
+                <div class="asset-top" style="background:{COLOR_TOPS[i % len(COLOR_TOPS)]};"></div>
                 <div class="asset-body">
                     <div class="asset-name">{row["Nombre"]}</div>
                     <div class="asset-tenant">{row["Inquilino"]}</div>
@@ -282,17 +273,13 @@ if menu == "Torre de Control":
                 </div>
             </div>''', unsafe_allow_html=True)
 
-    # ── Paneles inferiores ──
     col_l, col_r = st.columns(2)
-
     with col_l:
         st.markdown('<div class="section-title">Composición de Rentas</div>', unsafe_allow_html=True)
         fig = go.Figure(go.Bar(
-            x=df_inm["Renta"], y=df_inm["Nombre"],
-            orientation="h",
+            x=df_inm["Renta"], y=df_inm["Nombre"], orientation="h",
             marker_color=COLOR_TOPS[:len(df_inm)],
-            text=[f"{r:,.0f} €" for r in df_inm["Renta"]],
-            textposition="outside",
+            text=[f"{r:,.0f} €" for r in df_inm["Renta"]], textposition="outside",
         ))
         fig.update_layout(
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -307,12 +294,11 @@ if menu == "Torre de Control":
         st.markdown('<div class="section-title">Lucro Cesante Anual</div>', unsafe_allow_html=True)
         total_lc = 0
         for _, row in df_inm.iterrows():
-            perdida_m = max(0, row["Renta_Mercado"] - row["Renta"])
-            perdida_a = perdida_m * 12
+            renta_mer = tasacion(row)
+            perdida_a = max(0, renta_mer - row["Renta"]) * 12
             total_lc += perdida_a
             if perdida_a > 0:
-                desv = (row["Renta"] - row["Renta_Mercado"]) / row["Renta_Mercado"] * 100
-                pill_cls, _ = bench_pill(desv)
+                desv = (row["Renta"] - renta_mer) / renta_mer * 100
                 color_val = RED if desv < -15 else AMBER
                 st.markdown(f'''
                 <div style="display:flex;justify-content:space-between;align-items:center;
@@ -339,68 +325,29 @@ elif menu == "Fichas (Benchmark)":
     f   = df_inm[df_inm["Nombre"] == sel].iloc[0]
 
     renta_act = f["Renta"]
-    renta_mer = f["Renta_Mercado"]
+    renta_mer = tasacion(f)
     desv      = (renta_act - renta_mer) / renta_mer * 100
     perdida_m = max(0, renta_mer - renta_act)
     perdida_a = perdida_m * 12
 
-    # ── Motor de tasación por CP ──
-    PRECIOS_CP = {
-        "18001": 12.5,  # Centro / Realejo
-        "18002": 11.8,  # Sagrario / San Ildefonso
-        "18003": 10.2,  # Ronda / Arabial
-        "18004": 10.8,  # Campus / Fígares
-        "18005": 11.2,  # Genil / Paseo del Salón
-        "18006": 10.0,  # Zaidín norte
-        "18007": 9.5,   # Zaidín sur
-        "18008": 10.4,  # Chana / Pajaritos
-        "18009": 8.2,   # Almanjáyar
-        "18010": 9.8,   # Norte / Cartuja
-        "18011": 10.1,  # Beiro
-        "18012": 9.6,   # Ogíjares / sur
-        "18013": 9.0,   # Albolote / norte provincia
-        "18014": 9.3,   # Este
-        "18015": 8.8,   # Peripheral
-    }
-    cp = str(f.get("CP", "18005"))
-    precio_m2_base = PRECIOS_CP.get(cp, 10.0)
-    m2 = float(f.get("M2_Construidos", 80))
-
-    # Ajustes
-    adj_mob    = 1.05 if f.get("Mobiliario") == "S" else 1.0
-    adj_park   = 1.04 if f.get("Parking")    == "S" else 1.0
-    adj_estado = {"Reformado": 1.08, "Bueno": 1.0, "Regular": 0.92}.get(f.get("Estado", "Bueno"), 1.0)
-    planta     = int(f.get("Planta", 1))
-    adj_planta = 0.95 if planta == 0 else (1.03 if planta >= 3 else 1.0)
-    hab        = int(f.get("Habitaciones", 2))
-    adj_hab    = 1.05 if hab >= 4 else (0.97 if hab == 1 else 1.0)
-
-    renta_tasada = precio_m2_base * m2 * adj_mob * adj_park * adj_estado * adj_planta * adj_hab
-    renta_mer    = round(renta_tasada, 2)
-
-    # Actualizar Renta_Mercado con la tasación calculada
-    # (se usa para el resto de cálculos de esta ficha)
-
-    # ── Gastos reales (bug fix: comunidad solo del CSV maestro, sin duplicar del diario) ──
     df_g_ficha = df_mov[
         (df_mov["Apartamento"] == sel) &
         (df_mov["Tipo"] == "Gasto") &
-        (df_mov["Categoría"] != "Comunidad")   # evita duplicado
+        (df_mov["Categoría"] != "Comunidad")
     ]
     gastos_u   = f["Comunidad"] + df_g_ficha["Importe"].sum()
-    rent_bruta = (renta_act / f["Valor_Construccion"] * 100) if f["Valor_Construccion"] > 0 else 0
+    rent_bruta = (renta_act * 12 / f["Valor_Construccion"] * 100) if f["Valor_Construccion"] > 0 else 0
     rent_neta  = ((renta_act - gastos_u) * 12 / f["Valor_Construccion"] * 100) if f["Valor_Construccion"] > 0 else 0
 
-    # ── Fila KPIs superior ──
     k1, k2, k3, k4 = st.columns(4)
     k1.markdown(f'''<div class="kpi-card">
         <div class="kpi-label">Renta Actual</div>
         <div class="kpi-value" style="color:{GREEN};">{renta_act:,.0f} €</div>
         <div class="kpi-sub">mensual</div></div>''', unsafe_allow_html=True)
     k2.markdown(f'''<div class="kpi-card">
-        <div class="kpi-label">Renta Mercado</div>
+        <div class="kpi-label">Renta Tasada</div>
         <div class="kpi-value" style="color:{TEXT_PRI};">{renta_mer:,.0f} €</div>
-        <div class="kpi-sub">estimada</div></div>''', unsafe_allow_html=True)
+        <div class="kpi-sub">motor CP + características</div></div>''', unsafe_allow_html=True)
     k3.markdown(f'''<div class="kpi-card">
         <div class="kpi-label">Rentabilidad Bruta</div>
         <div class="kpi-value" style="color:{ACCENT};">{rent_bruta:.1f}%</div>
@@ -410,26 +357,22 @@ elif menu == "Fichas (Benchmark)":
         <div class="kpi-value">{rent_neta:.1f}%</div>
         <div class="kpi-sub">anual tras gastos</div></div>''', unsafe_allow_html=True)
 
-    # ── Comparativa visual + estatus ──
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown('<div class="section-title">Comparativa Renta Actual vs Mercado</div>', unsafe_allow_html=True)
-        fig_bar = go.Figure()
-        fig_bar.add_trace(go.Bar(
-            x=["Renta Actual", "Renta Mercado"],
+        st.markdown('<div class="section-title">Renta Actual vs Tasada</div>', unsafe_allow_html=True)
+        fig_bar = go.Figure(go.Bar(
+            x=["Renta Actual", "Renta Tasada"],
             y=[renta_act, renta_mer],
             marker_color=[ACCENT, "#D0DFF0"],
             text=[f"{renta_act:,.0f} €", f"{renta_mer:,.0f} €"],
-            textposition="outside",
-            width=0.4,
+            textposition="outside", width=0.4,
         ))
         fig_bar.update_layout(
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             margin=dict(l=10, r=10, t=10, b=10), height=240,
             yaxis=dict(showgrid=False, visible=False),
             xaxis=dict(showgrid=False),
-            font=dict(family="DM Sans", size=13),
-            showlegend=False,
+            font=dict(family="DM Sans", size=13), showlegend=False,
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
@@ -450,48 +393,34 @@ elif menu == "Fichas (Benchmark)":
             </div>"""
         st.markdown(f'<div class="{clase}"><b style="font-size:1.1rem;">{icon} {msg}</b><br>Desviación: <b>{desv:.1f}%</b>{lucro_html}</div>', unsafe_allow_html=True)
 
-    # ── Simulador de subida de renta ──
     st.markdown('<div class="section-title">Simulador de Subida de Renta</div>', unsafe_allow_html=True)
-    nueva_renta = st.slider(
-        "Ajusta la renta mensual (€)",
-        min_value=int(renta_act * 0.8),
-        max_value=int(renta_mer * 1.2),
-        value=int(renta_act),
-        step=25,
-    )
-    ganancia_m = nueva_renta - renta_act
-    ganancia_a = ganancia_m * 12
-    nueva_neta = ((nueva_renta - gastos_u) * 12 / f["Valor_Construccion"] * 100) if f["Valor_Construccion"] > 0 else 0
+    nueva_renta = st.slider("Ajusta la renta mensual (€)",
+        min_value=int(renta_act * 0.8), max_value=int(renta_mer * 1.2),
+        value=int(renta_act), step=25)
+    ganancia_m  = nueva_renta - renta_act
+    ganancia_a  = ganancia_m * 12
+    nueva_neta  = ((nueva_renta - gastos_u) * 12 / f["Valor_Construccion"] * 100) if f["Valor_Construccion"] > 0 else 0
     s1, s2, s3 = st.columns(3)
-    s1.metric("Nueva Renta",         f"{nueva_renta:,.0f} €/mes", delta=f"{ganancia_m:+.0f} €")
-    s2.metric("Impacto Anual",       f"{ganancia_a:+,.0f} €/año")
-    s3.metric("Nueva Rent. Neta",    f"{nueva_neta:.1f}%", delta=f"{nueva_neta - rent_neta:+.1f}%")
+    s1.metric("Nueva Renta",      f"{nueva_renta:,.0f} €/mes", delta=f"{ganancia_m:+.0f} €")
+    s2.metric("Impacto Anual",    f"{ganancia_a:+,.0f} €/año")
+    s3.metric("Nueva Rent. Neta", f"{nueva_neta:.1f}%", delta=f"{nueva_neta - rent_neta:+.1f}%")
 
-    # ── Comparativa todos los activos ──
-    st.markdown('<div class="section-title">Comparativa de Activos — Renta vs Mercado</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Comparativa de Activos — Renta vs Tasación</div>', unsafe_allow_html=True)
+    rentas_tasadas = [tasacion(r) for _, r in df_inm.iterrows()]
     fig_comp = go.Figure()
-    fig_comp.add_trace(go.Bar(
-        name="Renta Actual", x=df_inm["Nombre"], y=df_inm["Renta"],
-        marker_color=ACCENT, text=[f"{r:,.0f}€" for r in df_inm["Renta"]],
-        textposition="outside",
-    ))
-    fig_comp.add_trace(go.Bar(
-        name="Renta Mercado", x=df_inm["Nombre"], y=df_inm["Renta_Mercado"],
-        marker_color="#D0DFF0", text=[f"{r:,.0f}€" for r in df_inm["Renta_Mercado"]],
-        textposition="outside",
-    ))
+    fig_comp.add_trace(go.Bar(name="Renta Actual", x=df_inm["Nombre"], y=df_inm["Renta"],
+        marker_color=ACCENT, text=[f"{r:,.0f}€" for r in df_inm["Renta"]], textposition="outside"))
+    fig_comp.add_trace(go.Bar(name="Renta Tasada", x=df_inm["Nombre"], y=rentas_tasadas,
+        marker_color="#D0DFF0", text=[f"{r:,.0f}€" for r in rentas_tasadas], textposition="outside"))
     fig_comp.update_layout(
-        barmode="group",
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        barmode="group", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=10, r=10, t=10, b=10), height=300,
-        yaxis=dict(showgrid=False, visible=False),
-        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=False, visible=False), xaxis=dict(showgrid=False),
         font=dict(family="DM Sans", size=12),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )
     st.plotly_chart(fig_comp, use_container_width=True)
 
-    # ── Tabla gastos (bug fix) ──
     st.markdown('<div class="section-title">Análisis de Gastos Reales</div>', unsafe_allow_html=True)
     res = pd.concat([
         pd.DataFrame([{"Concepto": "Comunidad", "Importe": f["Comunidad"], "Deducible": "S"}]),
@@ -500,38 +429,35 @@ elif menu == "Fichas (Benchmark)":
     st.dataframe(res.style.format({"Importe": "{:,.2f} €"}), hide_index=True, use_container_width=True)
 
 # ══════════════════════════════════════════════
-# AUDITORÍA IA  (lógica dinámica por Año_Reforma)
+# AUDITORÍA IA
 # ══════════════════════════════════════════════
 elif menu == "Auditoría IA":
     st.markdown('<div class="brand-header">Informe de Mantenimiento</div>', unsafe_allow_html=True)
-elif menu == "Diario Contable":
+    st.markdown('<div class="brand-sub">Alertas preventivas basadas en antigüedad de reforma</div>', unsafe_allow_html=True)
 
     año_actual = datetime.now().year
     for i, row in df_inm.reset_index().iterrows():
         antiguedad = año_actual - int(row.get("Año_Reforma", año_actual))
         st.markdown(f"### 📍 {row['Nombre']}")
-
         if antiguedad >= 8:
-            st.error(f"⚠️ Reforma hace {antiguedad} años. Revisión estructural recomendada: instalación eléctrica, fontanería y caldera.")
+            st.error(f"⚠️ Reforma hace {antiguedad} años. Revisión estructural recomendada.")
         elif antiguedad >= 5:
-            st.warning(f"🔧 Reforma hace {antiguedad} años. Revisión preventiva recomendada en los próximos 6 meses.")
+            st.warning(f"🔧 Reforma hace {antiguedad} años. Revisión preventiva en los próximos 6 meses.")
         elif antiguedad >= 3:
-            st.info(f"📋 Reforma hace {antiguedad} años. Estado óptimo. Próxima revisión sugerida en 12 meses.")
+            st.info(f"📋 Reforma hace {antiguedad} años. Próxima revisión en 12 meses.")
         else:
             st.success(f"✅ Reforma reciente ({antiguedad} años). Sin acciones necesarias.")
-
         cols_a = st.columns(3)
-        cols_a[0].metric("Año de Reforma", int(row.get("Año_Reforma", "-")))
-        cols_a[1].metric("Antigüedad",     f"{antiguedad} años")
-        cols_a[2].metric("Mobiliario",     "Sí" if row.get("Mobiliario") == "S" else "No")
-
+        cols_a[0].metric("Año Reforma",  int(row.get("Año_Reforma", "-")))
+        cols_a[1].metric("Antigüedad",   f"{antiguedad} años")
+        cols_a[2].metric("Mobiliario",   "Sí" if row.get("Mobiliario") == "S" else "No")
         if i < len(df_inm) - 1:
             st.markdown(f"<hr style='border:0;border-top:1px solid {BORDER};margin:1rem 0;'>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
 # DIARIO CONTABLE
 # ══════════════════════════════════════════════
-elif "Diario" in menu:
+elif menu == "Diario Contable":
     st.markdown('<div class="brand-header">Registro de Operaciones</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Diario contable dinámico</div>', unsafe_allow_html=True)
 
@@ -540,16 +466,16 @@ elif "Diario" in menu:
     l_con = ["Renta Mensual","Hipoteca (Intereses)","Hipoteca (Capital)","IBI","Comunidad Ordinaria","Seguro Hogar","Seguro Vida","Luz","Agua","Reparación","Sueldo Pedro"]
 
     config = {
-        "Apartamento": st.column_config.SelectboxColumn("Inmueble",   options=l_inm, required=True),
-        "Concepto":    st.column_config.SelectboxColumn("Concepto",   options=l_con, required=True),
-        "Categoría":   st.column_config.SelectboxColumn("Categoría",  options=l_cat, required=True),
-        "Tipo":        st.column_config.SelectboxColumn("Tipo",       options=["Ingreso","Gasto"], required=True),
-        "Deducible":   st.column_config.SelectboxColumn("Fiscal",     options=["S","N"], required=True),
-        "Importe":     st.column_config.NumberColumn("Importe (€)",   format="%.2f", min_value=0),
+        "Apartamento": st.column_config.SelectboxColumn("Inmueble",  options=l_inm, required=True),
+        "Concepto":    st.column_config.SelectboxColumn("Concepto",  options=l_con, required=True),
+        "Categoría":   st.column_config.SelectboxColumn("Categoría", options=l_cat, required=True),
+        "Tipo":        st.column_config.SelectboxColumn("Tipo",      options=["Ingreso","Gasto"], required=True),
+        "Deducible":   st.column_config.SelectboxColumn("Fiscal",    options=["S","N"], required=True),
+        "Importe":     st.column_config.NumberColumn("Importe (€)",  format="%.2f", min_value=0),
     }
-    df_ed  = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True, hide_index=True, column_config=config)
-    t_ing  = df_ed[df_ed["Tipo"] == "Ingreso"]["Importe"].sum()
-    t_gas  = df_ed[df_ed["Tipo"] == "Gasto"]["Importe"].sum()
+    df_ed = st.data_editor(df_mov, num_rows="dynamic", use_container_width=True, hide_index=True, column_config=config)
+    t_ing = df_ed[df_ed["Tipo"] == "Ingreso"]["Importe"].sum()
+    t_gas = df_ed[df_ed["Tipo"] == "Gasto"]["Importe"].sum()
 
     m1, m2, m3 = st.columns(3)
     m1.metric("Ingresos Registrados", f"{t_ing:,.2f} €")
@@ -558,7 +484,7 @@ elif "Diario" in menu:
 
     if st.button("💾 Guardar Cambios"):
         df_ed.to_csv(DB_MOVIMIENTOS, index=False)
-        st.success("✓ Operaciones guardadas correctamente.")
+        st.success("✓ Operaciones guardadas.")
         st.rerun()
 
 # ══════════════════════════════════════════════
@@ -567,7 +493,7 @@ elif "Diario" in menu:
 elif menu == "Datos de la Cartera":
     st.markdown('<div class="brand-header">Datos de la Cartera</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Parámetros maestros y copias de seguridad</div>', unsafe_allow_html=True)
-    st.info("ℹ️ Edita aquí los parámetros maestros. Actualiza 'Renta_Mercado' para recalcular el Benchmark.")
+    st.info("ℹ️ Edita aquí los parámetros maestros. Los campos CP, M2, Habitaciones, Estado y Parking alimentan el motor de tasación.")
 
     df_inm_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True, hide_index=True)
     if st.button("✅ Actualizar Cartera"):
@@ -578,8 +504,8 @@ elif menu == "Datos de la Cartera":
     st.markdown('<div class="section-title">Copias de Seguridad</div>', unsafe_allow_html=True)
     b1, b2 = st.columns(2)
     with b1:
-        with open(DB_INMUEBLES, "rb") as f_i:
-            st.download_button("📥 Descargar Inmuebles",   f_i, "nolasco_inmuebles.csv",   "text/csv")
+        with open(DB_INMUEBLES, "rb") as fi:
+            st.download_button("📥 Descargar Inmuebles",   fi, "nolasco_inmuebles.csv",   "text/csv")
     with b2:
-        with open(DB_MOVIMIENTOS, "rb") as f_m:
-            st.download_button("📥 Descargar Movimientos", f_m, "nolasco_movimientos.csv", "text/csv")
+        with open(DB_MOVIMIENTOS, "rb") as fm:
+            st.download_button("📥 Descargar Movimientos", fm, "nolasco_movimientos.csv", "text/csv")
