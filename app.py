@@ -54,14 +54,54 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 .section-title { font-family: 'DM Serif Display', serif; font-size: 1.5rem; color: var(--ink); border-left: 3px solid var(--gold); padding-left: 0.7rem; margin: 1.5rem 0 1rem 0; }
 .fiscal-panel { background: #F0F7F3; border: 1px solid #C3DDD0; border-radius: 6px; padding: 1.5rem; }
 
-/* CAJAS DE BENCHMARK (Fichas) */
-.status-red { background: #FDECEA; border-left: 5px solid var(--crimson); padding: 1.5rem; border-radius: 4px; }
-.status-yellow { background: #FFF9E6; border-left: 5px solid #F39C12; padding: 1.5rem; border-radius: 4px; }
-.status-green { background: #EDF7F1; border-left: 5px solid var(--emerald); padding: 1.5rem; border-radius: 4px; }
+# ── FICHAS (BENCHMARK Y LUCRO CESANTE) ────────────────────────
+elif "Fichas" in menu:
+    st.markdown('<div class="brand-header">Benchmark y Lucro Cesante</div>', unsafe_allow_html=True)
+    sel = st.selectbox("Inmueble a auditar:", df_inm["Nombre"].tolist())
+    f = df_inm[df_inm["Nombre"] == sel].iloc[0]
+    
+    renta_act = f["Renta"]
+    renta_mer = f["Renta_Mercado"]
+    desv = ((renta_act - renta_mer) / renta_mer) * 100
+    
+    # 🎯 Cálculo del Lucro Cesante (Mensual y Anualizado)
+    perdida_mensual = renta_mer - renta_act if renta_act < renta_mer else 0
+    perdida_anual = perdida_mensual * 12
+    
+    c_b1, c_b2 = st.columns(2)
+    with c_b1:
+        st.markdown('<div class="section-title">Comparativa de Renta</div>', unsafe_allow_html=True)
+        st.metric("Renta Actual", f"{renta_act:,.2f} €")
+        st.metric("Renta Mercado (Estimada)", f"{renta_mer:,.2f} €", delta=f"{desv:.1f}%")
+        
+    with c_b2:
+        st.markdown('<div class="section-title">Estatus de Mercado</div>', unsafe_allow_html=True)
+        if desv < -15: 
+            clase, msg, icon = "status-red", "Rentabilidad Crítica", "🔴"
+        elif desv < -5: 
+            clase, msg, icon = "status-yellow", "Margen de Mejora", "🟡"
+        else: 
+            clase, msg, icon = "status-green", "Activo en Mercado", "🟢"
+            
+        # 📝 Texto explicativo dinámico del Lucro Cesante
+        html_lucro = ""
+        if perdida_anual > 0:
+            html_lucro = f"""
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed rgba(0,0,0,0.2);">
+                <span style="font-size: 0.95rem; color: var(--slate);">
+                    <b>💸 Análisis de Lucro Cesante:</b><br>
+                    Mantener la renta actual genera una pérdida de oportunidad de <b>{perdida_mensual:,.2f}€ mensuales</b>.<br>
+                    En términos anualizados, estás perdiendo <b style="color: var(--crimson); font-size: 1.25rem;">{perdida_anual:,.2f}€ al año</b> de rentabilidad directa.
+                </span>
+            </div>
+            """
+            
+        st.markdown(f'<div class="{clase}"><b style="font-size:1.2rem;">{icon} {msg}</b><br><br>Desviación actual: <b>{desv:.1f}%</b>.{html_lucro}</div>', unsafe_allow_html=True)
 
-#MainMenu, footer, header { visibility: hidden; }
-</style>
-""", unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Análisis de Gastos Reales</div>', unsafe_allow_html=True)
+    df_g = df_mov[(df_mov["Apartamento"] == sel) & (df_mov["Tipo"] == "Gasto")]
+    res_gastos = pd.concat([pd.DataFrame([{"Concepto": "Comunidad", "Importe": f["Comunidad"], "Deducible": "S"}]), df_g[["Concepto", "Importe", "Deducible"]]])
+    st.dataframe(res_gastos.style.format({"Importe": "{:,.2f}€"}), hide_index=True, use_container_width=True)
 
 # ─────────────────────────────────────────────
 # 2. MOTOR DE DATOS (NÚCLEO V9.2)
