@@ -50,15 +50,15 @@ html, body, [class*="css"] {{
     z-index: 999 !important;
 }}
 
-/* BOTÓN INVISIBLE SOBRE ASSET CARD */
-div[data-testid="stVerticalBlock"] .stButton button {{
-    position: absolute !important;
-    opacity: 0 !important;
-    height: 160px !important;
-    margin-top: -160px !important;
-    width: 100% !important;
-    cursor: pointer !important;
-    z-index: 999 !important;
+/* BOTÓN VER FICHA — estilo minimalista bajo cada card */
+.stButton button[kind="secondary"] {{
+    background: transparent !important;
+    border: 1px solid {BORDER} !important;
+    color: {TEXT_SEC} !important;
+    font-size: 0.7rem !important;
+    padding: 2px 8px !important;
+    border-radius: 6px !important;
+    margin-top: 4px !important;
 }}
 
 /* TIPOGRAFÍA */
@@ -287,7 +287,7 @@ if menu == "Torre de Control":
                     <span class="pill {pill_cls}">{desv:+.1f}% mercado</span>
                 </div>
             </div>''', unsafe_allow_html=True)
-            if st.button("→", key=f"card_{i}", use_container_width=True):
+            if st.button("Ver ficha →", key=f"card_{i}"):
                 st.session_state.menu = "Fichas (Benchmark)"
                 st.session_state.ficha_sel = row["Nombre"]
                 st.rerun()
