@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # ─────────────────────────────────────────────
-# 1. ARQUITECTURA VISUAL "NOLASCO CAPITAL V9.2"
+# 1. ARQUITECTURA VISUAL "NOLASCO CAPITAL V9.3"
 # ─────────────────────────────────────────────
 st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
 
@@ -54,57 +54,17 @@ html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; background-colo
 .section-title { font-family: 'DM Serif Display', serif; font-size: 1.5rem; color: var(--ink); border-left: 3px solid var(--gold); padding-left: 0.7rem; margin: 1.5rem 0 1rem 0; }
 .fiscal-panel { background: #F0F7F3; border: 1px solid #C3DDD0; border-radius: 6px; padding: 1.5rem; }
 
-# ── FICHAS (BENCHMARK Y LUCRO CESANTE) ────────────────────────
-elif "Fichas" in menu:
-    st.markdown('<div class="brand-header">Benchmark y Lucro Cesante</div>', unsafe_allow_html=True)
-    sel = st.selectbox("Inmueble a auditar:", df_inm["Nombre"].tolist())
-    f = df_inm[df_inm["Nombre"] == sel].iloc[0]
-    
-    renta_act = f["Renta"]
-    renta_mer = f["Renta_Mercado"]
-    desv = ((renta_act - renta_mer) / renta_mer) * 100
-    
-    # 🎯 Cálculo del Lucro Cesante (Mensual y Anualizado)
-    perdida_mensual = renta_mer - renta_act if renta_act < renta_mer else 0
-    perdida_anual = perdida_mensual * 12
-    
-    c_b1, c_b2 = st.columns(2)
-    with c_b1:
-        st.markdown('<div class="section-title">Comparativa de Renta</div>', unsafe_allow_html=True)
-        st.metric("Renta Actual", f"{renta_act:,.2f} €")
-        st.metric("Renta Mercado (Estimada)", f"{renta_mer:,.2f} €", delta=f"{desv:.1f}%")
-        
-    with c_b2:
-        st.markdown('<div class="section-title">Estatus de Mercado</div>', unsafe_allow_html=True)
-        if desv < -15: 
-            clase, msg, icon = "status-red", "Rentabilidad Crítica", "🔴"
-        elif desv < -5: 
-            clase, msg, icon = "status-yellow", "Margen de Mejora", "🟡"
-        else: 
-            clase, msg, icon = "status-green", "Activo en Mercado", "🟢"
-            
-        # 📝 Texto explicativo dinámico del Lucro Cesante
-        html_lucro = ""
-        if perdida_anual > 0:
-            html_lucro = f"""
-            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed rgba(0,0,0,0.2);">
-                <span style="font-size: 0.95rem; color: var(--slate);">
-                    <b>💸 Análisis de Lucro Cesante:</b><br>
-                    Mantener la renta actual genera una pérdida de oportunidad de <b>{perdida_mensual:,.2f}€ mensuales</b>.<br>
-                    En términos anualizados, estás perdiendo <b style="color: var(--crimson); font-size: 1.25rem;">{perdida_anual:,.2f}€ al año</b> de rentabilidad directa.
-                </span>
-            </div>
-            """
-            
-        st.markdown(f'<div class="{clase}"><b style="font-size:1.2rem;">{icon} {msg}</b><br><br>Desviación actual: <b>{desv:.1f}%</b>.{html_lucro}</div>', unsafe_allow_html=True)
+/* CAJAS DE BENCHMARK (Fichas) */
+.status-red { background: #FDECEA; border-left: 5px solid var(--crimson); padding: 1.5rem; border-radius: 4px; }
+.status-yellow { background: #FFF9E6; border-left: 5px solid #F39C12; padding: 1.5rem; border-radius: 4px; }
+.status-green { background: #EDF7F1; border-left: 5px solid var(--emerald); padding: 1.5rem; border-radius: 4px; }
 
-    st.markdown('<div class="section-title">Análisis de Gastos Reales</div>', unsafe_allow_html=True)
-    df_g = df_mov[(df_mov["Apartamento"] == sel) & (df_mov["Tipo"] == "Gasto")]
-    res_gastos = pd.concat([pd.DataFrame([{"Concepto": "Comunidad", "Importe": f["Comunidad"], "Deducible": "S"}]), df_g[["Concepto", "Importe", "Deducible"]]])
-    st.dataframe(res_gastos.style.format({"Importe": "{:,.2f}€"}), hide_index=True, use_container_width=True)
+#MainMenu, footer, header { visibility: hidden; }
+</style>
+""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
-# 2. MOTOR DE DATOS (NÚCLEO V9.2)
+# 2. MOTOR DE DATOS
 # ─────────────────────────────────────────────
 DB_INMUEBLES   = "nolasco_inmuebles_v9.csv"
 DB_MOVIMIENTOS = "nolasco_movimientos_v9.csv"
@@ -180,16 +140,19 @@ if "Torre" in menu:
         fig_pie.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=80,r=80,t=30,b=30), showlegend=False, height=420)
         st.plotly_chart(fig_pie, use_container_width=True)
 
-# ── FICHAS (BENCHMARK) ────────────────────────
+# ── FICHAS (BENCHMARK Y LUCRO CESANTE) ────────
 elif "Fichas" in menu:
-    st.markdown('<div class="brand-header">Benchmark de Mercado</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-header">Benchmark y Lucro Cesante</div>', unsafe_allow_html=True)
     sel = st.selectbox("Inmueble a auditar:", df_inm["Nombre"].tolist())
     f = df_inm[df_inm["Nombre"] == sel].iloc[0]
     
     renta_act = f["Renta"]
     renta_mer = f["Renta_Mercado"]
     desv = ((renta_act - renta_mer) / renta_mer) * 100
-    perdida = renta_mer - renta_act if renta_act < renta_mer else 0
+    
+    # 🎯 Cálculo del Lucro Cesante
+    perdida_mensual = renta_mer - renta_act if renta_act < renta_mer else 0
+    perdida_anual = perdida_mensual * 12
     
     c_b1, c_b2 = st.columns(2)
     with c_b1:
@@ -199,11 +162,27 @@ elif "Fichas" in menu:
         
     with c_b2:
         st.markdown('<div class="section-title">Estatus de Mercado</div>', unsafe_allow_html=True)
-        if desv < -15: clase, msg, icon = "status-red", "Rentabilidad Crítica", "🔴"
-        elif desv < -5: clase, msg, icon = "status-yellow", "Margen de Mejora", "🟡"
-        else: clase, msg, icon = "status-green", "Activo en Mercado", "🟢"
+        if desv < -15: 
+            clase, msg, icon = "status-red", "Rentabilidad Crítica", "🔴"
+        elif desv < -5: 
+            clase, msg, icon = "status-yellow", "Margen de Mejora", "🟡"
+        else: 
+            clase, msg, icon = "status-green", "Activo en Mercado", "🟢"
             
-        st.markdown(f'<div class="{clase}"><b style="font-size:1.2rem;">{icon} {msg}</b><br><br>Desviación: <b>{desv:.1f}%</b>.<br>Ingreso mensual no percibido: <b>{perdida:,.2f} €</b>.</div>', unsafe_allow_html=True)
+        # Texto explicativo del Lucro Cesante
+        html_lucro = ""
+        if perdida_anual > 0:
+            html_lucro = f"""
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed rgba(0,0,0,0.2);">
+                <span style="font-size: 0.95rem; color: var(--slate);">
+                    <b>💸 Análisis de Lucro Cesante:</b><br>
+                    Mantener la renta actual genera una pérdida de oportunidad de <b>{perdida_mensual:,.2f}€ mensuales</b>.<br>
+                    En términos anualizados, estás perdiendo <b style="color: var(--crimson); font-size: 1.25rem;">{perdida_anual:,.2f}€ al año</b> de rentabilidad directa.
+                </span>
+            </div>
+            """
+            
+        st.markdown(f'<div class="{clase}"><b style="font-size:1.2rem;">{icon} {msg}</b><br><br>Desviación actual: <b>{desv:.1f}%</b>.{html_lucro}</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="section-title">Análisis de Gastos Reales</div>', unsafe_allow_html=True)
     df_g = df_mov[(df_mov["Apartamento"] == sel) & (df_mov["Tipo"] == "Gasto")]
@@ -218,11 +197,10 @@ elif "Auditor" in menu:
         st.write("✅ Estado óptimo. Próxima revisión sugerida en 12 meses.")
         if i < len(df_inm)-1: st.markdown("<hr style='border:0; border-top:1px solid var(--gold); margin:1.5rem 0;'>", unsafe_allow_html=True)
 
-# ── DIARIO CONTABLE (DESPLEGABLES RESTAURADOS) ──
+# ── DIARIO CONTABLE ───────────────────────────
 elif "Diario" in menu:
     st.markdown('<div class="brand-header">Registro de Operaciones</div>', unsafe_allow_html=True)
     
-    # Configuración de Desplegables
     l_inm = df_inm["Nombre"].tolist() + ["Global"]
     l_cat = ["Ingresos", "Financiero", "Tributario", "Suministros", "Seguros", "Mantenimiento", "Estructura", "Comunidad", "Otros"]
     l_con = ["Renta Mensual", "Hipoteca (Intereses)", "Hipoteca (Capital)", "IBI", "Comunidad Ordinaria", "Seguro Hogar", "Seguro Vida", "Luz", "Agua", "Reparación", "Sueldo Pedro"]
@@ -251,7 +229,7 @@ elif "Diario" in menu:
         st.success("Operaciones guardadas.")
         st.rerun()
 
-# ── DATOS Y BACKUPS (RESTAURADO TOTAL) ────────
+# ── DATOS Y BACKUPS ───────────────────────────
 elif "Datos" in menu:
     st.markdown('<div class="brand-header">Datos de la Cartera y Seguridad</div>', unsafe_allow_html=True)
     st.info("ℹ️ Edita aquí los parámetros maestros de tus activos, incluyendo la 'Renta_Mercado' para el Benchmark.")
@@ -259,16 +237,15 @@ elif "Datos" in menu:
     df_inm_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True, hide_index=True)
     if st.button("Actualizar Cartera"):
         df_inm_ed.to_csv(DB_INMUEBLES, index=False)
-        st.success("✓ Datos de la cartera actualizados.")
+        st.success("✓ Datos actualizados.")
         st.rerun()
 
-    st.markdown('<div class="section-title">Copias de Seguridad Externas</div>', unsafe_allow_html=True)
-    st.warning("Descarga estos archivos frecuentemente para mantener un respaldo físico de tu gestión.")
+    st.markdown('<div class="section-title">Copias de Seguridad</div>', unsafe_allow_html=True)
     
     b_c1, b_c2 = st.columns(2)
     with b_c1:
         with open(DB_INMUEBLES, "rb") as f_back_i:
-            st.download_button("📥 Descargar Backup Inmuebles", f_back_i, "nolasco_inmuebles.csv", "text/csv")
+            st.download_button("📥 Descargar Inmuebles", f_back_i, "nolasco_inmuebles.csv", "text/csv")
     with b_c2:
         with open(DB_MOVIMIENTOS, "rb") as f_back_m:
-            st.download_button("📥 Descargar Backup Movimientos", f_back_m, "nolasco_movimientos.csv", "text/csv")
+            st.download_button("📥 Descargar Movimientos", f_back_m, "nolasco_movimientos.csv", "text/csv")
