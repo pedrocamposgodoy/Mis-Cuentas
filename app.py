@@ -323,18 +323,63 @@ elif "Fichas" in menu:
     perdida_m = max(0, renta_mer - renta_act)
     perdida_a = perdida_m * 12
 
+    # ── Gastos reales (bug fix: comunidad solo del CSV maestro, sin duplicar del diario) ──
+    df_g_ficha = df_mov[
+        (df_mov["Apartamento"] == sel) &
+        (df_mov["Tipo"] == "Gasto") &
+        (df_mov["Categoría"] != "Comunidad")   # evita duplicado
+    ]
+    gastos_u   = f["Comunidad"] + df_g_ficha["Importe"].sum()
+    rent_bruta = (renta_act / f["Valor_Construccion"] * 100) if f["Valor_Construccion"] > 0 else 0
+    rent_neta  = ((renta_act - gastos_u) * 12 / f["Valor_Construccion"] * 100) if f["Valor_Construccion"] > 0 else 0
+
+    # ── Fila KPIs superior ──
+    k1, k2, k3, k4 = st.columns(4)
+    k1.markdown(f'''<div class="kpi-card">
+        <div class="kpi-label">Renta Actual</div>
+        <div class="kpi-value" style="color:{GREEN};">{renta_act:,.0f} €</div>
+        <div class="kpi-sub">mensual</div></div>''', unsafe_allow_html=True)
+    k2.markdown(f'''<div class="kpi-card">
+        <div class="kpi-label">Renta Mercado</div>
+        <div class="kpi-value" style="color:{TEXT_PRI};">{renta_mer:,.0f} €</div>
+        <div class="kpi-sub">estimada</div></div>''', unsafe_allow_html=True)
+    k3.markdown(f'''<div class="kpi-card">
+        <div class="kpi-label">Rentabilidad Bruta</div>
+        <div class="kpi-value" style="color:{ACCENT};">{rent_bruta:.1f}%</div>
+        <div class="kpi-sub">sobre valor construcción</div></div>''', unsafe_allow_html=True)
+    k4.markdown(f'''<div class="kpi-card highlight">
+        <div class="kpi-label">Rentabilidad Neta</div>
+        <div class="kpi-value">{rent_neta:.1f}%</div>
+        <div class="kpi-sub">anual tras gastos</div></div>''', unsafe_allow_html=True)
+
+    # ── Comparativa visual + estatus ──
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown('<div class="section-title">Comparativa de Renta</div>', unsafe_allow_html=True)
-        st.metric("Renta Actual",            f"{renta_act:,.2f} €")
-        st.metric("Renta Mercado (Estimada)", f"{renta_mer:,.2f} €", delta=f"{desv:.1f}%")
+        st.markdown('<div class="section-title">Comparativa Renta Actual vs Mercado</div>', unsafe_allow_html=True)
+        fig_bar = go.Figure()
+        fig_bar.add_trace(go.Bar(
+            x=["Renta Actual", "Renta Mercado"],
+            y=[renta_act, renta_mer],
+            marker_color=[ACCENT, "#D0DFF0"],
+            text=[f"{renta_act:,.0f} €", f"{renta_mer:,.0f} €"],
+            textposition="outside",
+            width=0.4,
+        ))
+        fig_bar.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=10, r=10, t=10, b=10), height=240,
+            yaxis=dict(showgrid=False, visible=False),
+            xaxis=dict(showgrid=False),
+            font=dict(family="DM Sans", size=13),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
 
     with c2:
         st.markdown('<div class="section-title">Estatus de Mercado</div>', unsafe_allow_html=True)
         if desv < -15:   clase, msg, icon = "status-red",    "Rentabilidad Crítica", "🔴"
         elif desv < -5:  clase, msg, icon = "status-yellow", "Margen de Mejora",     "🟡"
         else:            clase, msg, icon = "status-green",  "Activo en Mercado",    "🟢"
-
         lucro_html = ""
         if perdida_a > 0:
             lucro_html = f"""
@@ -347,11 +392,52 @@ elif "Fichas" in menu:
             </div>"""
         st.markdown(f'<div class="{clase}"><b style="font-size:1.1rem;">{icon} {msg}</b><br>Desviación: <b>{desv:.1f}%</b>{lucro_html}</div>', unsafe_allow_html=True)
 
+    # ── Simulador de subida de renta ──
+    st.markdown('<div class="section-title">Simulador de Subida de Renta</div>', unsafe_allow_html=True)
+    nueva_renta = st.slider(
+        "Ajusta la renta mensual (€)",
+        min_value=int(renta_act * 0.8),
+        max_value=int(renta_mer * 1.2),
+        value=int(renta_act),
+        step=25,
+    )
+    ganancia_m = nueva_renta - renta_act
+    ganancia_a = ganancia_m * 12
+    nueva_neta = ((nueva_renta - gastos_u) * 12 / f["Valor_Construccion"] * 100) if f["Valor_Construccion"] > 0 else 0
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Nueva Renta",         f"{nueva_renta:,.0f} €/mes", delta=f"{ganancia_m:+.0f} €")
+    s2.metric("Impacto Anual",       f"{ganancia_a:+,.0f} €/año")
+    s3.metric("Nueva Rent. Neta",    f"{nueva_neta:.1f}%", delta=f"{nueva_neta - rent_neta:+.1f}%")
+
+    # ── Comparativa todos los activos ──
+    st.markdown('<div class="section-title">Comparativa de Activos — Renta vs Mercado</div>', unsafe_allow_html=True)
+    fig_comp = go.Figure()
+    fig_comp.add_trace(go.Bar(
+        name="Renta Actual", x=df_inm["Nombre"], y=df_inm["Renta"],
+        marker_color=ACCENT, text=[f"{r:,.0f}€" for r in df_inm["Renta"]],
+        textposition="outside",
+    ))
+    fig_comp.add_trace(go.Bar(
+        name="Renta Mercado", x=df_inm["Nombre"], y=df_inm["Renta_Mercado"],
+        marker_color="#D0DFF0", text=[f"{r:,.0f}€" for r in df_inm["Renta_Mercado"]],
+        textposition="outside",
+    ))
+    fig_comp.update_layout(
+        barmode="group",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=10, b=10), height=300,
+        yaxis=dict(showgrid=False, visible=False),
+        xaxis=dict(showgrid=False),
+        font=dict(family="DM Sans", size=12),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    st.plotly_chart(fig_comp, use_container_width=True)
+
+    # ── Tabla gastos (bug fix) ──
     st.markdown('<div class="section-title">Análisis de Gastos Reales</div>', unsafe_allow_html=True)
-    df_g = df_mov[(df_mov["Apartamento"] == sel) & (df_mov["Tipo"] == "Gasto")]
-    res  = pd.concat([
+    res = pd.concat([
         pd.DataFrame([{"Concepto": "Comunidad", "Importe": f["Comunidad"], "Deducible": "S"}]),
-        df_g[["Concepto", "Importe", "Deducible"]]
+        df_g_ficha[["Concepto", "Importe", "Deducible"]]
     ])
     st.dataframe(res.style.format({"Importe": "{:,.2f} €"}), hide_index=True, use_container_width=True)
 
