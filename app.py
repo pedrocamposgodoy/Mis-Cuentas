@@ -50,6 +50,17 @@ html, body, [class*="css"] {{
     z-index: 999 !important;
 }}
 
+/* BOTÓN INVISIBLE SOBRE ASSET CARD */
+div[data-testid="stVerticalBlock"] .stButton button {{
+    position: absolute !important;
+    opacity: 0 !important;
+    height: 160px !important;
+    margin-top: -160px !important;
+    width: 100% !important;
+    cursor: pointer !important;
+    z-index: 999 !important;
+}}
+
 /* TIPOGRAFÍA */
 .brand-header {{
     font-family: 'DM Serif Display', serif;
@@ -143,6 +154,9 @@ df_mov = pd.read_csv(DB_MOVIMIENTOS)
 if "menu" not in st.session_state:
     st.session_state.menu = "Torre de Control"
 
+if "ficha_sel" not in st.session_state:
+    st.session_state.ficha_sel = None
+
 PAGES = [
     ("📊", "Torre de Control"),
     ("🏠", "Fichas (Benchmark)"),
@@ -160,6 +174,7 @@ with st.sidebar:
 </div>
 <hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.8rem 0;'>
 """, unsafe_allow_html=True)
+
     for icon, page in PAGES:
         active = st.session_state.menu == page
         bg     = "rgba(96,180,255,0.12)" if active else "transparent"
@@ -272,6 +287,10 @@ if menu == "Torre de Control":
                     <span class="pill {pill_cls}">{desv:+.1f}% mercado</span>
                 </div>
             </div>''', unsafe_allow_html=True)
+            if st.button("→", key=f"card_{i}", use_container_width=True):
+                st.session_state.menu = "Fichas (Benchmark)"
+                st.session_state.ficha_sel = row["Nombre"]
+                st.rerun()
 
     col_l, col_r = st.columns(2)
     with col_l:
@@ -321,7 +340,11 @@ elif menu == "Fichas (Benchmark)":
     st.markdown('<div class="brand-header">Benchmark y Lucro Cesante</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Análisis de mercado por activo</div>', unsafe_allow_html=True)
 
-    sel = st.selectbox("Inmueble a auditar:", df_inm["Nombre"].tolist())
+    default_idx = df_inm["Nombre"].tolist().index(st.session_state.ficha_sel) \
+        if st.session_state.ficha_sel in df_inm["Nombre"].tolist() else 0
+    sel = st.selectbox("Inmueble a auditar:", df_inm["Nombre"].tolist(), index=default_idx)
+    st.session_state.ficha_sel = sel
+
     f   = df_inm[df_inm["Nombre"] == sel].iloc[0]
 
     renta_act = f["Renta"]
@@ -486,6 +509,7 @@ elif menu == "Diario Contable":
         df_ed.to_csv(DB_MOVIMIENTOS, index=False)
         st.success("✓ Operaciones guardadas.")
         st.rerun()
+
 # ══════════════════════════════════════════════
 # SUMINISTROS — BLOQUE 3
 # ══════════════════════════════════════════════
@@ -496,7 +520,6 @@ elif menu == "Suministros":
     inmueble_sel = st.selectbox("Selecciona inmueble:", df_inm["Nombre"].tolist())
     f = df_inm[df_inm["Nombre"] == inmueble_sel].iloc[0]
     hab = int(f.get("Habitaciones", 2))
-    tipo = f.get("Tipo", "Piso")
 
     # ── AUDITORÍA DE POTENCIA ──────────────────
     st.markdown('<div class="section-title">⚡ Auditoría de Potencia Contratada</div>', unsafe_allow_html=True)
@@ -517,12 +540,10 @@ elif menu == "Suministros":
     if tiene_termo:    extra += 1.0
     if tiene_cargador: extra += 3.7
 
-    # Potencias normalizadas REE
     POTENCIAS_REE = [1.15, 2.3, 3.45, 4.6, 5.75, 6.9, 8.05, 9.2, 10.35, 11.5, 14.49, 17.25]
     pot_ideal_raw = base_kw + extra
     pot_recomendada = next((p for p in POTENCIAS_REE if p >= pot_ideal_raw), 17.25)
 
-    # Coste término de potencia (~42 €/kW/año en peaje 2.0TD)
     COSTE_KW_AÑO = 42.0
     coste_actual  = potencia_actual  * COSTE_KW_AÑO
     coste_optimo  = pot_recomendada  * COSTE_KW_AÑO
@@ -578,7 +599,7 @@ elif menu == "Suministros":
         precio_pool   = st.number_input("Precio medio pool PVPC (€/kWh)", min_value=0.02, max_value=0.40, value=0.12, step=0.01, format="%.3f",
                                          help="Precio medio del mercado mayorista. Histórico 2024 ≈ 0.08–0.14 €/kWh")
 
-    margen_comercial = 0.04  # margen típico comercializadora indexada
+    margen_comercial = 0.04
     precio_indexado  = precio_pool + margen_comercial
 
     coste_fijo_mes   = consumo_kwh * precio_fijo
@@ -603,8 +624,8 @@ elif menu == "Suministros":
     st.plotly_chart(fig_tar, use_container_width=True)
 
     r1, r2, r3 = st.columns(3)
-    r1.metric("Coste fijo/mes",     f"{coste_fijo_mes:.2f} €")
-    r2.metric("Coste indexado/mes", f"{coste_index_mes:.2f} €", delta=f"{-dif_mes:+.2f} €")
+    r1.metric("Coste fijo/mes",         f"{coste_fijo_mes:.2f} €")
+    r2.metric("Coste indexado/mes",     f"{coste_index_mes:.2f} €", delta=f"{-dif_mes:+.2f} €")
     r3.metric("Ahorro anual potencial", f"{dif_año:+.0f} €")
 
     if dif_año > 30:
@@ -618,6 +639,7 @@ elif menu == "Suministros":
         clase_rec = "status-yellow"
 
     st.markdown(f'<div class="{clase_rec}" style="margin-top:0.5rem;">{recomendacion}</div>', unsafe_allow_html=True)
+
 # ══════════════════════════════════════════════
 # DATOS DE LA CARTERA
 # ══════════════════════════════════════════════
