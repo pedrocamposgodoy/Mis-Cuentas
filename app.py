@@ -4,9 +4,6 @@ import os
 import plotly.graph_objects as go
 from datetime import datetime
 
-# ─────────────────────────────────────────────
-# 1. CONFIG Y PALETA
-# ─────────────────────────────────────────────
 st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
 
 ACCENT      = "#185FA5"
@@ -24,44 +21,35 @@ COLOR_TOPS  = ["#185FA5", "#0F6E56", "#378ADD", "#639922", "#D85A30", "#7F77DD"]
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
-
 .block-container {{ padding-top: 1.2rem !important; padding-bottom: 0 !important; }}
 html, body, [class*="css"] {{
     font-family: 'DM Sans', sans-serif;
     background-color: {MAIN_BG} !important;
     color: {TEXT_PRI};
 }}
-
-/* SIDEBAR */
 [data-testid="stSidebar"] {{
     background: {SIDEBAR_BG} !important;
     border-right: 1px solid #1a3a5c;
     min-width: 260px !important;
 }}
-
-/* OCULTAR BOTONES SIDEBAR — invisibles pero clickables */
 [data-testid="stSidebar"] .stButton button {{
-    position: absolute !important;
-    opacity: 0 !important;
-    height: 44px !important;
-    margin-top: -44px !important;
-    width: 100% !important;
-    cursor: pointer !important;
-    z-index: 999 !important;
-}}
-
-/* BOTÓN VER FICHA — estilo minimalista bajo cada card */
-.stButton button[kind="secondary"] {{
     background: transparent !important;
-    border: 1px solid {BORDER} !important;
-    color: {TEXT_SEC} !important;
-    font-size: 0.7rem !important;
-    padding: 2px 8px !important;
-    border-radius: 6px !important;
-    margin-top: 4px !important;
+    border: none !important;
+    color: #A8C4E0 !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 0.88rem !important;
+    font-weight: 400 !important;
+    text-align: left !important;
+    padding: 0.7rem 1.4rem !important;
+    border-radius: 0 6px 6px 0 !important;
+    width: 100% !important;
+    margin-bottom: 2px !important;
+    box-shadow: none !important;
 }}
-
-/* TIPOGRAFÍA */
+[data-testid="stSidebar"] .stButton button:hover {{
+    background: rgba(96,180,255,0.08) !important;
+    color: #FFFFFF !important;
+}}
 .brand-header {{
     font-family: 'DM Serif Display', serif;
     font-size: 2rem; color: {TEXT_PRI};
@@ -79,8 +67,6 @@ html, body, [class*="css"] {{
     border-left: 3px solid {ACCENT};
     padding-left: 0.7rem; margin: 1.5rem 0 1rem 0;
 }}
-
-/* KPI CARDS */
 .kpi-card {{
     background: {CARD_BG}; border: 1px solid {BORDER};
     border-radius: 10px; padding: 1.2rem 1.3rem; text-align: left;
@@ -95,8 +81,6 @@ html, body, [class*="css"] {{
 .kpi-card.highlight .kpi-value {{ color: #fff; }}
 .kpi-sub {{ font-size: 0.7rem; color: {TEXT_SEC}; margin-top: 0.3rem; }}
 .kpi-card.highlight .kpi-sub {{ color: #B5D4F4; }}
-
-/* ASSET CARDS */
 .asset-card {{ background: {CARD_BG}; border: 1px solid {BORDER}; border-radius: 10px; overflow: hidden; }}
 .asset-top {{ height: 4px; }}
 .asset-body {{ padding: 1rem 1.1rem; }}
@@ -111,19 +95,13 @@ html, body, [class*="css"] {{
 .pill-red   {{ background: #FCEBEB; color: #A32D2D; }}
 .pill-amber {{ background: #FAEEDA; color: #854F0B; }}
 .pill-green {{ background: #EAF3DE; color: #3B6D11; }}
-
-/* STATUS BOXES */
 .status-red    {{ background: #FDECEA; border-left: 5px solid {RED};   padding: 1.2rem; border-radius: 6px; }}
 .status-yellow {{ background: #FFF9E6; border-left: 5px solid #F39C12; padding: 1.2rem; border-radius: 6px; }}
 .status-green  {{ background: #EDF7F1; border-left: 5px solid {GREEN}; padding: 1.2rem; border-radius: 6px; }}
-
 #MainMenu, footer, header {{ visibility: hidden; }}
 </style>
 """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────
-# 2. MOTOR DE DATOS
-# ─────────────────────────────────────────────
 DB_INMUEBLES   = "nolasco_inmuebles_v10.csv"
 DB_MOVIMIENTOS = "nolasco_movimientos_v10.csv"
 
@@ -137,7 +115,6 @@ def inicializar_bd():
             {"Nombre": "Huerto Unidad 3",  "Inquilino": "Jose Manuel",    "Renta":  850.0, "Renta_Mercado":  800.0, "Comunidad":  74.63, "Valor_Construccion":  45000.0, "Año_Reforma": 2021, "Año_Construccion": 2005, "Mobiliario": "S", "Tipo": "Piso",  "Ref_Catastral": "", "Titular": "Pedro Nolasco", "M2_Construidos":  68, "Habitaciones": 3, "CP": "18008", "Planta": 3,  "Parking": "N", "Estado": "Bueno"},
             {"Nombre": "Huerto Unidad 4",  "Inquilino": "Pendiente",      "Renta":  600.0, "Renta_Mercado":  800.0, "Comunidad":  74.62, "Valor_Construccion":  45000.0, "Año_Reforma": 2024, "Año_Construccion": 2005, "Mobiliario": "S", "Tipo": "Piso",  "Ref_Catastral": "", "Titular": "Pedro Nolasco", "M2_Construidos":  62, "Habitaciones": 2, "CP": "18008", "Planta": 4,  "Parking": "N", "Estado": "Reformado"},
         ]).to_csv(DB_INMUEBLES, index=False)
-
     if not os.path.exists(DB_MOVIMIENTOS):
         pd.DataFrame([
             {"Fecha": "2026-04-01", "Apartamento": "Casa Abarqueros", "Concepto": "Renta Mensual", "Categoría": "Ingresos",  "Tipo": "Ingreso", "Importe": 2200.00, "Deducible": "N"},
@@ -148,12 +125,8 @@ inicializar_bd()
 df_inm = pd.read_csv(DB_INMUEBLES)
 df_mov = pd.read_csv(DB_MOVIMIENTOS)
 
-# ─────────────────────────────────────────────
-# 3. NAVEGACIÓN CON BOTONES
-# ─────────────────────────────────────────────
 if "menu" not in st.session_state:
     st.session_state.menu = "Torre de Control"
-
 if "ficha_sel" not in st.session_state:
     st.session_state.ficha_sel = None
 
@@ -167,9 +140,9 @@ PAGES = [
 ]
 
 with st.sidebar:
-    st.markdown(f"""
+    st.markdown("""
 <div style='padding:1.4rem 1.4rem 0.8rem;'>
-    <div style='font-family:"DM Serif Display",serif;font-size:1.45rem;color:#60B4FF;line-height:1.2;letter-spacing:0.01em;'>Nolasco Capital</div>
+    <div style='font-family:"DM Serif Display",serif;font-size:1.45rem;color:#60B4FF;line-height:1.2;'>Nolasco Capital</div>
     <div style='font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:#5a8aaa;margin-top:5px;'>Granada · Gestión Patrimonial</div>
 </div>
 <hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.8rem 0;'>
@@ -177,33 +150,25 @@ with st.sidebar:
 
     for icon, page in PAGES:
         active = st.session_state.menu == page
-        bg     = "rgba(96,180,255,0.12)" if active else "transparent"
-        color  = "#FFFFFF" if active else "#A8C4E0"
-        weight = "600" if active else "400"
-        border = "3px solid #60B4FF" if active else "3px solid transparent"
-        st.markdown(f"""
-        <div style='border-left:{border};background:{bg};padding:0.7rem 1.4rem;
-                    margin-bottom:2px;cursor:pointer;border-radius:0 6px 6px 0;'>
-            <span style='font-size:0.88rem;font-weight:{weight};color:{color};
-                         font-family:"DM Sans",sans-serif;letter-spacing:0.01em;'>
-                {icon} {page}
-            </span>
-        </div>""", unsafe_allow_html=True)
-        if st.button(page, key=f"nav_{page}", use_container_width=True):
-            st.session_state.menu = page
-            st.rerun()
+        if active:
+            st.markdown(f"""
+<div style='border-left:3px solid #60B4FF;background:rgba(96,180,255,0.12);
+     padding:0.7rem 1.4rem;margin-bottom:2px;border-radius:0 6px 6px 0;'>
+    <span style='font-size:0.88rem;font-weight:600;color:#FFFFFF;
+                 font-family:"DM Sans",sans-serif;'>{icon} {page}</span>
+</div>""", unsafe_allow_html=True)
+        else:
+            if st.button(f"{icon} {page}", key=f"nav_{page}", use_container_width=True):
+                st.session_state.menu = page
+                st.rerun()
 
-    n_activos = len(df_inm)
     st.markdown(f"""
-    <div style='padding:1rem 1.4rem;font-size:0.7rem;color:#3a6080;margin-top:1rem;'>
-        {n_activos} activos · {datetime.now().strftime("%b %Y")}
-    </div>""", unsafe_allow_html=True)
+<div style='padding:1rem 1.4rem;font-size:0.7rem;color:#3a6080;margin-top:1rem;'>
+    {len(df_inm)} activos · {datetime.now().strftime("%b %Y")}
+</div>""", unsafe_allow_html=True)
 
 menu = st.session_state.menu
 
-# ─────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────
 def bench_pill(desv):
     if desv < -15:  return "pill-red",   "🔴"
     if desv < -5:   return "pill-amber", "🟡"
@@ -258,11 +223,11 @@ if menu == "Torre de Control":
     st.markdown('<div class="section-title">Rentabilidad por Activo</div>', unsafe_allow_html=True)
     cols = st.columns(len(df_inm))
     for i, row in df_inm.iterrows():
-        g_esp    = df_mov[(df_mov["Apartamento"] == row["Nombre"]) & (df_mov["Tipo"] == "Gasto") & (df_mov["Categoría"] != "Comunidad")]["Importe"].sum()
-        gastos_u = row["Comunidad"] + g_esp
-        neto_u   = row["Renta"] - gastos_u
+        g_esp     = df_mov[(df_mov["Apartamento"] == row["Nombre"]) & (df_mov["Tipo"] == "Gasto") & (df_mov["Categoría"] != "Comunidad")]["Importe"].sum()
+        gastos_u  = row["Comunidad"] + g_esp
+        neto_u    = row["Renta"] - gastos_u
         renta_mer = tasacion(row)
-        desv     = (row["Renta"] - renta_mer) / renta_mer * 100
+        desv      = (row["Renta"] - renta_mer) / renta_mer * 100
         pill_cls, _ = bench_pill(desv)
         with cols[i]:
             st.markdown(f'''
@@ -344,8 +309,7 @@ elif menu == "Fichas (Benchmark)":
         if st.session_state.ficha_sel in df_inm["Nombre"].tolist() else 0
     sel = st.selectbox("Inmueble a auditar:", df_inm["Nombre"].tolist(), index=default_idx)
     st.session_state.ficha_sel = sel
-
-    f   = df_inm[df_inm["Nombre"] == sel].iloc[0]
+    f = df_inm[df_inm["Nombre"] == sel].iloc[0]
 
     renta_act = f["Renta"]
     renta_mer = tasacion(f)
@@ -420,9 +384,9 @@ elif menu == "Fichas (Benchmark)":
     nueva_renta = st.slider("Ajusta la renta mensual (€)",
         min_value=int(renta_act * 0.8), max_value=int(renta_mer * 1.2),
         value=int(renta_act), step=25)
-    ganancia_m  = nueva_renta - renta_act
-    ganancia_a  = ganancia_m * 12
-    nueva_neta  = ((nueva_renta - gastos_u) * 12 / f["Valor_Construccion"] * 100) if f["Valor_Construccion"] > 0 else 0
+    ganancia_m = nueva_renta - renta_act
+    ganancia_a = ganancia_m * 12
+    nueva_neta = ((nueva_renta - gastos_u) * 12 / f["Valor_Construccion"] * 100) if f["Valor_Construccion"] > 0 else 0
     s1, s2, s3 = st.columns(3)
     s1.metric("Nueva Renta",      f"{nueva_renta:,.0f} €/mes", delta=f"{ganancia_m:+.0f} €")
     s2.metric("Impacto Anual",    f"{ganancia_a:+,.0f} €/año")
@@ -471,9 +435,9 @@ elif menu == "Auditoría IA":
         else:
             st.success(f"✅ Reforma reciente ({antiguedad} años). Sin acciones necesarias.")
         cols_a = st.columns(3)
-        cols_a[0].metric("Año Reforma",  int(row.get("Año_Reforma", "-")))
-        cols_a[1].metric("Antigüedad",   f"{antiguedad} años")
-        cols_a[2].metric("Mobiliario",   "Sí" if row.get("Mobiliario") == "S" else "No")
+        cols_a[0].metric("Año Reforma", int(row.get("Año_Reforma", "-")))
+        cols_a[1].metric("Antigüedad",  f"{antiguedad} años")
+        cols_a[2].metric("Mobiliario",  "Sí" if row.get("Mobiliario") == "S" else "No")
         if i < len(df_inm) - 1:
             st.markdown(f"<hr style='border:0;border-top:1px solid {BORDER};margin:1rem 0;'>", unsafe_allow_html=True)
 
@@ -518,10 +482,9 @@ elif menu == "Suministros":
     st.markdown('<div class="brand-sub">Auditoría de potencia eléctrica · Comparador tarifario</div>', unsafe_allow_html=True)
 
     inmueble_sel = st.selectbox("Selecciona inmueble:", df_inm["Nombre"].tolist())
-    f = df_inm[df_inm["Nombre"] == inmueble_sel].iloc[0]
+    f   = df_inm[df_inm["Nombre"] == inmueble_sel].iloc[0]
     hab = int(f.get("Habitaciones", 2))
 
-    # ── AUDITORÍA DE POTENCIA ──────────────────
     st.markdown('<div class="section-title">⚡ Auditoría de Potencia Contratada</div>', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
@@ -532,7 +495,6 @@ elif menu == "Suministros":
         tiene_termo     = st.checkbox("¿Termo eléctrico / calefacción eléctrica?", value=False)
         tiene_cargador  = st.checkbox("¿Cargador vehículo eléctrico?", value=False)
 
-    # Cálculo potencia recomendada
     base_kw = {1: 2.3, 2: 3.3, 3: 3.3, 4: 4.4, 5: 5.5}.get(min(hab, 5), 4.4)
     extra = 0.0
     if tiene_ac:       extra += 2.0
@@ -540,14 +502,13 @@ elif menu == "Suministros":
     if tiene_termo:    extra += 1.0
     if tiene_cargador: extra += 3.7
 
-    POTENCIAS_REE = [1.15, 2.3, 3.45, 4.6, 5.75, 6.9, 8.05, 9.2, 10.35, 11.5, 14.49, 17.25]
-    pot_ideal_raw = base_kw + extra
+    POTENCIAS_REE   = [1.15, 2.3, 3.45, 4.6, 5.75, 6.9, 8.05, 9.2, 10.35, 11.5, 14.49, 17.25]
+    pot_ideal_raw   = base_kw + extra
     pot_recomendada = next((p for p in POTENCIAS_REE if p >= pot_ideal_raw), 17.25)
-
-    COSTE_KW_AÑO = 42.0
-    coste_actual  = potencia_actual  * COSTE_KW_AÑO
-    coste_optimo  = pot_recomendada  * COSTE_KW_AÑO
-    ahorro_anual  = coste_actual - coste_optimo
+    COSTE_KW_AÑO    = 42.0
+    coste_actual    = potencia_actual * COSTE_KW_AÑO
+    coste_optimo    = pot_recomendada * COSTE_KW_AÑO
+    ahorro_anual    = coste_actual - coste_optimo
 
     with col2:
         st.markdown(f"""
@@ -560,52 +521,45 @@ elif menu == "Suministros":
                 <span class="kpi-label">Coste actual/año</span>
                 <span style="font-size:0.9rem;font-weight:600;color:{RED};">{coste_actual:,.0f} €</span>
             </div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+            <div style="display:flex;justify-content:space-between;">
                 <span class="kpi-label">Coste óptimo/año</span>
                 <span style="font-size:0.9rem;font-weight:600;color:{GREEN};">{coste_optimo:,.0f} €</span>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
+        </div>""", unsafe_allow_html=True)
 
         if ahorro_anual > 5:
-            st.markdown(f"""
-            <div style="background:#EDF7F1;border-left:5px solid {GREEN};padding:1rem;border-radius:6px;margin-top:0.8rem;">
+            st.markdown(f"""<div style="background:#EDF7F1;border-left:5px solid {GREEN};padding:1rem;border-radius:6px;margin-top:0.8rem;">
                 <b>✅ Ahorro potencial: {ahorro_anual:,.0f} €/año</b><br>
                 <span style="font-size:0.82rem;">Bajando de {potencia_actual} kW → {pot_recomendada} kW</span>
             </div>""", unsafe_allow_html=True)
         elif ahorro_anual < -5:
-            st.markdown(f"""
-            <div style="background:#FDECEA;border-left:5px solid {RED};padding:1rem;border-radius:6px;margin-top:0.8rem;">
+            st.markdown(f"""<div style="background:#FDECEA;border-left:5px solid {RED};padding:1rem;border-radius:6px;margin-top:0.8rem;">
                 <b>⚠️ Potencia insuficiente</b><br>
                 <span style="font-size:0.82rem;">Recomendable subir a {pot_recomendada} kW para evitar cortes</span>
             </div>""", unsafe_allow_html=True)
         else:
-            st.markdown(f"""
-            <div style="background:#EDF7F1;border-left:5px solid {GREEN};padding:1rem;border-radius:6px;margin-top:0.8rem;">
+            st.markdown(f"""<div style="background:#EDF7F1;border-left:5px solid {GREEN};padding:1rem;border-radius:6px;margin-top:0.8rem;">
                 <b>✅ Potencia correctamente ajustada</b><br>
                 <span style="font-size:0.82rem;">Tu contrato actual de {potencia_actual} kW es óptimo</span>
             </div>""", unsafe_allow_html=True)
 
-    # ── COMPARADOR TARIFARIO ──────────────────
     st.markdown('<div class="section-title">📊 Comparador Tarifa Fija vs Indexada</div>', unsafe_allow_html=True)
     st.caption("Introduce el consumo mensual estimado para comparar ambas modalidades")
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        consumo_kwh   = st.number_input("Consumo mensual estimado (kWh)", min_value=50, max_value=2000, value=200, step=10)
+        consumo_kwh = st.number_input("Consumo mensual estimado (kWh)", min_value=50, max_value=2000, value=200, step=10)
     with c2:
-        precio_fijo   = st.number_input("Precio tarifa fija (€/kWh)", min_value=0.05, max_value=0.50, value=0.18, step=0.01, format="%.3f")
+        precio_fijo = st.number_input("Precio tarifa fija (€/kWh)", min_value=0.05, max_value=0.50, value=0.18, step=0.01, format="%.3f")
     with c3:
-        precio_pool   = st.number_input("Precio medio pool PVPC (€/kWh)", min_value=0.02, max_value=0.40, value=0.12, step=0.01, format="%.3f",
-                                         help="Precio medio del mercado mayorista. Histórico 2024 ≈ 0.08–0.14 €/kWh")
+        precio_pool = st.number_input("Precio medio pool PVPC (€/kWh)", min_value=0.02, max_value=0.40, value=0.12, step=0.01, format="%.3f",
+                                       help="Histórico 2024 ≈ 0.08–0.14 €/kWh")
 
-    margen_comercial = 0.04
-    precio_indexado  = precio_pool + margen_comercial
-
-    coste_fijo_mes   = consumo_kwh * precio_fijo
-    coste_index_mes  = consumo_kwh * precio_indexado
-    dif_mes          = coste_fijo_mes - coste_index_mes
-    dif_año          = dif_mes * 12
+    precio_indexado = precio_pool + 0.04
+    coste_fijo_mes  = consumo_kwh * precio_fijo
+    coste_index_mes = consumo_kwh * precio_indexado
+    dif_mes         = coste_fijo_mes - coste_index_mes
+    dif_año         = dif_mes * 12
 
     fig_tar = go.Figure(go.Bar(
         x=["Tarifa Fija", "Tarifa Indexada"],
@@ -617,8 +571,7 @@ elif menu == "Suministros":
     fig_tar.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=10, r=10, t=20, b=10), height=260,
-        yaxis=dict(showgrid=False, visible=False),
-        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=False, visible=False), xaxis=dict(showgrid=False),
         font=dict(family="DM Sans", size=13), showlegend=False,
     )
     st.plotly_chart(fig_tar, use_container_width=True)
@@ -629,16 +582,12 @@ elif menu == "Suministros":
     r3.metric("Ahorro anual potencial", f"{dif_año:+.0f} €")
 
     if dif_año > 30:
-        recomendacion = f"✅ La tarifa <b>indexada</b> es más barata con el precio de pool actual. Ahorro estimado: <b>{dif_año:.0f} €/año</b>."
-        clase_rec = "status-green"
+        rec, cls = f"✅ La tarifa <b>indexada</b> es más barata. Ahorro estimado: <b>{dif_año:.0f} €/año</b>.", "status-green"
     elif dif_año < -30:
-        recomendacion = f"⚠️ Con el precio de pool actual, la tarifa <b>fija</b> resulta más económica. El mercado indexado está caro."
-        clase_rec = "status-yellow"
+        rec, cls = "⚠️ Con el precio de pool actual, la tarifa <b>fija</b> resulta más económica.", "status-yellow"
     else:
-        recomendacion = "➡️ Diferencia marginal. La elección depende de tu tolerancia al riesgo de variación de precio."
-        clase_rec = "status-yellow"
-
-    st.markdown(f'<div class="{clase_rec}" style="margin-top:0.5rem;">{recomendacion}</div>', unsafe_allow_html=True)
+        rec, cls = "➡️ Diferencia marginal. Depende de tu tolerancia al riesgo.", "status-yellow"
+    st.markdown(f'<div class="{cls}" style="margin-top:0.5rem;">{rec}</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
 # DATOS DE LA CARTERA
