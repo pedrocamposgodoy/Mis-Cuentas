@@ -148,6 +148,7 @@ PAGES = [
     ("🏠", "Fichas (Benchmark)"),
     ("🤖", "Auditoría IA"),
     ("📝", "Diario Contable"),
+    ("⚡", "Suministros"),
     ("📂", "Datos de la Cartera"),
 ]
 
@@ -486,7 +487,138 @@ elif menu == "Diario Contable":
         df_ed.to_csv(DB_MOVIMIENTOS, index=False)
         st.success("✓ Operaciones guardadas.")
         st.rerun()
+# ══════════════════════════════════════════════
+# SUMINISTROS — BLOQUE 3
+# ══════════════════════════════════════════════
+elif menu == "Suministros":
+    st.markdown('<div class="brand-header">Optimización de Suministros</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-sub">Auditoría de potencia eléctrica · Comparador tarifario</div>', unsafe_allow_html=True)
 
+    inmueble_sel = st.selectbox("Selecciona inmueble:", df_inm["Nombre"].tolist())
+    f = df_inm[df_inm["Nombre"] == inmueble_sel].iloc[0]
+    hab = int(f.get("Habitaciones", 2))
+    tipo = f.get("Tipo", "Piso")
+
+    # ── AUDITORÍA DE POTENCIA ──────────────────
+    st.markdown('<div class="section-title">⚡ Auditoría de Potencia Contratada</div>', unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        potencia_actual = st.number_input("Potencia contratada actualmente (kW)", min_value=1.0, max_value=30.0, value=4.4, step=0.1)
+        tiene_ac        = st.checkbox("¿Aire acondicionado?", value=True)
+        tiene_vitro     = st.checkbox("¿Vitrocerámica/inducción?", value=True)
+        tiene_termo     = st.checkbox("¿Termo eléctrico / calefacción eléctrica?", value=False)
+        tiene_cargador  = st.checkbox("¿Cargador vehículo eléctrico?", value=False)
+
+    # Cálculo potencia recomendada
+    base_kw = {1: 2.3, 2: 3.3, 3: 3.3, 4: 4.4, 5: 5.5}.get(min(hab, 5), 4.4)
+    extra = 0.0
+    if tiene_ac:       extra += 2.0
+    if tiene_vitro:    extra += 1.5
+    if tiene_termo:    extra += 1.0
+    if tiene_cargador: extra += 3.7
+
+    # Potencias normalizadas REE
+    POTENCIAS_REE = [1.15, 2.3, 3.45, 4.6, 5.75, 6.9, 8.05, 9.2, 10.35, 11.5, 14.49, 17.25]
+    pot_ideal_raw = base_kw + extra
+    pot_recomendada = next((p for p in POTENCIAS_REE if p >= pot_ideal_raw), 17.25)
+
+    # Coste término de potencia (~42 €/kW/año en peaje 2.0TD)
+    COSTE_KW_AÑO = 42.0
+    coste_actual  = potencia_actual  * COSTE_KW_AÑO
+    coste_optimo  = pot_recomendada  * COSTE_KW_AÑO
+    ahorro_anual  = coste_actual - coste_optimo
+
+    with col2:
+        st.markdown(f"""
+        <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;padding:1.4rem;">
+            <div class="kpi-label">Potencia recomendada</div>
+            <div style="font-family:'DM Serif Display',serif;font-size:2.2rem;color:{ACCENT};">{pot_recomendada} kW</div>
+            <div class="kpi-sub">Basado en {hab} hab. + equipos seleccionados</div>
+            <hr style="border:0;border-top:1px solid {BORDER};margin:0.8rem 0;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <span class="kpi-label">Coste actual/año</span>
+                <span style="font-size:0.9rem;font-weight:600;color:{RED};">{coste_actual:,.0f} €</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <span class="kpi-label">Coste óptimo/año</span>
+                <span style="font-size:0.9rem;font-weight:600;color:{GREEN};">{coste_optimo:,.0f} €</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        if ahorro_anual > 5:
+            st.markdown(f"""
+            <div style="background:#EDF7F1;border-left:5px solid {GREEN};padding:1rem;border-radius:6px;margin-top:0.8rem;">
+                <b>✅ Ahorro potencial: {ahorro_anual:,.0f} €/año</b><br>
+                <span style="font-size:0.82rem;">Bajando de {potencia_actual} kW → {pot_recomendada} kW</span>
+            </div>""", unsafe_allow_html=True)
+        elif ahorro_anual < -5:
+            st.markdown(f"""
+            <div style="background:#FDECEA;border-left:5px solid {RED};padding:1rem;border-radius:6px;margin-top:0.8rem;">
+                <b>⚠️ Potencia insuficiente</b><br>
+                <span style="font-size:0.82rem;">Recomendable subir a {pot_recomendada} kW para evitar cortes</span>
+            </div>""", unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div style="background:#EDF7F1;border-left:5px solid {GREEN};padding:1rem;border-radius:6px;margin-top:0.8rem;">
+                <b>✅ Potencia correctamente ajustada</b><br>
+                <span style="font-size:0.82rem;">Tu contrato actual de {potencia_actual} kW es óptimo</span>
+            </div>""", unsafe_allow_html=True)
+
+    # ── COMPARADOR TARIFARIO ──────────────────
+    st.markdown('<div class="section-title">📊 Comparador Tarifa Fija vs Indexada</div>', unsafe_allow_html=True)
+    st.caption("Introduce el consumo mensual estimado para comparar ambas modalidades")
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        consumo_kwh   = st.number_input("Consumo mensual estimado (kWh)", min_value=50, max_value=2000, value=200, step=10)
+    with c2:
+        precio_fijo   = st.number_input("Precio tarifa fija (€/kWh)", min_value=0.05, max_value=0.50, value=0.18, step=0.01, format="%.3f")
+    with c3:
+        precio_pool   = st.number_input("Precio medio pool PVPC (€/kWh)", min_value=0.02, max_value=0.40, value=0.12, step=0.01, format="%.3f",
+                                         help="Precio medio del mercado mayorista. Histórico 2024 ≈ 0.08–0.14 €/kWh")
+
+    margen_comercial = 0.04  # margen típico comercializadora indexada
+    precio_indexado  = precio_pool + margen_comercial
+
+    coste_fijo_mes   = consumo_kwh * precio_fijo
+    coste_index_mes  = consumo_kwh * precio_indexado
+    dif_mes          = coste_fijo_mes - coste_index_mes
+    dif_año          = dif_mes * 12
+
+    fig_tar = go.Figure(go.Bar(
+        x=["Tarifa Fija", "Tarifa Indexada"],
+        y=[coste_fijo_mes, coste_index_mes],
+        marker_color=[ACCENT, "#639922"],
+        text=[f"{coste_fijo_mes:.2f} €/mes", f"{coste_index_mes:.2f} €/mes"],
+        textposition="outside", width=0.35,
+    ))
+    fig_tar.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=20, b=10), height=260,
+        yaxis=dict(showgrid=False, visible=False),
+        xaxis=dict(showgrid=False),
+        font=dict(family="DM Sans", size=13), showlegend=False,
+    )
+    st.plotly_chart(fig_tar, use_container_width=True)
+
+    r1, r2, r3 = st.columns(3)
+    r1.metric("Coste fijo/mes",     f"{coste_fijo_mes:.2f} €")
+    r2.metric("Coste indexado/mes", f"{coste_index_mes:.2f} €", delta=f"{-dif_mes:+.2f} €")
+    r3.metric("Ahorro anual potencial", f"{dif_año:+.0f} €")
+
+    if dif_año > 30:
+        recomendacion = f"✅ La tarifa <b>indexada</b> es más barata con el precio de pool actual. Ahorro estimado: <b>{dif_año:.0f} €/año</b>."
+        clase_rec = "status-green"
+    elif dif_año < -30:
+        recomendacion = f"⚠️ Con el precio de pool actual, la tarifa <b>fija</b> resulta más económica. El mercado indexado está caro."
+        clase_rec = "status-yellow"
+    else:
+        recomendacion = "➡️ Diferencia marginal. La elección depende de tu tolerancia al riesgo de variación de precio."
+        clase_rec = "status-yellow"
+
+    st.markdown(f'<div class="{clase_rec}" style="margin-top:0.5rem;">{recomendacion}</div>', unsafe_allow_html=True)
 # ══════════════════════════════════════════════
 # DATOS DE LA CARTERA
 # ══════════════════════════════════════════════
