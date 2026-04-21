@@ -45,10 +45,12 @@ html, body, [class*="css"] {{
     width: 100% !important;
     margin-bottom: 2px !important;
     box-shadow: none !important;
+    border-left: 3px solid transparent !important;
 }}
 [data-testid="stSidebar"] .stButton button:hover {{
     background: rgba(96,180,255,0.08) !important;
     color: #FFFFFF !important;
+    border-left: 3px solid rgba(96,180,255,0.4) !important;
 }}
 .brand-header {{
     font-family: 'DM Serif Display', serif;
@@ -83,7 +85,7 @@ html, body, [class*="css"] {{
 .kpi-card.highlight .kpi-sub {{ color: #B5D4F4; }}
 .asset-card {{ background: {CARD_BG}; border: 1px solid {BORDER}; border-radius: 10px; overflow: hidden; }}
 .asset-top {{ height: 4px; }}
-.asset-body {{ padding: 1rem 1.1rem; }}
+.asset-body {{ padding: 1rem 1.1rem 0.6rem 1.1rem; }}
 .asset-name {{ font-size: 0.82rem; font-weight: 600; color: {TEXT_PRI}; margin-bottom: 2px; }}
 .asset-tenant {{ font-size: 0.72rem; color: {TEXT_SEC}; margin-bottom: 0.8rem; }}
 .asset-row {{ display: flex; justify-content: space-between; margin-bottom: 4px; }}
@@ -145,7 +147,7 @@ with st.sidebar:
     <div style='font-family:"DM Serif Display",serif;font-size:1.45rem;color:#60B4FF;line-height:1.2;'>Nolasco Capital</div>
     <div style='font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:#5a8aaa;margin-top:5px;'>Granada · Gestión Patrimonial</div>
 </div>
-<hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.8rem 0;'>
+<hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.4rem 0;'>
 """, unsafe_allow_html=True)
 
     for icon, page in PAGES:
@@ -155,10 +157,10 @@ with st.sidebar:
 <div style='border-left:3px solid #60B4FF;background:rgba(96,180,255,0.12);
      padding:0.7rem 1.4rem;margin-bottom:2px;border-radius:0 6px 6px 0;'>
     <span style='font-size:0.88rem;font-weight:600;color:#FFFFFF;
-                 font-family:"DM Sans",sans-serif;'>{icon} {page}</span>
+                 font-family:"DM Sans",sans-serif;letter-spacing:0.01em;'>{icon}&nbsp;&nbsp;{page}</span>
 </div>""", unsafe_allow_html=True)
         else:
-            if st.button(f"{icon} {page}", key=f"nav_{page}", use_container_width=True):
+            if st.button(f"{icon}  {page}", key=f"nav_{page}", use_container_width=True):
                 st.session_state.menu = page
                 st.rerun()
 
@@ -250,9 +252,13 @@ if menu == "Torre de Control":
                         <span class="asset-neto">{neto_u:,.0f}€</span>
                     </div>
                     <span class="pill {pill_cls}">{desv:+.1f}% mercado</span>
+                    <div style="margin-top:8px;border-top:1px solid {BORDER};padding-top:6px;">
+                        <a href="#" onclick="return false;" style="font-size:0.7rem;color:{ACCENT};text-decoration:none;font-weight:500;">Ver ficha →</a>
+                    </div>
                 </div>
             </div>''', unsafe_allow_html=True)
-            if st.button("Ver ficha →", key=f"card_{i}"):
+            # Botón real funcional oculto visualmente bajo el "Ver ficha" HTML
+            if st.button(f"▶ {row['Nombre']}", key=f"card_{i}"):
                 st.session_state.menu = "Fichas (Benchmark)"
                 st.session_state.ficha_sel = row["Nombre"]
                 st.rerun()
@@ -475,7 +481,7 @@ elif menu == "Diario Contable":
         st.rerun()
 
 # ══════════════════════════════════════════════
-# SUMINISTROS — BLOQUE 3
+# SUMINISTROS
 # ══════════════════════════════════════════════
 elif menu == "Suministros":
     st.markdown('<div class="brand-header">Optimización de Suministros</div>', unsafe_allow_html=True)
@@ -486,7 +492,6 @@ elif menu == "Suministros":
     hab = int(f.get("Habitaciones", 2))
 
     st.markdown('<div class="section-title">⚡ Auditoría de Potencia Contratada</div>', unsafe_allow_html=True)
-
     col1, col2 = st.columns(2)
     with col1:
         potencia_actual = st.number_input("Potencia contratada actualmente (kW)", min_value=1.0, max_value=30.0, value=4.4, step=0.1)
@@ -526,7 +531,6 @@ elif menu == "Suministros":
                 <span style="font-size:0.9rem;font-weight:600;color:{GREEN};">{coste_optimo:,.0f} €</span>
             </div>
         </div>""", unsafe_allow_html=True)
-
         if ahorro_anual > 5:
             st.markdown(f"""<div style="background:#EDF7F1;border-left:5px solid {GREEN};padding:1rem;border-radius:6px;margin-top:0.8rem;">
                 <b>✅ Ahorro potencial: {ahorro_anual:,.0f} €/año</b><br>
