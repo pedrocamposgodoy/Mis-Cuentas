@@ -139,12 +139,12 @@ def inicializar_bd():
     """Solo crea los CSV si NO existen. Nunca sobreescribe datos del usuario."""
     if not os.path.exists(DB_INMUEBLES):
         pd.DataFrame([
-            {"Nombre": "Casa Abarqueros",  "Inquilino": "Victor Aguiluz", "Renta": 2200.0, "Renta_Mercado": 2600.0, "Comunidad": 193.76, "Valor_Construccion": 150000.0, "Año_Reforma": 2018, "Mobiliario": "S", "Tipo": "Casa", "Ref_Catastral": "", "Titular": "Pedro Nolasco"},
-            {"Nombre": "Paseo del Salón",  "Inquilino": "Pool Despachos", "Renta": 1591.8, "Renta_Mercado": 1650.0, "Comunidad": 175.18, "Valor_Construccion": 120000.0, "Año_Reforma": 2020, "Mobiliario": "N", "Tipo": "Piso", "Ref_Catastral": "", "Titular": "Pedro Nolasco"},
-            {"Nombre": "Huerto Unidad 1",  "Inquilino": "Alain",          "Renta":  660.0, "Renta_Mercado":  800.0, "Comunidad":  74.62, "Valor_Construccion":  45000.0, "Año_Reforma": 2022, "Mobiliario": "S", "Tipo": "Piso", "Ref_Catastral": "", "Titular": "Pedro Nolasco"},
-            {"Nombre": "Huerto Unidad 2",  "Inquilino": "Laura/Alex",     "Renta":  800.0, "Renta_Mercado":  800.0, "Comunidad":  74.62, "Valor_Construccion":  45000.0, "Año_Reforma": 2022, "Mobiliario": "S", "Tipo": "Piso", "Ref_Catastral": "", "Titular": "Pedro Nolasco"},
-            {"Nombre": "Huerto Unidad 3",  "Inquilino": "Jose Manuel",    "Renta":  850.0, "Renta_Mercado":  800.0, "Comunidad":  74.63, "Valor_Construccion":  45000.0, "Año_Reforma": 2021, "Mobiliario": "S", "Tipo": "Piso", "Ref_Catastral": "", "Titular": "Pedro Nolasco"},
-            {"Nombre": "Huerto Unidad 4",  "Inquilino": "Pendiente",      "Renta":  600.0, "Renta_Mercado":  800.0, "Comunidad":  74.62, "Valor_Construccion":  45000.0, "Año_Reforma": 2024, "Mobiliario": "S", "Tipo": "Piso", "Ref_Catastral": "", "Titular": "Pedro Nolasco"},
+            {"Nombre": "Casa Abarqueros",  "Inquilino": "Victor Aguiluz", "Renta": 2200.0, "Renta_Mercado": 2600.0, "Comunidad": 193.76, "Valor_Construccion": 150000.0, "Año_Reforma": 2018, "Año_Construccion": 1975, "Mobiliario": "S", "Tipo": "Casa",  "Ref_Catastral": "", "Titular": "Pedro Nolasco", "M2_Construidos": 180, "Habitaciones": 5, "CP": "18001", "Planta": 0,  "Parking": "N", "Estado": "Reformado"},
+            {"Nombre": "Paseo del Salón",  "Inquilino": "Pool Despachos", "Renta": 1591.8, "Renta_Mercado": 1650.0, "Comunidad": 175.18, "Valor_Construccion": 120000.0, "Año_Reforma": 2020, "Año_Construccion": 1990, "Mobiliario": "N", "Tipo": "Piso",  "Ref_Catastral": "", "Titular": "Pedro Nolasco", "M2_Construidos": 130, "Habitaciones": 4, "CP": "18005", "Planta": 3,  "Parking": "S", "Estado": "Bueno"},
+            {"Nombre": "Huerto Unidad 1",  "Inquilino": "Alain",          "Renta":  660.0, "Renta_Mercado":  800.0, "Comunidad":  74.62, "Valor_Construccion":  45000.0, "Año_Reforma": 2022, "Año_Construccion": 2005, "Mobiliario": "S", "Tipo": "Piso",  "Ref_Catastral": "", "Titular": "Pedro Nolasco", "M2_Construidos":  60, "Habitaciones": 2, "CP": "18008", "Planta": 1,  "Parking": "N", "Estado": "Reformado"},
+            {"Nombre": "Huerto Unidad 2",  "Inquilino": "Laura/Alex",     "Renta":  800.0, "Renta_Mercado":  800.0, "Comunidad":  74.62, "Valor_Construccion":  45000.0, "Año_Reforma": 2022, "Año_Construccion": 2005, "Mobiliario": "S", "Tipo": "Piso",  "Ref_Catastral": "", "Titular": "Pedro Nolasco", "M2_Construidos":  65, "Habitaciones": 2, "CP": "18008", "Planta": 2,  "Parking": "N", "Estado": "Reformado"},
+            {"Nombre": "Huerto Unidad 3",  "Inquilino": "Jose Manuel",    "Renta":  850.0, "Renta_Mercado":  800.0, "Comunidad":  74.63, "Valor_Construccion":  45000.0, "Año_Reforma": 2021, "Año_Construccion": 2005, "Mobiliario": "S", "Tipo": "Piso",  "Ref_Catastral": "", "Titular": "Pedro Nolasco", "M2_Construidos":  68, "Habitaciones": 3, "CP": "18008", "Planta": 3,  "Parking": "N", "Estado": "Bueno"},
+            {"Nombre": "Huerto Unidad 4",  "Inquilino": "Pendiente",      "Renta":  600.0, "Renta_Mercado":  800.0, "Comunidad":  74.62, "Valor_Construccion":  45000.0, "Año_Reforma": 2024, "Año_Construccion": 2005, "Mobiliario": "S", "Tipo": "Piso",  "Ref_Catastral": "", "Titular": "Pedro Nolasco", "M2_Construidos":  62, "Habitaciones": 2, "CP": "18008", "Planta": 4,  "Parking": "N", "Estado": "Reformado"},
         ]).to_csv(DB_INMUEBLES, index=False)
 
     if not os.path.exists(DB_MOVIMIENTOS):
@@ -322,6 +322,43 @@ elif "Fichas" in menu:
     desv      = (renta_act - renta_mer) / renta_mer * 100
     perdida_m = max(0, renta_mer - renta_act)
     perdida_a = perdida_m * 12
+
+    # ── Motor de tasación por CP ──
+    PRECIOS_CP = {
+        "18001": 12.5,  # Centro / Realejo
+        "18002": 11.8,  # Sagrario / San Ildefonso
+        "18003": 10.2,  # Ronda / Arabial
+        "18004": 10.8,  # Campus / Fígares
+        "18005": 11.2,  # Genil / Paseo del Salón
+        "18006": 10.0,  # Zaidín norte
+        "18007": 9.5,   # Zaidín sur
+        "18008": 10.4,  # Chana / Pajaritos
+        "18009": 8.2,   # Almanjáyar
+        "18010": 9.8,   # Norte / Cartuja
+        "18011": 10.1,  # Beiro
+        "18012": 9.6,   # Ogíjares / sur
+        "18013": 9.0,   # Albolote / norte provincia
+        "18014": 9.3,   # Este
+        "18015": 8.8,   # Peripheral
+    }
+    cp = str(f.get("CP", "18005"))
+    precio_m2_base = PRECIOS_CP.get(cp, 10.0)
+    m2 = float(f.get("M2_Construidos", 80))
+
+    # Ajustes
+    adj_mob    = 1.05 if f.get("Mobiliario") == "S" else 1.0
+    adj_park   = 1.04 if f.get("Parking")    == "S" else 1.0
+    adj_estado = {"Reformado": 1.08, "Bueno": 1.0, "Regular": 0.92}.get(f.get("Estado", "Bueno"), 1.0)
+    planta     = int(f.get("Planta", 1))
+    adj_planta = 0.95 if planta == 0 else (1.03 if planta >= 3 else 1.0)
+    hab        = int(f.get("Habitaciones", 2))
+    adj_hab    = 1.05 if hab >= 4 else (0.97 if hab == 1 else 1.0)
+
+    renta_tasada = precio_m2_base * m2 * adj_mob * adj_park * adj_estado * adj_planta * adj_hab
+    renta_mer    = round(renta_tasada, 2)
+
+    # Actualizar Renta_Mercado con la tasación calculada
+    # (se usa para el resto de cálculos de esta ficha)
 
     # ── Gastos reales (bug fix: comunidad solo del CSV maestro, sin duplicar del diario) ──
     df_g_ficha = df_mov[
