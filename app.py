@@ -153,13 +153,13 @@ PAGES = [
 ]
 
 with st.sidebar:
-    st.markdown(f"""
-    <div style='padding:1.6rem 1.4rem 1rem;'>
-        <div style='font-family:"DM Serif Display",serif;font-size:2rem;color:#60B4FF;line-height:1;'>NOLASCO</div>
-        <div style='font-size:0.65rem;letter-spacing:0.15em;text-transform:uppercase;color:#5a8aaa;margin-top:4px;'>Capital · Granada</div>
-    </div>
-    <hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.8rem 0;'>
-    """, unsafe_allow_html=True)
+   st.markdown(f"""
+<div style='padding:1.4rem 1.4rem 0.8rem;'>
+    <div style='font-family:"DM Serif Display",serif;font-size:1.45rem;color:#60B4FF;line-height:1.2;letter-spacing:0.01em;'>Nolasco Capital</div>
+    <div style='font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:#5a8aaa;margin-top:5px;'>Granada · Gestión Patrimonial</div>
+</div>
+<hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.8rem 0;'>
+""", unsafe_allow_html=True)
 
     for icon, page in PAGES:
         active = st.session_state.menu == page
