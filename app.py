@@ -161,30 +161,51 @@ df_mov = pd.read_csv(DB_MOVIMIENTOS)
 # ─────────────────────────────────────────────
 # 3. NAVEGACIÓN
 # ─────────────────────────────────────────────
+if "menu" not in st.session_state:
+    st.session_state.menu = "Torre de Control"
+
+PAGES = [
+    ("📊", "Torre de Control"),
+    ("🏠", "Fichas (Benchmark)"),
+    ("🤖", "Auditoría IA"),
+    ("📝", "Diario Contable"),
+    ("📂", "Datos de la Cartera"),
+]
+
 with st.sidebar:
     st.markdown(f"""
-    <div style='padding: 1.6rem 1.4rem 1rem;'>
-        <div style='font-family:"DM Serif Display",serif; font-size:2rem; color:#60B4FF; line-height:1;'>NOLASCO</div>
-        <div style='font-size:0.65rem; letter-spacing:0.15em; text-transform:uppercase; color:#2d5070; margin-top:4px;'>Capital · Granada</div>
+    <div style='padding:1.6rem 1.4rem 1rem;'>
+        <div style='font-family:"DM Serif Display",serif;font-size:2rem;color:#60B4FF;line-height:1;'>NOLASCO</div>
+        <div style='font-size:0.65rem;letter-spacing:0.15em;text-transform:uppercase;color:#5a8aaa;margin-top:4px;'>Capital · Granada</div>
     </div>
-    <hr style='border:0; border-top:1px solid #1a3a5c; margin:0 0 0.5rem 0;'>
+    <hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.8rem 0;'>
     """, unsafe_allow_html=True)
 
-    menu = st.radio("", [
-        "📊 Torre de Control",
-        "🏠 Fichas (Benchmark)",
-        "🤖 Auditoría IA",
-        "📝 Diario Contable",
-        "📂 Datos de la Cartera",
-    ], label_visibility="collapsed")
+    for icon, page in PAGES:
+        active = st.session_state.menu == page
+        bg     = "rgba(96,180,255,0.12)" if active else "transparent"
+        color  = "#FFFFFF" if active else "#A8C4E0"
+        weight = "600" if active else "400"
+        border = f"3px solid #60B4FF" if active else "3px solid transparent"
+        st.markdown(f"""
+        <div style='border-left:{border};background:{bg};padding:0.7rem 1.4rem;
+                    margin-bottom:2px;cursor:pointer;border-radius:0 6px 6px 0;'>
+            <span style='font-size:0.88rem;font-weight:{weight};color:{color};
+                         font-family:"DM Sans",sans-serif;letter-spacing:0.01em;'>
+                {icon} {page}
+            </span>
+        </div>""", unsafe_allow_html=True)
+        if st.button(page, key=f"nav_{page}", use_container_width=True):
+            st.session_state.menu = page
+            st.rerun()
 
     n_activos = len(df_inm)
     st.markdown(f"""
-    <div style='position:absolute; bottom:1rem; left:1.4rem;
-                font-size:0.7rem; color:#2d5070;'>
+    <div style='padding:1rem 1.4rem;font-size:0.7rem;color:#3a6080;margin-top:1rem;'>
         {n_activos} activos · {datetime.now().strftime("%b %Y")}
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
+
+menu = st.session_state.menu
 
 # ─────────────────────────────────────────────
 # HELPERS
@@ -197,7 +218,7 @@ def bench_pill(desv):
 # ══════════════════════════════════════════════
 # TORRE DE CONTROL
 # ══════════════════════════════════════════════
-if "Torre" in menu:
+if menu == "Torre de Control":
     st.markdown('<div class="brand-header">Torre de Control</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
 
@@ -310,7 +331,7 @@ if "Torre" in menu:
 # ══════════════════════════════════════════════
 # FICHAS BENCHMARK
 # ══════════════════════════════════════════════
-elif "Fichas" in menu:
+elif menu == "Fichas (Benchmark)":
     st.markdown('<div class="brand-header">Benchmark y Lucro Cesante</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Análisis de mercado por activo</div>', unsafe_allow_html=True)
 
@@ -481,9 +502,9 @@ elif "Fichas" in menu:
 # ══════════════════════════════════════════════
 # AUDITORÍA IA  (lógica dinámica por Año_Reforma)
 # ══════════════════════════════════════════════
-elif "Auditor" in menu:
+elif menu == "Auditoría IA":
     st.markdown('<div class="brand-header">Informe de Mantenimiento</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Alertas preventivas basadas en antigüedad de reforma</div>', unsafe_allow_html=True)
+elif menu == "Diario Contable":
 
     año_actual = datetime.now().year
     for i, row in df_inm.reset_index().iterrows():
@@ -543,7 +564,7 @@ elif "Diario" in menu:
 # ══════════════════════════════════════════════
 # DATOS DE LA CARTERA
 # ══════════════════════════════════════════════
-elif "Datos" in menu:
+elif menu == "Datos de la Cartera":
     st.markdown('<div class="brand-header">Datos de la Cartera</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Parámetros maestros y copias de seguridad</div>', unsafe_allow_html=True)
     st.info("ℹ️ Edita aquí los parámetros maestros. Actualiza 'Renta_Mercado' para recalcular el Benchmark.")
