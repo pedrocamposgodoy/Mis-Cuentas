@@ -1362,9 +1362,12 @@ elif menu == "Datos de la Cartera":
                         st.session_state.inmueble_editando = idx
                         st.rerun()
                     if st.button("🗑️", key=f"del_{idx}", use_container_width=True):
-                        if len(df_inm) > 1:
-                            df_inm_new = df_inm.drop(idx).reset_index(drop=True)
-                            df_inm_new.to_csv(DB_INM, index=False)
+                        # Cargar CSV actual
+                        df_actual = pd.read_csv(DB_INM)
+                        if len(df_actual) > 1:
+                            # Eliminar y guardar
+                            df_nuevo = df_actual.drop(idx).reset_index(drop=True)
+                            df_nuevo.to_csv(DB_INM, index=False)
                             st.success(f"✓ {row['Nombre']} eliminado")
                             st.rerun()
                         else:
@@ -1496,14 +1499,21 @@ elif menu == "Datos de la Cartera":
                     }
 
                     if es_nuevo:
-                        df_inm_new = pd.concat([df_inm, pd.DataFrame([nuevo_inmueble])], ignore_index=True)
-                        df_inm_new.to_csv(DB_INM, index=False)
+                        # Cargar el CSV actual
+                        df_actual = pd.read_csv(DB_INM)
+                        # Añadir el nuevo inmueble
+                        df_nuevo = pd.concat([df_actual, pd.DataFrame([nuevo_inmueble])], ignore_index=True)
+                        # Guardar
+                        df_nuevo.to_csv(DB_INM, index=False)
                         st.success(f"✅ Inmueble '{nombre}' añadido correctamente")
                     else:
-                        # Actualizar usando iterrows para evitar problemas de tipos
+                        # Cargar el CSV actual
+                        df_actual = pd.read_csv(DB_INM)
+                        # Actualizar fila por fila
                         for col, val in nuevo_inmueble.items():
-                            df_inm.at[st.session_state.inmueble_editando, col] = val
-                        df_inm.to_csv(DB_INM, index=False)
+                            df_actual.at[st.session_state.inmueble_editando, col] = val
+                        # Guardar
+                        df_actual.to_csv(DB_INM, index=False)
                         st.success(f"✅ Inmueble '{nombre}' actualizado correctamente")
                     
                     st.session_state.modo_cartera = "lista"
