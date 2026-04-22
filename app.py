@@ -1,3 +1,7 @@
+# ================================================================
+# SECCIÓN 0 — IMPORTS Y LIBRERÍAS
+# No tocar esto salvo que añadas una librería nueva
+# ================================================================
 import streamlit as st
 import pandas as pd
 import os
@@ -15,6 +19,10 @@ try:
 except ImportError:
     REPORTLAB_OK = False
 
+# ================================================================
+# SECCIÓN 1 — CONFIGURACIÓN Y COLORES
+# Aquí cambias colores, título, icono de la app
+# ================================================================
 st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
 
 ACCENT     = "#185FA5"
@@ -29,6 +37,10 @@ RED        = "#C0392B"
 AMBER      = "#854F0B"
 COLOR_TOPS = ["#185FA5","#0F6E56","#378ADD","#639922","#D85A30","#7F77DD"]
 
+# ================================================================
+# SECCIÓN 2 — ESTILOS CSS (diseño visual)
+# No tocar salvo que quieras cambiar colores o tipografía
+# ================================================================
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -84,6 +96,11 @@ div[data-testid="column"] .stButton>button:hover{{background:#F0F6FF!important;}
 </style>
 """, unsafe_allow_html=True)
 
+# ================================================================
+# SECCIÓN 3 — ARCHIVOS DE DATOS (CSVs)
+# Aquí se definen los nombres de los ficheros de datos
+# Si cambias el nombre del CSV, cámbialo también aquí
+# ================================================================
 DB_INM = "nolasco_inmuebles_v12.csv"
 DB_MOV = "nolasco_movimientos_v12.csv"
 
@@ -106,6 +123,11 @@ DEFAULTS_FISCAL = {
     "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
 }
 
+# ================================================================
+# SECCIÓN 4 — INICIALIZACIÓN DE DATOS
+# Crea los CSV si no existen con datos de ejemplo
+# Para cambiar los inmuebles de ejemplo, edita los "rows" de aquí
+# ================================================================
 def inicializar_bd():
     if not os.path.exists(DB_INM):
         rows = [
@@ -137,6 +159,12 @@ inicializar_bd()
 df_inm = pd.read_csv(DB_INM)
 df_mov = pd.read_csv(DB_MOV)
 
+# ================================================================
+# SECCIÓN 5 — DATOS DE HIPOTECAS
+# Para añadir/cambiar hipotecas, edita los "rows" de aquí
+# Campos: Inmueble, Principal, Tasa_Inicial, Plazo_Años,
+#         Fecha_Inicio, Es_Variable, Indice_Variable, Margen, Saldo_Actual
+# ================================================================
 DB_HIP = "nolasco_hipotecas_v14.csv"
 def inicializar_hipotecas():
     if not os.path.exists(DB_HIP):
@@ -155,6 +183,11 @@ df_hip = pd.read_csv(DB_HIP)
 if "menu" not in st.session_state:      st.session_state.menu = "Torre de Control"
 if "ficha_sel" not in st.session_state:  st.session_state.ficha_sel = None
 
+# ================================================================
+# SECCIÓN 6 — MENÚ DE NAVEGACIÓN
+# Para añadir una pantalla nueva: agrega ("🔑", "Nombre") aquí
+# El orden aquí es el orden que aparece en el menú lateral
+# ================================================================
 PAGES = [
     ("📊","Torre de Control"),
     ("🏠","Fichas (Benchmark)"),
@@ -185,7 +218,11 @@ with st.sidebar:
 
 menu = st.session_state.menu
 
-# ─── HELPERS ─────────────────────────────────
+# ================================================================
+# SECCIÓN 7 — FUNCIONES AUXILIARES (helpers)
+# Funciones pequeñas que usa toda la app
+# bench_pill, tasacion, alerta_vencimiento, etc.
+# ================================================================
 def bench_pill(desv):
     if desv < -15: return "pill-red","🔴"
     if desv < -5:  return "pill-amber","🟡"
@@ -252,6 +289,11 @@ def parsear_ingresos(texto, df_inm_local):
             registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":estado})
     return registros
 
+# ================================================================
+# SECCIÓN 8 — FUNCIONES FISCALES (Modelo 100 IRPF)
+# calcular_dias_arrendado: días que estuvo alquilado en el año fiscal
+# calcular_modelo_100: calcula las 16 casillas del IRPF
+# ================================================================
 def calcular_dias_arrendado(row, año_fiscal=None):
     try:
         inicio = datetime.strptime(str(row.get("Fecha_Inicio_Contrato","")), "%Y-%m-%d").date()
@@ -309,6 +351,12 @@ def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
         "0152": round(rendimiento_final, 2), "reduccion_pct": int(reduccion_pct * 100)
     }
 
+# ================================================================
+# SECCIÓN 9 — FUNCIONES BLOQUE 5 (Macrofinanzas)
+# calcular_amortizacion: simulador de hipoteca
+# stress_test_euribor: impacto subida de tipos
+# analisis_sensibilidad_renta: rentabilidad según variación de renta
+# ================================================================
 def calcular_amortizacion(principal, tasa_anual, plazo_años, modo="cuota_fija"):
     tasa_mensual = tasa_anual / 100 / 12
     num_cuotas = plazo_años * 12
@@ -391,6 +439,11 @@ def analisis_sensibilidad_renta(renta_actual, gastos_anuales, valor_construccion
         })
     return pd.DataFrame(escenarios)
 
+# ================================================================
+# SECCIÓN 10 — GENERADOR DE PDF (Modelo 100)
+# Genera el PDF de 2 páginas para el asesor fiscal
+# No tocar salvo que quieras cambiar el diseño del PDF
+# ================================================================
 def generar_pdf_modelo100(inmueble_data, modelo):
     if not REPORTLAB_OK:
         return None
@@ -616,9 +669,10 @@ def generar_pdf_modelo100(inmueble_data, modelo):
     buffer.seek(0)
     return buffer
 
-# ══════════════════════════════════════════════
-# TORRE DE CONTROL
-# ══════════════════════════════════════════════
+# ================================================================
+# PANTALLA 1 — TORRE DE CONTROL
+# KPIs generales, rentabilidad por activo, lucro cesante, alertas
+# ================================================================
 if menu == "Torre de Control":
     st.markdown('<div class="brand-header">Torre de Control</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
@@ -669,9 +723,10 @@ if menu == "Torre de Control":
             cls = "status-red" if tipo in ("vencido","urgente") else "status-yellow"
             st.markdown(f'<div class="{cls}" style="margin-bottom:6px;"><b>{nombre}</b> — {msg}</div>', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════
-# FICHAS BENCHMARK
-# ══════════════════════════════════════════════
+# ================================================================
+# PANTALLA 2 — FICHAS BENCHMARK
+# Análisis de mercado, motor de tasación, simulador de renta
+# ================================================================
 elif menu == "Fichas (Benchmark)":
     st.markdown('<div class="brand-header">Benchmark y Análisis Fiscal</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Análisis de mercado · Comparativa fiscal por modalidad</div>', unsafe_allow_html=True)
@@ -764,9 +819,10 @@ elif menu == "Fichas (Benchmark)":
     res = pd.concat([pd.DataFrame([{"Concepto":"Comunidad","Importe":f["Comunidad"],"Deducible":"S"}]),df_gf[["Concepto","Importe","Deducible"]]])
     st.dataframe(res.style.format({"Importe":"{:,.2f} €"}),hide_index=True,use_container_width=True)
 
-# ══════════════════════════════════════════════
-# AUDITORÍA IA
-# ══════════════════════════════════════════════
+# ================================================================
+# PANTALLA 3 — AUDITORÍA IA DE MANTENIMIENTO
+# Presupuestos urgente/medio/largo por inmueble
+# ================================================================
 elif menu == "Auditoría IA":
     st.markdown('<div class="brand-header">Auditoría de Mantenimiento</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Planificación de reformas · Costos e impacto por plazo</div>', unsafe_allow_html=True)
@@ -824,9 +880,10 @@ elif menu == "Auditoría IA":
         if tipo_v in ("vencido", "urgente", "aviso") and ant >= 3:
             st.markdown(f'<div class="status-yellow" style="margin-top:0.8rem;"><b>🎯 Oportunidad de Negociación:</b><br>El contrato {msg_v.lower()}. Momento óptimo para renegociar.</div>', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════
-# DIARIO CONTABLE
-# ══════════════════════════════════════════════
+# ================================================================
+# PANTALLA 4 — DIARIO CONTABLE
+# Registro de ingresos y gastos, parseo inteligente de texto
+# ================================================================
 elif menu == "Diario Contable":
     st.markdown('<div class="brand-header">Diario Contable</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Registro de operaciones · Ingresos · Gastos</div>', unsafe_allow_html=True)
@@ -904,9 +961,10 @@ elif menu == "Diario Contable":
                 guardar_movimientos(nuevo)
                 st.success(f"✅ Gasto de {importe_g:.2f} € guardado en {inmueble_g}"); st.rerun()
 
-# ══════════════════════════════════════════════
-# SUMINISTROS
-# ══════════════════════════════════════════════
+# ================================================================
+# PANTALLA 5 — SUMINISTROS
+# Auditoría de potencia eléctrica, comparador de tarifas
+# ================================================================
 elif menu == "Suministros":
     st.markdown('<div class="brand-header">Optimización de Suministros</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Auditoría de potencia eléctrica · Comparador tarifario</div>', unsafe_allow_html=True)
@@ -953,9 +1011,10 @@ elif menu == "Suministros":
     else: rec,cls_t="➡️ Diferencia marginal. Depende de tu tolerancia al riesgo.","status-yellow"
     st.markdown(f'<div class="{cls_t}" style="margin-top:0.5rem;">{rec}</div>', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════
-# FISCALIDAD — MODELO 100
-# ══════════════════════════════════════════════
+# ================================================================
+# PANTALLA 6 — FISCALIDAD (MODELO 100 IRPF)
+# Pre-relleno automático de casillas, generador de PDF
+# ================================================================
 elif menu == "Fiscalidad":
     st.markdown('<div class="brand-header">Escudo Fiscal — Modelo 100</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Pre-relleno IRPF · Rendimientos de capital inmobiliario</div>', unsafe_allow_html=True)
@@ -1025,9 +1084,10 @@ elif menu == "Fiscalidad":
     cochera_txt = "Consolidada en arrendamiento principal" if f_fiscal.get("Cochera_Vinculada")=="S" else "Tributa independiente"
     st.markdown(f"""<div class="status-yellow"><b>⚠️ Antes de confirmar:</b><br>• Este pre-relleno es orientativo. Verifica con tu asesor fiscal.<br>• Cochera vinculada: {f_fiscal.get('Cochera_Vinculada','N')} — {cochera_txt}<br>• Modalidad: {f_fiscal.get('Tipo_Arrendamiento','Larga Duración')} — Reducción aplicable: {modelo['reduccion_pct']}%<br>• Los datos provienen de: Fichas de inmuebles + Diario Contable</div>""", unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════
-# MACROFINANZAS
-# ══════════════════════════════════════════════
+# ================================================================
+# PANTALLA 7 — MACROFINANZAS (BLOQUE 5)
+# Simulador amortización, stress test Euríbor, sensibilidad renta
+# ================================================================
 elif menu == "Macrofinanzas":
     st.markdown('<div class="brand-header">Macrofinanzas</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Simulador hipoteca · Stress test Euríbor · Análisis sensibilidad</div>', unsafe_allow_html=True)
@@ -1166,9 +1226,10 @@ elif menu == "Macrofinanzas":
                 font=dict(family="DM Sans", size=12))
             st.plotly_chart(fig_sens, use_container_width=True)
 
-# ══════════════════════════════════════════════
-# DATOS DE LA CARTERA
-# ══════════════════════════════════════════════
+# ================================================================
+# PANTALLA 8 — DATOS DE LA CARTERA
+# Editor maestro de inmuebles y copias de seguridad
+# ================================================================
 elif menu == "Datos de la Cartera":
     st.markdown('<div class="brand-header">Datos de la Cartera</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Parámetros maestros y copias de seguridad</div>', unsafe_allow_html=True)
