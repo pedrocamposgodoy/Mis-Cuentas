@@ -1385,24 +1385,37 @@ elif menu == "Datos de la Cartera":
         else:
             datos = df_inm.iloc[st.session_state.inmueble_editando].to_dict()
 
+        # Helper para convertir valores a float de forma segura
+        def safe_float(val, default=0.0):
+            try:
+                return float(val) if val not in [None, "", "nan", "NaN"] else default
+            except (ValueError, TypeError):
+                return default
+
+        def safe_int(val, default=0):
+            try:
+                return int(val) if val not in [None, "", "nan", "NaN"] else default
+            except (ValueError, TypeError):
+                return default
+
         with st.form("form_inmueble"):
             st.markdown("### 📋 Datos Básicos")
             col1, col2 = st.columns(2)
             with col1:
                 nombre = st.text_input("Nombre del Inmueble *", value=datos.get("Nombre", ""), placeholder="Ej: Casa Abarqueros")
                 inquilino = st.text_input("Inquilino", value=datos.get("Inquilino", ""), placeholder="Nombre del inquilino")
-                renta = st.number_input("Renta Mensual (€) *", value=float(datos.get("Renta", 0)), min_value=0.0, step=50.0)
+                renta = st.number_input("Renta Mensual (€) *", value=safe_float(datos.get("Renta", 0)), min_value=0.0, step=50.0)
             with col2:
-                renta_mercado = st.number_input("Renta de Mercado (€)", value=float(datos.get("Renta_Mercado", 0)), min_value=0.0, step=50.0)
-                comunidad = st.number_input("Comunidad Mensual (€)", value=float(datos.get("Comunidad", 0)), min_value=0.0, step=10.0)
-                valor_construccion = st.number_input("Valor Construcción (€) *", value=float(datos.get("Valor_Construccion", 0)), min_value=0.0, step=1000.0)
+                renta_mercado = st.number_input("Renta de Mercado (€)", value=safe_float(datos.get("Renta_Mercado", 0)), min_value=0.0, step=50.0)
+                comunidad = st.number_input("Comunidad Mensual (€)", value=safe_float(datos.get("Comunidad", 0)), min_value=0.0, step=10.0)
+                valor_construccion = st.number_input("Valor Construcción (€) *", value=safe_float(datos.get("Valor_Construccion", 0)), min_value=0.0, step=1000.0)
 
             st.markdown("### 🏠 Características")
             col3, col4, col5 = st.columns(3)
             with col3:
-                m2 = st.number_input("M² Construidos *", value=float(datos.get("M2_Construidos", 80)), min_value=10.0, step=5.0)
-                habitaciones = st.number_input("Habitaciones *", value=int(datos.get("Habitaciones", 2)), min_value=1, max_value=10)
-                planta = st.number_input("Planta", value=int(datos.get("Planta", 1)), min_value=0, max_value=20)
+                m2 = st.number_input("M² Construidos *", value=safe_float(datos.get("M2_Construidos", 80)), min_value=10.0, step=5.0)
+                habitaciones = st.number_input("Habitaciones *", value=safe_int(datos.get("Habitaciones", 2)), min_value=1, max_value=10)
+                planta = st.number_input("Planta", value=safe_int(datos.get("Planta", 1)), min_value=0, max_value=20)
             with col4:
                 cp = st.text_input("Código Postal *", value=str(datos.get("CP", "18005")), max_chars=5)
                 tipo = st.selectbox("Tipo", ["Piso", "Casa", "Estudio", "Local"], index=["Piso", "Casa", "Estudio", "Local"].index(datos.get("Tipo", "Piso")))
@@ -1410,14 +1423,14 @@ elif menu == "Datos de la Cartera":
             with col5:
                 mobiliario = st.selectbox("Mobiliario", ["S", "N"], index=0 if datos.get("Mobiliario") == "S" else 1)
                 parking = st.selectbox("Parking", ["S", "N"], index=0 if datos.get("Parking") == "S" else 1)
-                año_construccion = st.number_input("Año Construcción", value=int(datos.get("Año_Construccion", 2000)), min_value=1900, max_value=2030)
+                año_construccion = st.number_input("Año Construcción", value=safe_int(datos.get("Año_Construccion", 2000)), min_value=1900, max_value=2030)
 
             st.markdown("### 📝 Información Adicional")
             col6, col7 = st.columns(2)
             with col6:
                 ref_catastral = st.text_input("Ref. Catastral", value=datos.get("Ref_Catastral", ""), placeholder="00XX00000")
                 titular = st.text_input("Titular", value=datos.get("Titular", ""), placeholder="Nombre del propietario")
-                año_reforma = st.number_input("Año Última Reforma", value=int(datos.get("Año_Reforma", 2020)), min_value=1900, max_value=2030)
+                año_reforma = st.number_input("Año Última Reforma", value=safe_int(datos.get("Año_Reforma", 2020)), min_value=1900, max_value=2030)
             with col7:
                 tipo_arrendamiento = st.selectbox("Tipo Arrendamiento", ["Larga Duración", "Temporada", "Vacacional"], 
                     index=["Larga Duración", "Temporada", "Vacacional"].index(datos.get("Tipo_Arrendamiento", "Larga Duración")))
@@ -1428,13 +1441,13 @@ elif menu == "Datos de la Cartera":
             col8, col9, col10 = st.columns(3)
             with col8:
                 nif_inquilino = st.text_input("NIF Inquilino", value=datos.get("NIF_Inquilino", ""), placeholder="12345678A")
-                ibi_anual = st.number_input("IBI Anual (€)", value=float(datos.get("IBI_Anual", 0)), min_value=0.0, step=10.0)
+                ibi_anual = st.number_input("IBI Anual (€)", value=safe_float(datos.get("IBI_Anual", 0)), min_value=0.0, step=10.0)
             with col9:
-                seguro_anual = st.number_input("Seguro Anual (€)", value=float(datos.get("Seguro_Anual", 0)), min_value=0.0, step=10.0)
-                intereses_hipoteca = st.number_input("Intereses Hipoteca (€)", value=float(datos.get("Intereses_Hipoteca", 0)), min_value=0.0, step=100.0)
+                seguro_anual = st.number_input("Seguro Anual (€)", value=safe_float(datos.get("Seguro_Anual", 0)), min_value=0.0, step=10.0)
+                intereses_hipoteca = st.number_input("Intereses Hipoteca (€)", value=safe_float(datos.get("Intereses_Hipoteca", 0)), min_value=0.0, step=100.0)
             with col10:
-                gastos_juridicos = st.number_input("Gastos Jurídicos (€)", value=float(datos.get("Gastos_Juridicos", 0)), min_value=0.0, step=10.0)
-                retenciones_irpf = st.number_input("Retenciones IRPF (€)", value=float(datos.get("Retenciones_IRPF", 0)), min_value=0.0, step=10.0)
+                gastos_juridicos = st.number_input("Gastos Jurídicos (€)", value=safe_float(datos.get("Gastos_Juridicos", 0)), min_value=0.0, step=10.0)
+                retenciones_irpf = st.number_input("Retenciones IRPF (€)", value=safe_float(datos.get("Retenciones_IRPF", 0)), min_value=0.0, step=10.0)
 
             st.markdown("### 📅 Contrato")
             col11, col12 = st.columns(2)
@@ -1445,11 +1458,11 @@ elif menu == "Datos de la Cartera":
 
             col_otros1, col_otros2 = st.columns(2)
             with col_otros1:
-                gastos_formalizacion = st.number_input("Gastos Formalización (€)", value=float(datos.get("Gastos_Formalizacion", 0)), min_value=0.0, step=10.0)
+                gastos_formalizacion = st.number_input("Gastos Formalización (€)", value=safe_float(datos.get("Gastos_Formalizacion", 0)), min_value=0.0, step=10.0)
             with col_otros2:
-                gastos_pend_años_ant = st.number_input("Gastos Pend. Años Ant. (€)", value=float(datos.get("Gastos_Pendientes_Años_Ant", 0)), min_value=0.0, step=10.0)
+                gastos_pend_años_ant = st.number_input("Gastos Pend. Años Ant. (€)", value=safe_float(datos.get("Gastos_Pendientes_Años_Ant", 0)), min_value=0.0, step=10.0)
 
-            servicios_suministros = st.number_input("Servicios y Suministros (€)", value=float(datos.get("Servicios_Suministros", 0)), min_value=0.0, step=10.0)
+            servicios_suministros = st.number_input("Servicios y Suministros (€)", value=safe_float(datos.get("Servicios_Suministros", 0)), min_value=0.0, step=10.0)
 
             st.markdown("---")
             col_submit, col_cancel = st.columns(2)
