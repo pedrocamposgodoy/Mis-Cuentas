@@ -265,28 +265,45 @@ def guardar_movimientos(nuevos):
     df_final.to_csv(DB_MOV, index=False)
 
 def parsear_ingresos(texto, df_inm_local):
-    rentas   = dict(zip(df_inm_local["Nombre"], df_inm_local["Renta"]))
-    nombres  = df_inm_local["Nombre"].tolist()
-    texto_l  = texto.lower()
+    rentas  = dict(zip(df_inm_local["Nombre"], df_inm_local["Renta"]))
+    nombres = df_inm_local["Nombre"].tolist()
+    texto_l = texto.lower()
     registros = []
     hoy = datetime.now().strftime("%Y-%m-%d")
     mes = datetime.now().strftime("%B %Y")
-    no_pagaron = [n for n in nombres if any(p in texto_l for p in [n.lower(), n.split()[0].lower(), n.split()[-1].lower()]) and ("menos" in texto_l or "excepto" in texto_l or "no" in texto_l or "pendiente" in texto_l or "falta" in texto_l)]
-    if "todos" in texto_l and no_pagaron:
-        for n in nombres:
-            estado = "Pendiente" if n in no_pagaron else "Cobrado"
-            registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":estado})
-    elif "todos" in texto_l:
+
+    # Detectar qué inmuebles se mencionan en el texto
+    def mencionado(nombre):
+        partes = [nombre.lower()] + [p.lower() for p in nombre.split()]
+        return any(p in texto_l for p in partes if len(p) > 2)
+
+    mencionados = [n for n in nombres if mencionado(n)]
+
+    # Palabras que indican que NO pagó
+    palabras_negativas = ["no ", "pendiente", "falta", "sin pagar", "no ha", "no pagó", "no pago", "excepto", "menos"]
+    es_negativo = any(p in texto_l for p in palabras_negativas)
+
+    # CASO 1: "todos han pagado" → todos Cobrado
+    if "todos" in texto_l and not es_negativo and not mencionados:
         for n in nombres:
             registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":"Cobrado"})
-    else:
-        mencionados = [n for n in nombres if any(p in texto_l for p in [n.lower(), n.split()[0].lower(), n.split()[-1].lower()])]
+
+    # CASO 2: "todos menos X" / "todos excepto X" → todos Cobrado menos el mencionado
+    elif "todos" in texto_l and mencionados:
         for n in nombres:
-            if n in mencionados:
-                estado = "Pendiente" if any(p in texto_l for p in ["no","pendiente","falta","sin"]) else "Cobrado"
-            else:
-                estado = "Cobrado"
+            estado = "Pendiente" if n in mencionados else "Cobrado"
             registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":estado})
+
+    # CASO 3: "solo pagó X" / "ha pagado X" / "X ha pagado" → SOLO ese inmueble
+    elif mencionados and not es_negativo:
+        for n in mencionados:
+            registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":"Cobrado"})
+
+    # CASO 4: "X no ha pagado" / "falta X" → SOLO ese inmueble como Pendiente
+    elif mencionados and es_negativo:
+        for n in mencionados:
+            registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":"Pendiente"})
+
     return registros
 
 # ================================================================
@@ -911,30 +928,80 @@ elif menu == "Diario Contable":
             df_ed.to_csv(DB_MOV,index=False); st.success("✓ Operaciones guardadas."); st.rerun()
     with tab2:
         st.markdown("### 📥 Registrar Ingresos del Mes")
-        st.caption('Ejemplo: "Todos han pagado menos Abarqueros"')
-        texto_ingresos = st.text_area("¿Quién ha pagado este mes?",placeholder="Todos han pagado menos Abarqueros...",height=90)
-        if st.button("🔄 Procesar ingresos", type="primary", key="procesar_ing"):
+        st.caption("Escribe con tus propias palabras quién ha pagado este mes")
+
+        st.markdown(f"""<div class="status-green" style="font-size:0.8rem;">
+        <b>Ejemplos que entiendo:</b><br>
+        · "Ha pagado solo Huerto 1"<br>
+        · "Todos han pagado"<br>
+        · "Todos han pagado menos Abarqueros"<br>
+        · "Falta Huerto 2 por pagar"<br>
+        · "Han pagado Huerto 1 y Huerto 3"
+        </div>""", unsafe_allow_html=True)
+
+        texto_ingresos = st.text_area("¿Quién ha pagado este mes?", placeholder="Ha pagado solo Huerto 1...", height=90, key="txt_ingresos")
+
+        if st.button("🔍 Interpretar", type="primary", key="procesar_ing"):
             if texto_ingresos.strip():
                 registros = parsear_ingresos(texto_ingresos, df_inm)
                 if registros:
-                    st.markdown("---")
-                    st.markdown("**✓ Registros detectados — revisa antes de guardar:**")
-                    for r in registros:
-                        color = "#EDF7F1" if r["Estado"]=="Cobrado" else "#FDECEA"
-                        bcolor = GREEN if r["Estado"]=="Cobrado" else RED
-                        icon = "✅" if r["Estado"]=="Cobrado" else "⏳"
-                        st.markdown(f"""<div style="background:{color};border-left:4px solid {bcolor};padding:0.8rem 1rem;border-radius:6px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;"><div><span style="font-weight:600;font-size:0.88rem;">{icon} {r['Apartamento']}</span><span style="font-size:0.75rem;color:{TEXT_SEC};margin-left:8px;">{r['Concepto']}</span></div><span style="font-family:'DM Serif Display',serif;font-size:1.1rem;color:{bcolor};">{r['Importe']:,.0f} €</span></div>""", unsafe_allow_html=True)
                     st.session_state["ingresos_pendientes"] = registros
+                    st.session_state["ingresos_editados"] = registros.copy()
+                else:
+                    st.warning("⚠️ No entendí quién pagó. Prueba con: 'Ha pagado Huerto 1' o 'Todos han pagado'")
             else:
-                st.warning("Escribe una descripción primero")
+                st.warning("Escribe algo primero")
+
         if "ingresos_pendientes" in st.session_state and st.session_state["ingresos_pendientes"]:
-            if st.button("💾 Guardar todos en tabla", key="guardar_ingresos"):
-                a_guardar = [r.copy() for r in st.session_state["ingresos_pendientes"]]
-                for r in a_guardar:
-                    r.pop("Estado", None)
-                guardar_movimientos(a_guardar)
-                st.session_state.pop("ingresos_pendientes")
-                st.success("✅ Ingresos guardados correctamente"); st.rerun()
+            st.markdown("---")
+            st.markdown("**✏️ Revisa y corrige si es necesario — luego guarda:**")
+
+            registros = st.session_state["ingresos_pendientes"]
+
+            # Mostrar cada registro como fila editable
+            editados = []
+            for i, r in enumerate(registros):
+                color = "#EDF7F1" if r["Estado"] == "Cobrado" else "#FDECEA"
+                bcolor = GREEN if r["Estado"] == "Cobrado" else RED
+                icon = "✅" if r["Estado"] == "Cobrado" else "⏳"
+
+                with st.container():
+                    st.markdown(f'<div style="background:{color};border-left:4px solid {bcolor};padding:0.6rem 1rem;border-radius:6px;margin-bottom:4px;"><b>{icon} {r["Apartamento"]}</b></div>', unsafe_allow_html=True)
+                    c1, c2, c3 = st.columns([2, 1, 1])
+                    with c1:
+                        nuevo_importe = st.number_input("Importe (€)", value=float(r["Importe"]), min_value=0.0, step=10.0, key=f"imp_{i}", label_visibility="collapsed")
+                    with c2:
+                        nuevo_estado = st.selectbox("Estado", ["Cobrado", "Pendiente"], index=0 if r["Estado"] == "Cobrado" else 1, key=f"est_{i}", label_visibility="collapsed")
+                    with c3:
+                        incluir = st.checkbox("Incluir", value=True, key=f"inc_{i}")
+
+                    if incluir:
+                        fila = r.copy()
+                        fila["Importe"] = nuevo_importe
+                        fila["Estado"] = nuevo_estado
+                        editados.append(fila)
+
+            st.session_state["ingresos_editados"] = editados
+
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                if st.button("💾 Guardar", type="primary", key="guardar_ingresos"):
+                    a_guardar = [r.copy() for r in st.session_state.get("ingresos_editados", [])]
+                    for r in a_guardar:
+                        r.pop("Estado", None)
+                    if a_guardar:
+                        guardar_movimientos(a_guardar)
+                        st.session_state.pop("ingresos_pendientes", None)
+                        st.session_state.pop("ingresos_editados", None)
+                        st.success(f"✅ {len(a_guardar)} ingreso(s) guardados correctamente")
+                        st.rerun()
+                    else:
+                        st.warning("No has seleccionado ningún registro")
+            with col_btn2:
+                if st.button("🗑️ Cancelar", key="cancelar_ingresos"):
+                    st.session_state.pop("ingresos_pendientes", None)
+                    st.session_state.pop("ingresos_editados", None)
+                    st.rerun()
     with tab3:
         st.markdown("### 📤 Registrar Gasto")
         st.caption("Sube una factura (OCR próximamente) o describe el gasto manualmente")
