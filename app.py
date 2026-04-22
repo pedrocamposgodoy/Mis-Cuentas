@@ -280,11 +280,99 @@ def calcular_dias_arrendado(row, año_fiscal=None):
     except:
         return 365
 def calcular_amortizacion(principal, tasa_anual, plazo_años, modo="cuota_fija"):
-    # ... código completo ...
+    """Calcula amortización de hipoteca con método francés o alemán."""
+    tasa_mensual = tasa_anual / 100 / 12
+    num_cuotas = plazo_años * 12
+    
+    if modo == "cuota_fija":
+        if tasa_mensual == 0:
+            cuota_mensual = principal / num_cuotas
+        else:
+            cuota_mensual = principal * (tasa_mensual * (1 + tasa_mensual)**num_cuotas) / \
+                           ((1 + tasa_mensual)**num_cuotas - 1)
+    else:
+        cuota_mensual = None
+    
+    tabla = []
+    capital_pendiente = principal
+    total_intereses = 0
+    
+    for mes in range(1, int(num_cuotas) + 1):
+        if modo == "cuota_fija":
+            interes = capital_pendiente * tasa_mensual
+            capital = cuota_mensual - interes
+            capital_pendiente -= capital
+        else:
+            capital = principal / num_cuotas
+            interes = capital_pendiente * tasa_mensual
+            cuota = capital + interes
+            capital_pendiente -= capital
+        
+        total_intereses += interes
+        tabla.append({
+            "Mes": mes,
+            "Cuota": cuota_mensual if modo == "cuota_fija" else interes + capital,
+            "Capital": capital,
+            "Intereses": interes,
+            "Pendiente": max(0, capital_pendiente)
+        })
+    
+    df_tabla = pd.DataFrame(tabla)
+    return {
+        "cuota_mensual": cuota_mensual if modo == "cuota_fija" else "variable",
+        "total_intereses": round(total_intereses, 2),
+        "total_pagado": round(principal + total_intereses, 2),
+        "tabla": df_tabla
+    }
+
 def stress_test_euribor(saldo_actual, margen, euribor_base, plazo_restante_años):
-    # ... código completo ...
+    """Calcula impacto de variaciones del Euríbor en cuota mensual."""
+    escenarios = {
+        "Euríbor -1%": euribor_base - 1,
+        "Euríbor actual": euribor_base,
+        "Euríbor +1%": euribor_base + 1,
+        "Euríbor +2%": euribor_base + 2,
+        "Euríbor +3%": euribor_base + 3,
+    }
+    
+    resultados = {}
+    for escenario, tasa in escenarios.items():
+        tasa_total = (tasa + margen) / 100
+        if tasa_total == 0:
+            cuota = saldo_actual / (plazo_restante_años * 12)
+        else:
+            cuota = saldo_actual * (tasa_total / 12 * (1 + tasa_total/12)**(plazo_restante_años*12)) / \
+                    ((1 + tasa_total/12)**(plazo_restante_años*12) - 1)
+        
+        resultados[escenario] = {
+            "tasa_total": round(tasa + margen, 2),
+            "cuota_mensual": round(cuota, 2),
+            "cuota_anual": round(cuota * 12, 2),
+        }
+    return resultados
+
 def analisis_sensibilidad_renta(renta_actual, gastos_anuales, valor_construccion, variaciones=None):
-    # ... código completo ...
+    """Calcula rentabilidad neta en diferentes escenarios de renta."""
+    if variaciones is None:
+        variaciones = [-15, -10, -5, 0, 5, 10, 15]
+    
+    escenarios = []
+    for var_pct in variaciones:
+        nueva_renta = renta_actual * (1 + var_pct / 100)
+        ingresos_anuales = nueva_renta * 12
+        neto_anual = ingresos_anuales - gastos_anuales
+        rentabilidad = (neto_anual / valor_construccion * 100) if valor_construccion > 0 else 0
+        
+        escenarios.append({
+            "Variación": f"{var_pct:+.0f}%",
+            "Renta Mensual": f"{nueva_renta:.2f} €",
+            "Ingresos Anuales": f"{ingresos_anuales:.2f} €",
+            "Gastos Anuales": f"{gastos_anuales:.2f} €",
+            "Neto Anual": f"{neto_anual:.2f} €",
+            "Rentabilidad": f"{rentabilidad:.2f}%"
+        })
+    
+    return pd.DataFrame(escenarios)
 def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
     dias_arrendado = calcular_dias_arrendado(row, año_fiscal=año_fiscal)
     renta_mensual = float(row.get("Renta", 0))
