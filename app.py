@@ -156,8 +156,15 @@ def inicializar_bd():
         ]).to_csv(DB_MOV, index=False)
 
 inicializar_bd()
-df_inm = pd.read_csv(DB_INM)
-df_mov = pd.read_csv(DB_MOV)
+
+# Usar session_state para persistir datos durante la sesión
+if "df_inm_persistent" not in st.session_state:
+    st.session_state.df_inm_persistent = pd.read_csv(DB_INM)
+if "df_mov_persistent" not in st.session_state:
+    st.session_state.df_mov_persistent = pd.read_csv(DB_MOV)
+
+df_inm = st.session_state.df_inm_persistent
+df_mov = st.session_state.df_mov_persistent
 
 # ================================================================
 # SECCIÓN 5 — DATOS DE HIPOTECAS
@@ -259,9 +266,9 @@ def alerta_vencimiento(row):
     return "ok", f"✅ Vence en {round(dias/30)} meses"
 
 def guardar_movimientos(nuevos):
-    df_actual = pd.read_csv(DB_MOV)
     df_nuevos = pd.DataFrame(nuevos)
-    df_final  = pd.concat([df_actual, df_nuevos], ignore_index=True)
+    df_final = pd.concat([st.session_state.df_mov_persistent, df_nuevos], ignore_index=True)
+    st.session_state.df_mov_persistent = df_final
     df_final.to_csv(DB_MOV, index=False)
 
 def parsear_ingresos(texto, df_inm_local):
@@ -925,7 +932,10 @@ elif menu == "Diario Contable":
         m2.metric("Gastos Registrados", f"−{t_gas:,.2f} €")
         m3.metric("Balance Total", f"{t_ing-t_gas:,.2f} €")
         if st.button("💾 Guardar Cambios", key="guardar_tabla"):
-            df_ed.to_csv(DB_MOV,index=False); st.success("✓ Operaciones guardadas."); st.rerun()
+            st.session_state.df_mov_persistent = df_ed
+            df_ed.to_csv(DB_MOV, index=False)
+            st.success("✓ Operaciones guardadas.")
+            st.rerun()
     with tab2:
         st.markdown("### 📥 Registrar Ingresos del Mes")
         st.caption("Escribe con tus propias palabras quién ha pagado este mes")
@@ -1362,11 +1372,11 @@ elif menu == "Datos de la Cartera":
                         st.session_state.inmueble_editando = idx
                         st.rerun()
                     if st.button("🗑️", key=f"del_{idx}", use_container_width=True):
-                        # Cargar CSV actual
-                        df_actual = pd.read_csv(DB_INM)
-                        if len(df_actual) > 1:
-                            # Eliminar y guardar
-                            df_nuevo = df_actual.drop(idx).reset_index(drop=True)
+                        if len(st.session_state.df_inm_persistent) > 1:
+                            # Eliminar de session_state
+                            df_nuevo = st.session_state.df_inm_persistent.drop(idx).reset_index(drop=True)
+                            st.session_state.df_inm_persistent = df_nuevo
+                            # También guardar en CSV
                             df_nuevo.to_csv(DB_INM, index=False)
                             st.success(f"✓ {row['Nombre']} eliminado")
                             st.rerun()
@@ -1499,21 +1509,18 @@ elif menu == "Datos de la Cartera":
                     }
 
                     if es_nuevo:
-                        # Cargar el CSV actual
-                        df_actual = pd.read_csv(DB_INM)
-                        # Añadir el nuevo inmueble
-                        df_nuevo = pd.concat([df_actual, pd.DataFrame([nuevo_inmueble])], ignore_index=True)
-                        # Guardar
+                        # Añadir a session_state
+                        df_nuevo = pd.concat([st.session_state.df_inm_persistent, pd.DataFrame([nuevo_inmueble])], ignore_index=True)
+                        st.session_state.df_inm_persistent = df_nuevo
+                        # También guardar en CSV (aunque se pierda al redeploy)
                         df_nuevo.to_csv(DB_INM, index=False)
                         st.success(f"✅ Inmueble '{nombre}' añadido correctamente")
                     else:
-                        # Cargar el CSV actual
-                        df_actual = pd.read_csv(DB_INM)
-                        # Actualizar fila por fila
+                        # Actualizar en session_state
                         for col, val in nuevo_inmueble.items():
-                            df_actual.at[st.session_state.inmueble_editando, col] = val
-                        # Guardar
-                        df_actual.to_csv(DB_INM, index=False)
+                            st.session_state.df_inm_persistent.at[st.session_state.inmueble_editando, col] = val
+                        # También guardar en CSV
+                        st.session_state.df_inm_persistent.to_csv(DB_INM, index=False)
                         st.success(f"✅ Inmueble '{nombre}' actualizado correctamente")
                     
                     st.session_state.modo_cartera = "lista"
@@ -1543,6 +1550,7 @@ elif menu == "Datos de la Cartera":
         }
         df_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True, hide_index=True, column_config=col_cfg)
         if st.button("✅ Guardar Cambios de Tabla", type="primary"):
+            st.session_state.df_inm_persistent = df_ed
             df_ed.to_csv(DB_INM, index=False)
             st.success("✓ Datos actualizados.")
             st.rerun()
