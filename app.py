@@ -1500,7 +1500,9 @@ elif menu == "Datos de la Cartera":
                         df_inm_new.to_csv(DB_INM, index=False)
                         st.success(f"✅ Inmueble '{nombre}' añadido correctamente")
                     else:
-                        df_inm.loc[st.session_state.inmueble_editando] = nuevo_inmueble
+                        # Actualizar usando iterrows para evitar problemas de tipos
+                        for col, val in nuevo_inmueble.items():
+                            df_inm.at[st.session_state.inmueble_editando, col] = val
                         df_inm.to_csv(DB_INM, index=False)
                         st.success(f"✅ Inmueble '{nombre}' actualizado correctamente")
                     
