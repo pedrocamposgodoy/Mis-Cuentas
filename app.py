@@ -236,24 +236,25 @@ def parsear_ingresos(texto, df_inm_local):
             registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":estado})
     return registros
 
-def calcular_dias_arrendado(row):
+def calcular_dias_arrendado(row, año_fiscal=None):
     try:
         inicio = datetime.strptime(str(row.get("Fecha_Inicio_Contrato","")), "%Y-%m-%d").date()
         fin    = datetime.strptime(str(row.get("Fecha_Vencimiento_Contrato","")), "%Y-%m-%d").date()
         hoy    = date.today()
-        año_actual = hoy.year
+        # Si no se especifica año fiscal, se usa el año anterior (declaración presentada en el año actual)
+        año_actual = año_fiscal if año_fiscal else hoy.year - 1 if hoy.month < 7 else hoy.year
         inicio_año = date(año_actual, 1, 1)
         fin_año    = date(año_actual, 12, 31)
         inicio_efectivo = max(inicio, inicio_año)
-        fin_efectivo    = min(fin, fin_año, hoy)
+        fin_efectivo    = min(fin, fin_año)
         if inicio_efectivo > fin_efectivo:
             return 0
         return (fin_efectivo - inicio_efectivo).days + 1
     except:
         return 365
 
-def calcular_modelo_100(row, df_mov_local):
-    dias_arrendado = calcular_dias_arrendado(row)
+def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
+    dias_arrendado = calcular_dias_arrendado(row, año_fiscal=año_fiscal)
     renta_mensual = float(row.get("Renta", 0))
     ingresos_integros = renta_mensual * 12
     intereses = float(row.get("Intereses_Hipoteca", 0))
@@ -271,7 +272,8 @@ def calcular_modelo_100(row, df_mov_local):
     gastos_juridicos = float(row.get("Gastos_Juridicos", 0))
     valor_construccion = float(row.get("Valor_Construccion", 0))
     amortizacion = valor_construccion * 0.03
-    total_gastos = intereses + gastos_reparacion + ibi_anual + casilla_0110 + servicios + gastos_juridicos + amortizacion
+    gastos_años_ant = float(row.get("Gastos_Pendientes_Años_Ant", 0))
+    total_gastos = intereses + gastos_reparacion + ibi_anual + casilla_0110 + servicios + gastos_juridicos + amortizacion + gastos_años_ant
     rendimiento_neto = ingresos_integros - total_gastos
     tipo_arrendamiento = str(row.get("Tipo_Arrendamiento", "Larga Duración"))
     reduccion_pct = 0.60 if tipo_arrendamiento == "Larga Duración" else 0.00
@@ -283,11 +285,12 @@ def calcular_modelo_100(row, df_mov_local):
         "0076": "A (Arrendamiento)", "0100": "SÍ" if tipo_arrendamiento == "Larga Duración" else "NO",
         "0101": dias_arrendado, "0102": round(ingresos_integros, 2),
         "0105": round(intereses, 2), "0106": round(gastos_reparacion, 2),
+        "0107": round(total_gastos, 2),
         "0108": round(ibi_anual, 2), "0110": round(casilla_0110, 2),
         "0111": round(servicios, 2), "0112": round(gastos_juridicos, 2),
         "0113": round(amortizacion, 2), "0149": round(rendimiento_neto, 2),
         "0150": round(reduccion_importe, 2), "0153": round(retenciones, 2),
-        "0154": round(rendimiento_final, 2), "reduccion_pct": int(reduccion_pct * 100)
+        "0152": round(rendimiento_final, 2), "reduccion_pct": int(reduccion_pct * 100)
     }
 
 def generar_pdf_modelo100(inmueble_data, modelo):
@@ -382,6 +385,7 @@ def generar_pdf_modelo100(inmueble_data, modelo):
         ["0102", "Ingresos integros", f"{modelo['0102']:,.2f} EUR", "OK"],
         ["0105", "Intereses y financiacion", f"{modelo['0105']:,.2f} EUR", "OK"],
         ["0106", "Reparacion y conservacion", f"{modelo['0106']:,.2f} EUR", "OK"],
+        ["0107", "TOTAL GASTOS DEDUCIBLES", f"{modelo['0107']:,.2f} EUR", "OK"],
         ["0108", "Tributos e IBI", f"{modelo['0108']:,.2f} EUR", "OK"],
         ["0110", "Comunidad, seguros, formalizacion", f"{modelo['0110']:,.2f} EUR", "OK"],
         ["0111", "Servicios y suministros", f"{modelo['0111']:,.2f} EUR", "OK"],
@@ -390,7 +394,7 @@ def generar_pdf_modelo100(inmueble_data, modelo):
         ["0149", "RENDIMIENTO NETO", f"{modelo['0149']:,.2f} EUR", "OK"],
         ["0150", f"Reduccion {modelo['reduccion_pct']}%", f"-{modelo['0150']:,.2f} EUR", "OK"],
         ["0153", "Retenciones practicadas", f"{modelo['0153']:,.2f} EUR", "OK"],
-        ["0154", "BASE IMPONIBLE FINAL", f"{modelo['0154']:,.2f} EUR", "OK"],
+        ["0152", "BASE IMPONIBLE FINAL", f"{modelo['0152']:,.2f} EUR", "OK"],
     ]
     t = Table(data, colWidths=[65, 230, 130, 50])
     t.setStyle(TableStyle([
@@ -432,7 +436,7 @@ def generar_pdf_modelo100(inmueble_data, modelo):
     c.drawString(220, y_res - 35, f"Total gastos: {modelo['0102'] - modelo['0149']:,.2f} EUR")
     c.drawString(430, y_res - 35, f"Reduccion: {modelo['reduccion_pct']}%")
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(40, y_res - 55, f"Base Imponible Final: {modelo['0154']:,.2f} EUR")
+    c.drawString(40, y_res - 55, f"Base Imponible Final: {modelo['0152']:,.2f} EUR")
 
     # PÁGINA 2
     c.showPage()
@@ -859,15 +863,16 @@ elif menu == "Fiscalidad":
     st.markdown('<div class="brand-sub">Pre-relleno IRPF · Rendimientos de capital inmobiliario</div>', unsafe_allow_html=True)
 
     inmueble_fiscal = st.selectbox("Selecciona inmueble:", df_inm["Nombre"].tolist(), key="fiscal_inmueble")
+    año_fiscal = st.selectbox("Ejercicio fiscal:", [2025, 2024, 2023], index=0, key="año_fiscal")
     f_fiscal = df_inm[df_inm["Nombre"] == inmueble_fiscal].iloc[0]
-    modelo = calcular_modelo_100(f_fiscal, df_mov)
+    modelo = calcular_modelo_100(f_fiscal, df_mov, año_fiscal=año_fiscal)
 
     # KPIs
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("Ingresos Íntegros", f"{modelo['0102']:,.0f} €", "Casilla 0102")
     k2.metric("Total Gastos", f"{modelo['0102'] - modelo['0149']:,.0f} €", "Deducibles")
     k3.metric("Rendimiento Neto", f"{modelo['0149']:,.0f} €", "Casilla 0149")
-    k4.metric("Base Imponible", f"{modelo['0154']:,.0f} €", f"Reducción {modelo['reduccion_pct']}%")
+    k4.metric("Base Imponible", f"{modelo['0152']:,.0f} €", f"Reducción {modelo['reduccion_pct']}%")
 
     st.markdown("---")
     st.markdown('<div class="section-title">📋 Casillas Modelo 100 — Verificar y Confirmar</div>', unsafe_allow_html=True)
@@ -882,6 +887,7 @@ elif menu == "Fiscalidad":
         {"Casilla": "0102", "Descripción": "Ingresos íntegros", "Valor": f"{modelo['0102']:,.2f} €"},
         {"Casilla": "0105", "Descripción": "Intereses y financiación", "Valor": f"{modelo['0105']:,.2f} €"},
         {"Casilla": "0106", "Descripción": "Reparación y conservación", "Valor": f"{modelo['0106']:,.2f} €"},
+        {"Casilla": "0107", "Descripción": "TOTAL GASTOS DEDUCIBLES", "Valor": f"{modelo['0107']:,.2f} €"},
         {"Casilla": "0108", "Descripción": "Tributos e IBI", "Valor": f"{modelo['0108']:,.2f} €"},
         {"Casilla": "0110", "Descripción": "Comunidad, seguros, formalización", "Valor": f"{modelo['0110']:,.2f} €"},
         {"Casilla": "0111", "Descripción": "Servicios y suministros", "Valor": f"{modelo['0111']:,.2f} €"},
@@ -890,7 +896,7 @@ elif menu == "Fiscalidad":
         {"Casilla": "0149", "Descripción": "RENDIMIENTO NETO", "Valor": f"{modelo['0149']:,.2f} €"},
         {"Casilla": "0150", "Descripción": f"Reducción {modelo['reduccion_pct']}%", "Valor": f"-{modelo['0150']:,.2f} €"},
         {"Casilla": "0153", "Descripción": "Retenciones practicadas", "Valor": f"{modelo['0153']:,.2f} €"},
-        {"Casilla": "0154", "Descripción": "BASE IMPONIBLE FINAL", "Valor": f"{modelo['0154']:,.2f} €"},
+        {"Casilla": "0152", "Descripción": "BASE IMPONIBLE FINAL", "Valor": f"{modelo['0152']:,.2f} €"},
     ]
 
     df_casillas = pd.DataFrame(casillas_data)
