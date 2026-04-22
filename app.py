@@ -134,6 +134,32 @@ def inicializar_bd():
         ]).to_csv(DB_MOV, index=False)
 
 inicializar_bd()
+# ═══════════════════════════════════════════
+# INICIALIZAR BD HIPOTECAS
+# ═══════════════════════════════════════════
+
+DB_HIP = "nolasco_hipotecas_v13.csv"
+
+def inicializar_hipotecas():
+    if not os.path.exists(DB_HIP):
+        rows = [
+            {"Inmueble": "Casa Abarqueros", "Principal": 150000, "Tasa_Inicial": 2.5, "Plazo_Años": 20, 
+             "Fecha_Inicio": "2020-01-15", "Es_Variable": "N", "Indice_Variable": "", "Margen": 0, "Saldo_Actual": 0},
+            {"Inmueble": "Paseo del Salón", "Principal": 120000, "Tasa_Inicial": 2.8, "Plazo_Años": 25, 
+             "Fecha_Inicio": "2018-06-01", "Es_Variable": "S", "Indice_Variable": "Euríbor", "Margen": 0.85, "Saldo_Actual": 95000},
+            {"Inmueble": "Huerto Unidad 1", "Principal": 45000, "Tasa_Inicial": 3.0, "Plazo_Años": 15, 
+             "Fecha_Inicio": "2021-03-10", "Es_Variable": "N", "Indice_Variable": "", "Margen": 0, "Saldo_Actual": 0},
+            {"Inmueble": "Huerto Unidad 2", "Principal": 45000, "Tasa_Inicial": 3.0, "Plazo_Años": 15, 
+             "Fecha_Inicio": "2021-03-10", "Es_Variable": "N", "Indice_Variable": "", "Margen": 0, "Saldo_Actual": 0},
+            {"Inmueble": "Huerto Unidad 3", "Principal": 45000, "Tasa_Inicial": 3.0, "Plazo_Años": 15, 
+             "Fecha_Inicio": "2021-03-10", "Es_Variable": "N", "Indice_Variable": "", "Margen": 0, "Saldo_Actual": 0},
+            {"Inmueble": "Huerto Unidad 4", "Principal": 0, "Tasa_Inicial": 0, "Plazo_Años": 0, 
+             "Fecha_Inicio": "2024-01-01", "Es_Variable": "N", "Indice_Variable": "", "Margen": 0, "Saldo_Actual": 0},
+        ]
+        pd.DataFrame(rows).to_csv(DB_HIP, index=False)
+
+inicializar_hipotecas()
+df_hip = pd.read_csv(DB_HIP)
 df_inm = pd.read_csv(DB_INM)
 df_mov = pd.read_csv(DB_MOV)
 
@@ -141,13 +167,14 @@ if "menu" not in st.session_state:      st.session_state.menu = "Torre de Contro
 if "ficha_sel" not in st.session_state:  st.session_state.ficha_sel = None
 
 PAGES = [
-    ("📊","Torre de Control"),
-    ("🏠","Fichas (Benchmark)"),
-    ("🤖","Auditoría IA"),
-    ("📝","Diario Contable"),
-    ("⚡","Suministros"),
-    ("💰","Fiscalidad"),
-    ("📂","Datos de la Cartera"),
+      ("📊", "Torre de Control"),
+    ("🏠", "Fichas (Benchmark)"),
+    ("🤖", "Auditoría IA"),
+    ("📝", "Diario Contable"),
+    ("⚡", "Suministros"),
+    ("💰", "Fiscalidad"),
+    ("💎", "Macrofinanzas"),    # ← NUEVA LÍNEA
+    ("📂", "Datos de la Cartera"),
 ]
 
 with st.sidebar:
@@ -252,7 +279,14 @@ def calcular_dias_arrendado(row, año_fiscal=None):
         return (fin_efectivo - inicio_efectivo).days + 1
     except:
         return 365
+def calcular_amortizacion(principal, tasa_anual, plazo_años, modo="cuota_fija"):
+    # ... código completo ...
 
+def stress_test_euribor(saldo_actual, margen, euribor_base, plazo_restante_años):
+    # ... código completo ...
+
+def analisis_sensibilidad_renta(renta_actual, gastos_anuales, valor_construccion, variaciones=None):
+    # ... código completo ...
 def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
     dias_arrendado = calcular_dias_arrendado(row, año_fiscal=año_fiscal)
     renta_mensual = float(row.get("Renta", 0))
@@ -930,6 +964,9 @@ elif menu == "Fiscalidad":
 # ══════════════════════════════════════════════
 # DATOS DE LA CARTERA
 # ══════════════════════════════════════════════
+elif menu == "Macrofinanzas":
+    # ... TODO EL CÓDIGO DE MACROFINANZAS ...
+    # (copiar de BLOQUE_5_CODIGO_LISTO.py, sección PASO 3)
 elif menu == "Datos de la Cartera":
     st.markdown('<div class="brand-header">Datos de la Cartera</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Parámetros maestros y copias de seguridad</div>', unsafe_allow_html=True)
