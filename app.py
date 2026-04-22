@@ -73,28 +73,89 @@ div[data-testid="column"] .stButton>button:hover{{background:#F0F6FF!important;}
 </style>
 """, unsafe_allow_html=True)
 
-DB_INM = "nolasco_inmuebles_v10.csv"
-DB_MOV = "nolasco_movimientos_v10.csv"
+DB_INM = "nolasco_inmuebles_v11.csv"
+DB_MOV = "nolasco_movimientos_v11.csv"
 
-COLS_INM = ["Nombre","Inquilino","Renta","Renta_Mercado","Comunidad","Valor_Construccion",
-            "Año_Reforma","Año_Construccion","Mobiliario","Tipo","Ref_Catastral","Titular",
-            "M2_Construidos","Habitaciones","CP","Planta","Parking","Estado",
-            "Tipo_Arrendamiento","Cochera_Vinculada","Zona_Tensionada",
-            "Fecha_Inicio_Contrato","Fecha_Vencimiento_Contrato"]
+# COLUMNAS ACTUALIZADAS CON CAMPOS FISCALES
+COLS_INM = [
+    "Nombre","Inquilino","Renta","Renta_Mercado","Comunidad","Valor_Construccion",
+    "Año_Reforma","Año_Construccion","Mobiliario","Tipo","Ref_Catastral","Titular",
+    "M2_Construidos","Habitaciones","CP","Planta","Parking","Estado",
+    "Tipo_Arrendamiento","Cochera_Vinculada","Zona_Tensionada",
+    "Fecha_Inicio_Contrato","Fecha_Vencimiento_Contrato",
+    # NUEVOS CAMPOS FISCALES
+    "NIF_Inquilino","Intereses_Hipoteca","IBI_Anual","Seguro_Anual",
+    "Gastos_Juridicos","Retenciones_IRPF","Gastos_Formalizacion",
+    "Gastos_Pendientes_Años_Ant","Servicios_Suministros"
+]
 
 def inicializar_bd():
     if not os.path.exists(DB_INM):
         pd.DataFrame([
-            {"Nombre":"Casa Abarqueros","Inquilino":"Victor Aguiluz","Renta":2200.0,"Renta_Mercado":2600.0,"Comunidad":193.76,"Valor_Construccion":150000.0,"Año_Reforma":2018,"Año_Construccion":1975,"Mobiliario":"S","Tipo":"Casa","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":180,"Habitaciones":5,"CP":"18001","Planta":0,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01"},
-            {"Nombre":"Paseo del Salón","Inquilino":"Pool Despachos","Renta":1591.8,"Renta_Mercado":1650.0,"Comunidad":175.18,"Valor_Construccion":120000.0,"Año_Reforma":2020,"Año_Construccion":1990,"Mobiliario":"N","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":130,"Habitaciones":4,"CP":"18005","Planta":3,"Parking":"S","Estado":"Bueno","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"S","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2021-06-01","Fecha_Vencimiento_Contrato":"2026-06-01"},
-            {"Nombre":"Huerto Unidad 1","Inquilino":"Alain","Renta":660.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2022,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":60,"Habitaciones":2,"CP":"18008","Planta":1,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"S","Fecha_Inicio_Contrato":"2023-03-01","Fecha_Vencimiento_Contrato":"2028-03-01"},
-            {"Nombre":"Huerto Unidad 2","Inquilino":"Laura/Alex","Renta":800.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2022,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":65,"Habitaciones":2,"CP":"18008","Planta":2,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Temporada","Cochera_Vinculada":"N","Zona_Tensionada":"S","Fecha_Inicio_Contrato":"2024-09-01","Fecha_Vencimiento_Contrato":"2025-08-31"},
-            {"Nombre":"Huerto Unidad 3","Inquilino":"Jose Manuel","Renta":850.0,"Renta_Mercado":800.0,"Comunidad":74.63,"Valor_Construccion":45000.0,"Año_Reforma":2021,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":68,"Habitaciones":3,"CP":"18008","Planta":3,"Parking":"N","Estado":"Bueno","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-11-01","Fecha_Vencimiento_Contrato":"2027-11-01"},
-            {"Nombre":"Huerto Unidad 4","Inquilino":"Pendiente","Renta":600.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2024,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":62,"Habitaciones":2,"CP":"18008","Planta":4,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Vacacional","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2025-01-01","Fecha_Vencimiento_Contrato":"2026-12-31"},
+            {
+                "Nombre":"Casa Abarqueros","Inquilino":"Victor Aguiluz","Renta":2200.0,"Renta_Mercado":2600.0,"Comunidad":193.76,
+                "Valor_Construccion":150000.0,"Año_Reforma":2018,"Año_Construccion":1975,"Mobiliario":"S","Tipo":"Casa",
+                "Ref_Catastral":"00XX0001","Titular":"Pedro Nolasco","M2_Construidos":180,"Habitaciones":5,"CP":"18001",
+                "Planta":0,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N",
+                "Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01",
+                "NIF_Inquilino":"12345678A","Intereses_Hipoteca":0,"IBI_Anual":800,"Seguro_Anual":250,
+                "Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
+            },
+            {
+                "Nombre":"Paseo del Salón","Inquilino":"Pool Despachos","Renta":1591.8,"Renta_Mercado":1650.0,"Comunidad":175.18,
+                "Valor_Construccion":120000.0,"Año_Reforma":2020,"Año_Construccion":1990,"Mobiliario":"N","Tipo":"Piso",
+                "Ref_Catastral":"00XX0002","Titular":"Pedro Nolasco","M2_Construidos":130,"Habitaciones":4,"CP":"18005",
+                "Planta":3,"Parking":"S","Estado":"Bueno","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"S",
+                "Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2021-06-01","Fecha_Vencimiento_Contrato":"2026-06-01",
+                "NIF_Inquilino":"B87654321","Intereses_Hipoteca":0,"IBI_Anual":600,"Seguro_Anual":200,
+                "Gastos_Juridicos":0,"Retenciones_IRPF":286.0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
+            },
+            {
+                "Nombre":"Huerto Unidad 1","Inquilino":"Alain","Renta":660.0,"Renta_Mercado":800.0,"Comunidad":74.62,
+                "Valor_Construccion":45000.0,"Año_Reforma":2022,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso",
+                "Ref_Catastral":"00XX0003","Titular":"Pedro Nolasco","M2_Construidos":60,"Habitaciones":2,"CP":"18008",
+                "Planta":1,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N",
+                "Zona_Tensionada":"S","Fecha_Inicio_Contrato":"2023-03-01","Fecha_Vencimiento_Contrato":"2028-03-01",
+                "NIF_Inquilino":"87654321B","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,
+                "Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
+            },
+            {
+                "Nombre":"Huerto Unidad 2","Inquilino":"Laura/Alex","Renta":800.0,"Renta_Mercado":800.0,"Comunidad":74.62,
+                "Valor_Construccion":45000.0,"Año_Reforma":2022,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso",
+                "Ref_Catastral":"00XX0004","Titular":"Pedro Nolasco","M2_Construidos":65,"Habitaciones":2,"CP":"18008",
+                "Planta":2,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Temporada","Cochera_Vinculada":"N",
+                "Zona_Tensionada":"S","Fecha_Inicio_Contrato":"2024-09-01","Fecha_Vencimiento_Contrato":"2025-08-31",
+                "NIF_Inquilino":"23456789C","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,
+                "Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
+            },
+            {
+                "Nombre":"Huerto Unidad 3","Inquilino":"Jose Manuel","Renta":850.0,"Renta_Mercado":800.0,"Comunidad":74.63,
+                "Valor_Construccion":45000.0,"Año_Reforma":2021,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso",
+                "Ref_Catastral":"00XX0005","Titular":"Pedro Nolasco","M2_Construidos":68,"Habitaciones":3,"CP":"18008",
+                "Planta":3,"Parking":"N","Estado":"Bueno","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N",
+                "Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-11-01","Fecha_Vencimiento_Contrato":"2027-11-01",
+                "NIF_Inquilino":"34567890D","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,
+                "Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
+            },
+            {
+                "Nombre":"Huerto Unidad 4","Inquilino":"Pendiente","Renta":600.0,"Renta_Mercado":800.0,"Comunidad":74.62,
+                "Valor_Construccion":45000.0,"Año_Reforma":2024,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso",
+                "Ref_Catastral":"00XX0006","Titular":"Pedro Nolasco","M2_Construidos":62,"Habitaciones":2,"CP":"18008",
+                "Planta":4,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Vacacional","Cochera_Vinculada":"N",
+                "Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2025-01-01","Fecha_Vencimiento_Contrato":"2026-12-31",
+                "NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,
+                "Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
+            },
         ]).to_csv(DB_INM, index=False)
     else:
         df = pd.read_csv(DB_INM)
-        defaults = {"Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01"}
+        defaults = {
+            "Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N",
+            "Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01",
+            "NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":0,"Seguro_Anual":0,
+            "Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,
+            "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
+        }
         for c in COLS_INM:
             if c not in df.columns:
                 df[c] = defaults.get(c,"")
@@ -119,6 +180,7 @@ PAGES = [
     ("🤖","Auditoría IA"),
     ("📝","Diario Contable"),
     ("⚡","Suministros"),
+    ("💰","Fiscalidad"),
     ("📂","Datos de la Cartera"),
 ]
 
@@ -195,11 +257,9 @@ def parsear_ingresos(texto, df_inm_local):
     hoy = datetime.now().strftime("%Y-%m-%d")
     mes = datetime.now().strftime("%B %Y")
 
-    # Detectar inmuebles mencionados como NO pagados
     no_pagaron = [n for n in nombres if any(p in texto_l for p in [n.lower(), n.split()[0].lower(), n.split()[-1].lower()]) and ("menos" in texto_l or "excepto" in texto_l or "no" in texto_l or "pendiente" in texto_l or "falta" in texto_l)]
 
     if "todos" in texto_l and no_pagaron:
-        # Todos menos los mencionados
         for n in nombres:
             estado = "Pendiente" if n in no_pagaron else "Cobrado"
             registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":estado})
@@ -207,7 +267,6 @@ def parsear_ingresos(texto, df_inm_local):
         for n in nombres:
             registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":"Cobrado"})
     else:
-        # Detectar cuáles se mencionan como pagados
         mencionados = [n for n in nombres if any(p in texto_l for p in [n.lower(), n.split()[0].lower(), n.split()[-1].lower()])]
         for n in nombres:
             if n in mencionados:
@@ -217,6 +276,107 @@ def parsear_ingresos(texto, df_inm_local):
             registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":estado})
 
     return registros
+
+def calcular_dias_arrendado(row):
+    """Calcula días arrendado en el año actual"""
+    try:
+        inicio = datetime.strptime(str(row.get("Fecha_Inicio_Contrato","")), "%Y-%m-%d").date()
+        fin    = datetime.strptime(str(row.get("Fecha_Vencimiento_Contrato","")), "%Y-%m-%d").date()
+        hoy    = date.today()
+        año_actual = hoy.year
+        
+        inicio_año = date(año_actual, 1, 1)
+        fin_año    = date(año_actual, 12, 31)
+        
+        inicio_efectivo = max(inicio, inicio_año)
+        fin_efectivo    = min(fin, fin_año, hoy)
+        
+        if inicio_efectivo > fin_efectivo:
+            return 0
+        return (fin_efectivo - inicio_efectivo).days + 1
+    except:
+        return 365
+
+def calcular_modelo_100(row, df_mov_local):
+    """Calcula todas las casillas del Modelo 100 para un inmueble"""
+    
+    # CASILLA 0101: Días arrendado
+    dias_arrendado = calcular_dias_arrendado(row)
+    
+    # CASILLA 0102: Ingresos íntegros
+    renta_mensual = float(row.get("Renta", 0))
+    ingresos_integros = renta_mensual * 12
+    
+    # CASILLA 0105: Intereses hipoteca
+    intereses = float(row.get("Intereses_Hipoteca", 0))
+    
+    # CASILLA 0106: Reparación y conservación
+    gastos_reparacion = df_mov_local[
+        (df_mov_local["Apartamento"] == row["Nombre"]) &
+        (df_mov_local["Tipo"] == "Gasto") &
+        (df_mov_local["Categoría"].isin(["Mantenimiento", "Reparación"]))
+    ]["Importe"].sum()
+    
+    # CASILLA 0108: IBI y tasas
+    ibi_anual = float(row.get("IBI_Anual", 0))
+    
+    # CASILLA 0110: Comunidad + seguros + formalización
+    comunidad_anual = float(row.get("Comunidad", 0)) * 12
+    seguro_anual = float(row.get("Seguro_Anual", 0))
+    formalizacion = float(row.get("Gastos_Formalizacion", 0))
+    casilla_0110 = comunidad_anual + seguro_anual + formalizacion
+    
+    # CASILLA 0111: Servicios y suministros
+    servicios = float(row.get("Servicios_Suministros", 0))
+    
+    # CASILLA 0112: Gastos jurídicos
+    gastos_juridicos = float(row.get("Gastos_Juridicos", 0))
+    
+    # CASILLA 0113: Amortización (3% valor construcción)
+    valor_construccion = float(row.get("Valor_Construccion", 0))
+    amortizacion = valor_construccion * 0.03
+    
+    # SUMA TOTAL GASTOS
+    total_gastos = (intereses + gastos_reparacion + ibi_anual + casilla_0110 + 
+                   servicios + gastos_juridicos + amortizacion)
+    
+    # CASILLA 0149: Rendimiento neto
+    rendimiento_neto = ingresos_integros - total_gastos
+    
+    # CASILLA 0150: Reducción por modalidad
+    tipo_arrendamiento = str(row.get("Tipo_Arrendamiento", "Larga Duración"))
+    if tipo_arrendamiento == "Larga Duración":
+        reduccion_pct = 0.60
+    else:
+        reduccion_pct = 0.00
+    
+    reduccion_importe = rendimiento_neto * reduccion_pct
+    
+    # CASILLA 0153: Retenciones
+    retenciones = float(row.get("Retenciones_IRPF", 0))
+    
+    # CASILLA 0154: Rendimiento neto reducido
+    rendimiento_final = rendimiento_neto - reduccion_importe
+    
+    return {
+        "0062_0075": f"Ref: {row.get('Ref_Catastral', 'N/A')}",
+        "0076": "A (Arrendamiento)",
+        "0100": "SÍ" if tipo_arrendamiento == "Larga Duración" else "NO",
+        "0101": dias_arrendado,
+        "0102": round(ingresos_integros, 2),
+        "0105": round(intereses, 2),
+        "0106": round(gastos_reparacion, 2),
+        "0108": round(ibi_anual, 2),
+        "0110": round(casilla_0110, 2),
+        "0111": round(servicios, 2),
+        "0112": round(gastos_juridicos, 2),
+        "0113": round(amortizacion, 2),
+        "0149": round(rendimiento_neto, 2),
+        "0150": round(reduccion_importe, 2),
+        "0153": round(retenciones, 2),
+        "0154": round(rendimiento_final, 2),
+        "reduccion_pct": int(reduccion_pct * 100)
+    }
 
 # ══════════════════════════════════════════════
 # TORRE DE CONTROL
@@ -430,13 +590,12 @@ elif menu == "Fichas (Benchmark)":
     st.dataframe(res.style.format({"Importe":"{:,.2f} €"}),hide_index=True,use_container_width=True)
 
 # ══════════════════════════════════════════════
-# AUDITORÍA IA — MANTENIMIENTO CON BARRAS
+# AUDITORÍA IA
 # ══════════════════════════════════════════════
 elif menu == "Auditoría IA":
     st.markdown('<div class="brand-header">Auditoría de Mantenimiento</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Planificación de reformas · Costos e impacto por plazo</div>', unsafe_allow_html=True)
 
-    # ── DATOS DE AUDITORÍA POR INMUEBLE ──────────
     datos_mantenimiento = {
         "Casa Abarqueros": {
             "urgente": {"total":4500,"items":[("Revisión estructura",2500,0.55),("Pintura fachada",1500,0.33),("Canalones",500,0.12)]},
@@ -477,7 +636,6 @@ elif menu == "Auditoría IA":
         año_actual = datetime.now().year
         ant = año_actual - int(row_aud.get("Año_Reforma", año_actual))
         
-        # Info del inmueble
         col_a1, col_a2, col_a3, col_a4 = st.columns(4)
         col_a1.metric("Construcción", int(row_aud.get("Año_Construccion", "—")))
         col_a2.metric("Última reforma", int(row_aud.get("Año_Reforma", "—")))
@@ -489,7 +647,6 @@ elif menu == "Auditoría IA":
         datos_aud = datos_mantenimiento[inmueble_sel_aud]
         total_presupuesto = datos_aud["urgente"]["total"] + datos_aud["medio"]["total"] + datos_aud["largo"]["total"]
         
-        # ── FUNCIÓN RENDERIZAR SECCIÓN ──────────
         def mostrar_seccion(plazo_label, plazo_key, emoji, color_hex, datos_plazo):
             col_sec1, col_sec2 = st.columns([3, 1])
             with col_sec1:
@@ -497,7 +654,6 @@ elif menu == "Auditoría IA":
             with col_sec2:
                 st.markdown(f'<div style="font-family:\'DM Serif Display\',serif;font-size:1.5rem;color:{color_hex};font-weight:600;">{datos_plazo["total"]:,.0f}€</div>', unsafe_allow_html=True)
             
-            # Barras de items
             cols_items = st.columns(len(datos_plazo["items"]))
             for idx, (nombre, monto, pct) in enumerate(datos_plazo["items"]):
                 with cols_items[idx]:
@@ -508,24 +664,20 @@ elif menu == "Auditoría IA":
 </div>""", unsafe_allow_html=True)
                     st.caption(f"{pct*100:.0f}%")
             
-            # Desglose
             desglose = " • ".join([f"{n} ({m:,.0f}€)" for n, m, _ in datos_plazo["items"]])
             st.markdown(f'<div style="font-size:0.8rem;color:{TEXT_SEC};margin-top:0.5rem;">📊 {desglose}</div>', unsafe_allow_html=True)
             st.markdown("---")
         
-        # Mostrar tres secciones
         mostrar_seccion("🔴 URGENTE (0-6 meses)", "urgente", "🔴", RED, datos_aud["urgente"])
         mostrar_seccion("🟠 MEDIO (6-18 meses)", "medio", "🟠", AMBER, datos_aud["medio"])
         mostrar_seccion("🟢 LARGO (18+ meses)", "largo", "🟢", GREEN, datos_aud["largo"])
         
-        # Resumen total
         st.markdown('<div class="section-title">💰 Resumen Presupuestario</div>', unsafe_allow_html=True)
         col_res1, col_res2, col_res3 = st.columns(3)
         col_res1.metric("Inversión Total", f"{total_presupuesto:,.0f} €", "todas las categorías")
         col_res2.metric("Urgente + Medio", f"{datos_aud['urgente']['total'] + datos_aud['medio']['total']:,.0f} €", "próximos 18 meses")
         col_res3.metric("% sobre valor", f"{total_presupuesto/row_aud['Valor_Construccion']*100:.1f}%", f"de {row_aud['Valor_Construccion']:,.0f}€")
         
-        # Alertas cruzadas
         st.markdown('<div class="section-title">📋 Recomendaciones</div>', unsafe_allow_html=True)
         if ant >= 8:
             st.markdown(f'<div class="status-red"><b>🚨 Reforma muy antigua</b><br>Con {ant} años desde la última reforma, las intervenciones urgentes son críticas para mantener el valor del inmueble.</div>', unsafe_allow_html=True)
@@ -539,7 +691,7 @@ elif menu == "Auditoría IA":
             st.markdown(f'<div class="status-yellow" style="margin-top:0.8rem;"><b>🎯 Oportunidad de Negociación:</b><br>El contrato {msg_v.lower()}. Con {ant} años desde reforma, este es el momento óptimo para renegociar renta + reformas con el inquilino.</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
-# DIARIO CONTABLE — 3 TABS
+# DIARIO CONTABLE
 # ══════════════════════════════════════════════
 elif menu == "Diario Contable":
     st.markdown('<div class="brand-header">Diario Contable</div>', unsafe_allow_html=True)
@@ -547,7 +699,6 @@ elif menu == "Diario Contable":
 
     tab1, tab2, tab3 = st.tabs(["📋 Registro de Operaciones", "📥 Registrar Ingresos", "📤 Registrar Gastos"])
 
-    # ── TAB 1: TABLA ─────────────────────────
     with tab1:
         l_inm = df_inm["Nombre"].tolist()+["Global"]
         l_cat = ["Ingresos","Financiero","Tributario","Suministros","Seguros","Mantenimiento","Estructura","Comunidad","Otros"]
@@ -570,7 +721,6 @@ elif menu == "Diario Contable":
         if st.button("💾 Guardar Cambios", key="guardar_tabla"):
             df_ed.to_csv(DB_MOV,index=False); st.success("✓ Operaciones guardadas."); st.rerun()
 
-    # ── TAB 2: INGRESOS ──────────────────────
     with tab2:
         st.markdown("### 📥 Registrar Ingresos del Mes")
         st.markdown("Escribe de forma natural quién ha pagado y quién no")
@@ -607,9 +757,7 @@ elif menu == "Diario Contable":
 
         if "ingresos_pendientes" in st.session_state and st.session_state["ingresos_pendientes"]:
             if st.button("💾 Guardar todos en tabla", key="guardar_ingresos"):
-                # Filtrar solo los Cobrados para guardar
                 a_guardar = [r for r in st.session_state["ingresos_pendientes"]]
-                # Quitar columna Estado que no existe en CSV
                 for r in a_guardar:
                     r.pop("Estado", None)
                 guardar_movimientos(a_guardar)
@@ -617,7 +765,6 @@ elif menu == "Diario Contable":
                 st.success("✅ Ingresos guardados correctamente")
                 st.rerun()
 
-    # ── TAB 3: GASTOS ────────────────────────
     with tab3:
         st.markdown("### 📤 Registrar Gasto")
         st.caption("Sube una factura (OCR próximamente) o describe el gasto manualmente")
@@ -724,12 +871,241 @@ elif menu == "Suministros":
     st.markdown(f'<div class="{cls}" style="margin-top:0.5rem;">{rec}</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
+# FISCALIDAD — MODELO 100
+# ══════════════════════════════════════════════
+elif menu == "Fiscalidad":
+    st.markdown('<div class="brand-header">Escudo Fiscal — Modelo 100</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-sub">Pre-relleno IRPF · Rendimientos de capital inmobiliario</div>', unsafe_allow_html=True)
+
+    inmueble_fiscal = st.selectbox("Selecciona inmueble:", df_inm["Nombre"].tolist(), key="fiscal_inmueble")
+    f_fiscal = df_inm[df_inm["Nombre"] == inmueble_fiscal].iloc[0]
+    
+    # Calcular Modelo 100
+    modelo = calcular_modelo_100(f_fiscal, df_mov)
+    
+    # KPIs superiores
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Ingresos Íntegros", f"{modelo['0102']:,.0f} €", "Casilla 0102")
+    k2.metric("Total Gastos", f"{modelo['0102'] - modelo['0149']:,.0f} €", "Deducibles")
+    k3.metric("Rendimiento Neto", f"{modelo['0149']:,.0f} €", "Casilla 0149")
+    k4.metric("Base Imponible", f"{modelo['0154']:,.0f} €", f"Reducción {modelo['reduccion_pct']}%")
+    
+    st.markdown("---")
+    st.markdown('<div class="section-title">📋 Casillas Modelo 100 — Verificar y Confirmar</div>', unsafe_allow_html=True)
+    st.caption("Revisa cada casilla y marca como verificada. Los valores están pre-rellenados desde tus datos.")
+    
+    # Inicializar estado de checkboxes
+    if "casillas_verificadas" not in st.session_state:
+        st.session_state.casillas_verificadas = {}
+    
+    # Tabla estilo Modelo 100
+    tabla_html = f"""
+    <style>
+    .tabla-modelo {{
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+    }}
+    .tabla-modelo th {{
+        background: #0F2744;
+        color: white;
+        padding: 12px;
+        text-align: left;
+        font-weight: 600;
+    }}
+    .tabla-modelo td {{
+        padding: 12px;
+        border-bottom: 1px solid #e0e0e0;
+    }}
+    .tabla-modelo tr:hover {{
+        background: #f9f9f9;
+    }}
+    .casilla-col {{
+        width: 80px;
+        background: #f5f5f5;
+        font-weight: 600;
+        color: #0F2744;
+    }}
+    .valor-col {{
+        text-align: right;
+        font-weight: 600;
+        color: #185FA5;
+        width: 120px;
+    }}
+    .check-col {{
+        text-align: center;
+        width: 50px;
+    }}
+    </style>
+    
+    <table class="tabla-modelo">
+    <thead>
+        <tr>
+            <th>Casilla</th>
+            <th>Descripción</th>
+            <th>Valor</th>
+            <th>✓</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td class="casilla-col">0062-0075</td>
+            <td>Identificación del inmueble</td>
+            <td class="valor-col">{modelo['0062_0075']}</td>
+            <td class="check-col">__CHECK_0__</td>
+        </tr>
+        <tr>
+            <td class="casilla-col">0076</td>
+            <td>Clave de uso</td>
+            <td class="valor-col">{modelo['0076']}</td>
+            <td class="check-col">__CHECK_1__</td>
+        </tr>
+        <tr>
+            <td class="casilla-col">0100</td>
+            <td>Reducción vivienda habitual</td>
+            <td class="valor-col">{modelo['0100']}</td>
+            <td class="check-col">__CHECK_2__</td>
+        </tr>
+        <tr>
+            <td class="casilla-col">0101</td>
+            <td>Días arrendado</td>
+            <td class="valor-col">{modelo['0101']} días</td>
+            <td class="check-col">__CHECK_3__</td>
+        </tr>
+        <tr style="background: #f0f8ff;">
+            <td class="casilla-col" style="font-weight: bold;">0102</td>
+            <td style="font-weight: bold;">Ingresos íntegros</td>
+            <td class="valor-col" style="color: #27ae60; font-weight: bold;">{modelo['0102']:,.2f} €</td>
+            <td class="check-col">__CHECK_4__</td>
+        </tr>
+        <tr>
+            <td class="casilla-col">0105</td>
+            <td>Intereses y financiación</td>
+            <td class="valor-col">{modelo['0105']:,.2f} €</td>
+            <td class="check-col">__CHECK_5__</td>
+        </tr>
+        <tr>
+            <td class="casilla-col">0106</td>
+            <td>Reparación y conservación</td>
+            <td class="valor-col">{modelo['0106']:,.2f} €</td>
+            <td class="check-col">__CHECK_6__</td>
+        </tr>
+        <tr>
+            <td class="casilla-col">0108</td>
+            <td>Tributos e IBI</td>
+            <td class="valor-col">{modelo['0108']:,.2f} €</td>
+            <td class="check-col">__CHECK_7__</td>
+        </tr>
+        <tr>
+            <td class="casilla-col">0110</td>
+            <td>Comunidad, seguros, formalización</td>
+            <td class="valor-col">{modelo['0110']:,.2f} €</td>
+            <td class="check-col">__CHECK_8__</td>
+        </tr>
+        <tr>
+            <td class="casilla-col">0111</td>
+            <td>Servicios y suministros</td>
+            <td class="valor-col">{modelo['0111']:,.2f} €</td>
+            <td class="check-col">__CHECK_9__</td>
+        </tr>
+        <tr>
+            <td class="casilla-col">0112</td>
+            <td>Gastos jurídicos</td>
+            <td class="valor-col">{modelo['0112']:,.2f} €</td>
+            <td class="check-col">__CHECK_10__</td>
+        </tr>
+        <tr>
+            <td class="casilla-col">0113</td>
+            <td>Amortización (3%)</td>
+            <td class="valor-col">{modelo['0113']:,.2f} €</td>
+            <td class="check-col">__CHECK_11__</td>
+        </tr>
+        <tr style="background: #f0f8ff; font-weight: bold;">
+            <td class="casilla-col">0149</td>
+            <td>Rendimiento neto</td>
+            <td class="valor-col" style="color: #185FA5;">{modelo['0149']:,.2f} €</td>
+            <td class="check-col">__CHECK_12__</td>
+        </tr>
+        <tr style="background: #f0f8ff; font-weight: bold;">
+            <td class="casilla-col">0150</td>
+            <td>Reducción {modelo['reduccion_pct']}%</td>
+            <td class="valor-col" style="color: #f39c12;">-{modelo['0150']:,.2f} €</td>
+            <td class="check-col">__CHECK_13__</td>
+        </tr>
+        <tr style="background: #f0f8ff; font-weight: bold;">
+            <td class="casilla-col">0153</td>
+            <td>Retenciones practicadas</td>
+            <td class="valor-col">{modelo['0153']:,.2f} €</td>
+            <td class="check-col">__CHECK_14__</td>
+        </tr>
+        <tr style="background: #d5f4e6; font-weight: bold;">
+            <td class="casilla-col">0154</td>
+            <td>BASE IMPONIBLE FINAL</td>
+            <td class="valor-col" style="color: #27ae60;">{modelo['0154']:,.2f} €</td>
+            <td class="check-col">__CHECK_15__</td>
+        </tr>
+    </tbody>
+    </table>
+    """
+    
+    # Reemplazar placeholders con checkboxes reales
+    cols_check = st.columns(16)
+    checks_html = tabla_html
+    for i in range(16):
+        with cols_check[i]:
+            key = f"check_{inmueble_fiscal}_{i}"
+            if key not in st.session_state.casillas_verificadas:
+                st.session_state.casillas_verificadas[key] = False
+            checked = st.checkbox("", key=key, label_visibility="collapsed")
+            check_symbol = "✅" if checked else "☐"
+            checks_html = checks_html.replace(f"__CHECK_{i}__", check_symbol, 1)
+    
+    st.markdown(checks_html, unsafe_allow_html=True)
+    
+    # Barra de progreso
+    total_checks = 16
+    verificadas = sum([1 for k, v in st.session_state.casillas_verificadas.items() if inmueble_fiscal in k and v])
+    progreso = int((verificadas / total_checks) * 100)
+    
+    st.markdown("---")
+    col_p1, col_p2 = st.columns([3, 1])
+    with col_p1:
+        st.progress(progreso / 100)
+    with col_p2:
+        st.markdown(f"**{verificadas} de {total_checks} verificadas** ({progreso}%)")
+    
+    # Botones de acción
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        if st.button("✅ Confirmar Todas y Generar PDF", type="primary", use_container_width=True):
+            st.success(f"✓ Modelo 100 confirmado para {inmueble_fiscal}")
+            st.info("📄 Generación de PDF — Próximamente disponible")
+    with col_b2:
+        if st.button("📊 Ver Resumen Completo", use_container_width=True):
+            st.info("Vista de resumen consolidado de todos los inmuebles — Próximamente")
+    
+    # Notas importantes
+    st.markdown('<div class="section-title">ℹ️ Información Importante</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+<div class="status-yellow">
+<b>⚠️ Antes de confirmar:</b><br>
+• Este pre-relleno es orientativo. Verifica con tu asesor fiscal.<br>
+• Cochera vinculada: {f_fiscal.get('Cochera_Vinculada','N')} — {'Consolidada en arrendamiento principal' if f_fiscal.get('Cochera_Vinculada')=='S' else 'Tributa independiente'}<br>
+• Modalidad: {f_fiscal.get('Tipo_Arrendamiento','Larga Duración')} — Reducción aplicable: {modelo['reduccion_pct']}%<br>
+• Los datos provienen de: Fichas de inmuebles + Diario Contable
+</div>
+""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════
 # DATOS DE LA CARTERA
 # ══════════════════════════════════════════════
 elif menu == "Datos de la Cartera":
     st.markdown('<div class="brand-header">Datos de la Cartera</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Parámetros maestros y copias de seguridad</div>', unsafe_allow_html=True)
-    st.info("ℹ️ Campos nuevos: Tipo_Arrendamiento · Cochera_Vinculada · Zona_Tensionada · Fechas contrato")
+    st.info("ℹ️ Campos fiscales añadidos: NIF_Inquilino · Intereses_Hipoteca · IBI_Anual · Seguro_Anual · etc.")
 
     col_cfg = {
         "Tipo_Arrendamiento": st.column_config.SelectboxColumn("Tipo Arrend.",options=["Larga Duración","Temporada","Vacacional"],required=True),
@@ -738,6 +1114,9 @@ elif menu == "Datos de la Cartera":
         "Estado":             st.column_config.SelectboxColumn("Estado",       options=["Reformado","Bueno","Regular"],required=True),
         "Mobiliario":         st.column_config.SelectboxColumn("Mobiliario",   options=["S","N"],required=True),
         "Parking":            st.column_config.SelectboxColumn("Parking",      options=["S","N"],required=True),
+        "IBI_Anual":          st.column_config.NumberColumn("IBI/año", format="%.0f €"),
+        "Seguro_Anual":       st.column_config.NumberColumn("Seguro/año", format="%.0f €"),
+        "Intereses_Hipoteca": st.column_config.NumberColumn("Intereses Hip.", format="%.0f €"),
     }
     df_ed = st.data_editor(df_inm,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=col_cfg)
     if st.button("✅ Actualizar Cartera"):
