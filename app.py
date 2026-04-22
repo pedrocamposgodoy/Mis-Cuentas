@@ -62,11 +62,25 @@ html,body,[class*="css"]{{font-family:'DM Sans',sans-serif;background-color:{MAI
 .status-red{{background:#FDECEA;border-left:5px solid {RED};padding:1.2rem;border-radius:6px;}}
 .status-yellow{{background:#FFF9E6;border-left:5px solid #F39C12;padding:1.2rem;border-radius:6px;}}
 .status-green{{background:#EDF7F1;border-left:5px solid {GREEN};padding:1.2rem;border-radius:6px;}}
-/* BOTÓN INVISIBLE SOBRE CARD */
+/* BOTÓN VER FICHA */
+div[data-testid="column"] .stButton>button{
+    background:#FFFFFF!important;
+    border:1px solid #D0DFF0!important;
+    border-top:none!important;
+    border-radius:0 0 10px 10px!important;
+    color:#185FA5!important;
+    font-size:0.72rem!important;
+    font-weight:500!important;
+    padding:0.4rem 1.1rem!important;
+    width:100%!important;
+    text-align:left!important;
+    box-shadow:none!important;
+    margin-top:-2px!important;
+}
 div[data-testid="column"] .stButton>button{{
-    position:relative!important;opacity:0!important;height:1px!important;
-    margin-top:-1px!important;width:100%!important;cursor:pointer!important;
-    padding:0!important;border:none!important;background:transparent!important;
+    
+    
+    
 }}
 #MainMenu,footer,header{{visibility:hidden;}}
 </style>
@@ -238,7 +252,7 @@ if menu == "Torre de Control":
     <span class="pill {pill_cls}">{desv:+.1f}% mercado</span>
   </div>
 </div>""", unsafe_allow_html=True)
-            if st.button("·", key=f"card_{i}", use_container_width=True):
+            if st.button("→ Ver ficha", key=f"card_{i}", use_container_width=True):
                 st.session_state.menu = "Fichas (Benchmark)"
                 st.session_state.ficha_sel = row["Nombre"]
                 st.rerun()
