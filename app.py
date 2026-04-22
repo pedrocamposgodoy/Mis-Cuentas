@@ -44,10 +44,9 @@ html,body,[class*="css"]{{font-family:'DM Sans',sans-serif;background-color:{MAI
 .kpi-card.highlight .kpi-value{{color:#fff;}}
 .kpi-sub{{font-size:0.7rem;color:{TEXT_SEC};margin-top:0.3rem;}}
 .kpi-card.highlight .kpi-sub{{color:#B5D4F4;}}
-.asset-card{{background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;overflow:hidden;cursor:pointer;transition:box-shadow 0.15s;}}
-.asset-card:hover{{box-shadow:0 4px 16px rgba(24,95,165,0.13);border-color:{ACCENT};}}
+.asset-card{{background:{CARD_BG};border:1px solid {BORDER};border-radius:10px 10px 0 0;overflow:hidden;}}
 .asset-top{{height:4px;}}
-.asset-body{{padding:1rem 1.1rem 1rem 1.1rem;}}
+.asset-body{{padding:1rem 1.1rem 0.8rem 1.1rem;}}
 .asset-name{{font-size:0.82rem;font-weight:600;color:{TEXT_PRI};margin-bottom:2px;}}
 .asset-tenant{{font-size:0.72rem;color:{TEXT_SEC};margin-bottom:0.8rem;}}
 .asset-row{{display:flex;justify-content:space-between;margin-bottom:4px;}}
@@ -62,31 +61,18 @@ html,body,[class*="css"]{{font-family:'DM Sans',sans-serif;background-color:{MAI
 .status-red{{background:#FDECEA;border-left:5px solid {RED};padding:1.2rem;border-radius:6px;}}
 .status-yellow{{background:#FFF9E6;border-left:5px solid #F39C12;padding:1.2rem;border-radius:6px;}}
 .status-green{{background:#EDF7F1;border-left:5px solid {GREEN};padding:1.2rem;border-radius:6px;}}
-/* BOTÓN VER FICHA */
-div[data-testid="column"] .stButton>button{
-    background:#FFFFFF!important;
-    border:1px solid #D0DFF0!important;
-    border-top:none!important;
-    border-radius:0 0 10px 10px!important;
-    color:#185FA5!important;
-    font-size:0.72rem!important;
-    font-weight:500!important;
-    padding:0.4rem 1.1rem!important;
-    width:100%!important;
-    text-align:left!important;
-    box-shadow:none!important;
-    margin-top:-2px!important;
-}
 div[data-testid="column"] .stButton>button{{
-    
-    
-    
+    background:{CARD_BG}!important;border:1px solid {BORDER}!important;
+    border-top:none!important;border-radius:0 0 10px 10px!important;
+    color:{ACCENT}!important;font-size:0.72rem!important;font-weight:500!important;
+    padding:0.4rem 1.1rem!important;width:100%!important;text-align:left!important;
+    box-shadow:none!important;margin-top:0!important;
 }}
+div[data-testid="column"] .stButton>button:hover{{background:#F0F6FF!important;}}
 #MainMenu,footer,header{{visibility:hidden;}}
 </style>
 """, unsafe_allow_html=True)
 
-# ─── DATOS ───────────────────────────────────
 DB_INM = "nolasco_inmuebles_v10.csv"
 DB_MOV = "nolasco_movimientos_v10.csv"
 
@@ -108,9 +94,9 @@ def inicializar_bd():
         ]).to_csv(DB_INM, index=False)
     else:
         df = pd.read_csv(DB_INM)
+        defaults = {"Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01"}
         for c in COLS_INM:
             if c not in df.columns:
-                defaults = {"Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01"}
                 df[c] = defaults.get(c,"")
         df.to_csv(DB_INM, index=False)
 
@@ -124,9 +110,8 @@ inicializar_bd()
 df_inm = pd.read_csv(DB_INM)
 df_mov = pd.read_csv(DB_MOV)
 
-# ─── SESSION STATE ────────────────────────────
-if "menu" not in st.session_state:       st.session_state.menu = "Torre de Control"
-if "ficha_sel" not in st.session_state:  st.session_state.ficha_sel = None
+if "menu" not in st.session_state:      st.session_state.menu = "Torre de Control"
+if "ficha_sel" not in st.session_state: st.session_state.ficha_sel = None
 
 PAGES = [
     ("📊","Torre de Control"),
@@ -137,7 +122,6 @@ PAGES = [
     ("📂","Datos de la Cartera"),
 ]
 
-# ─── SIDEBAR ─────────────────────────────────
 with st.sidebar:
     st.markdown("""
 <div style='padding:1.4rem 1.4rem 0.8rem;'>
@@ -159,7 +143,6 @@ with st.sidebar:
 
 menu = st.session_state.menu
 
-# ─── HELPERS ─────────────────────────────────
 def bench_pill(desv):
     if desv < -15: return "pill-red","🔴"
     if desv < -5:  return "pill-amber","🟡"
@@ -181,23 +164,18 @@ def tasacion(row):
     ah = 1.05 if h>=4 else (0.97 if h==1 else 1.0)
     return round(p*m2*am*ap*ae*apl*ah,2)
 
-def reduccion_fiscal(tipo):
-    """Devuelve el % de reducción IRPF según modalidad"""
-    return {"Larga Duración":0.60,"Temporada":0.0,"Vacacional":0.0}.get(tipo,0.0)
-
 def dias_para_vencimiento(fecha_str):
     try:
-        fv = datetime.strptime(str(fecha_str),"%Y-%m-%d").date()
-        return (fv - date.today()).days
+        return (datetime.strptime(str(fecha_str),"%Y-%m-%d").date() - date.today()).days
     except:
         return None
 
 def alerta_vencimiento(row):
     dias = dias_para_vencimiento(row.get("Fecha_Vencimiento_Contrato",""))
-    if dias is None: return None, None
-    if dias < 0:     return "vencido", f"⚠️ Contrato vencido hace {abs(dias)} días"
-    if dias < 60:    return "urgente", f"🔴 Vence en {dias} días — actuar ahora"
-    if dias < 180:   return "aviso",   f"🟡 Vence en {dias} días ({round(dias/30)} meses)"
+    if dias is None:  return None, None
+    if dias < 0:      return "vencido", f"⚠️ Contrato vencido hace {abs(dias)} días"
+    if dias < 60:     return "urgente", f"🔴 Vence en {dias} días — actuar ahora"
+    if dias < 180:    return "aviso",   f"🟡 Vence en {dias} días ({round(dias/30)} meses)"
     return "ok", f"✅ Vence en {round(dias/30)} meses"
 
 # ══════════════════════════════════════════════
@@ -218,7 +196,7 @@ if menu == "Torre de Control":
     c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Operativos</div><div class="kpi-value" style="color:{RED};">−{gastos:,.0f} €</div><div class="kpi-sub">Comunidad + registrados</div></div>', unsafe_allow_html=True)
     c3.markdown(f'<div class="kpi-card highlight"><div class="kpi-label">Beneficio Neto</div><div class="kpi-value">{neto:,.0f} €</div><div class="kpi-sub">Margen {margen:.1f}%</div></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="section-title">Rentabilidad por Activo — pulsa para ver ficha</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Rentabilidad por Activo</div>', unsafe_allow_html=True)
     cols = st.columns(len(df_inm))
     for i, row in df_inm.iterrows():
         g_esp    = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
@@ -227,28 +205,18 @@ if menu == "Torre de Control":
         rm       = tasacion(row)
         desv     = (row["Renta"]-rm)/rm*100
         pill_cls,_ = bench_pill(desv)
-        zt_badge = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
-        tipo_arr = str(row.get("Tipo_Arrendamiento","LD"))[:2]
+        zt = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
         with cols[i]:
             st.markdown(f"""
 <div class="asset-card">
   <div class="asset-top" style="background:{COLOR_TOPS[i%len(COLOR_TOPS)]};"></div>
   <div class="asset-body">
-    <div class="asset-name">{row["Nombre"]}{zt_badge}</div>
+    <div class="asset-name">{row["Nombre"]}{zt}</div>
     <div class="asset-tenant">{row["Inquilino"]}</div>
-    <div class="asset-row">
-      <span class="asset-ml">Renta</span>
-      <span class="asset-mv" style="color:{GREEN};">+{row["Renta"]:,.0f}€</span>
-    </div>
-    <div class="asset-row">
-      <span class="asset-ml">Gastos</span>
-      <span class="asset-mv" style="color:{RED};">−{gastos_u:,.0f}€</span>
-    </div>
+    <div class="asset-row"><span class="asset-ml">Renta</span><span class="asset-mv" style="color:{GREEN};">+{row["Renta"]:,.0f}€</span></div>
+    <div class="asset-row"><span class="asset-ml">Gastos</span><span class="asset-mv" style="color:{RED};">−{gastos_u:,.0f}€</span></div>
     <div class="asset-div"></div>
-    <div class="asset-row">
-      <span class="asset-ml">Neto</span>
-      <span class="asset-neto">{neto_u:,.0f}€</span>
-    </div>
+    <div class="asset-row"><span class="asset-ml">Neto</span><span class="asset-neto">{neto_u:,.0f}€</span></div>
     <span class="pill {pill_cls}">{desv:+.1f}% mercado</span>
   </div>
 </div>""", unsafe_allow_html=True)
@@ -275,17 +243,11 @@ if menu == "Torre de Control":
         for _,row in df_inm.iterrows():
             rm=tasacion(row); pa=max(0,rm-row["Renta"])*12; total_lc+=pa
             if pa>0:
-                dv=(row["Renta"]-rm)/rm*100
-                cv=RED if dv<-15 else AMBER
+                dv=(row["Renta"]-rm)/rm*100; cv=RED if dv<-15 else AMBER
                 st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:{CARD_BG};border:1px solid {BORDER};border-radius:8px;margin-bottom:6px;"><span style="font-size:0.8rem;color:{TEXT_SEC};">{row["Nombre"]}</span><span style="font-size:0.9rem;font-weight:600;color:{cv};">−{pa:,.0f} €/año</span></div>', unsafe_allow_html=True)
         st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:{ACCENT};border-radius:8px;margin-top:4px;"><span style="font-size:0.72rem;font-weight:500;color:#B5D4F4;text-transform:uppercase;letter-spacing:0.06em;">Total pérdida anual</span><span style="font-size:1.3rem;font-weight:600;color:#fff;">−{total_lc:,.0f} €</span></div>', unsafe_allow_html=True)
 
-    # Alertas de vencimiento
-    alertas = []
-    for _,row in df_inm.iterrows():
-        tipo,msg = alerta_vencimiento(row)
-        if tipo in ("vencido","urgente","aviso"):
-            alertas.append((row["Nombre"],tipo,msg))
+    alertas = [(row["Nombre"],*alerta_vencimiento(row)) for _,row in df_inm.iterrows() if alerta_vencimiento(row)[0] in ("vencido","urgente","aviso")]
     if alertas:
         st.markdown('<div class="section-title">📅 Alertas de Contratos</div>', unsafe_allow_html=True)
         for nombre,tipo,msg in alertas:
@@ -324,28 +286,22 @@ elif menu == "Fichas (Benchmark)":
     k3.markdown(f'<div class="kpi-card"><div class="kpi-label">Rentabilidad Bruta</div><div class="kpi-value" style="color:{ACCENT};">{rent_bruta:.1f}%</div><div class="kpi-sub">sobre valor construcción</div></div>', unsafe_allow_html=True)
     k4.markdown(f'<div class="kpi-card highlight"><div class="kpi-label">Rentabilidad Neta</div><div class="kpi-value">{rent_neta:.1f}%</div><div class="kpi-sub">{tipo_arr}</div></div>', unsafe_allow_html=True)
 
-    # Badges info
     badges = []
     if zona_tens: badges.append(f'<span style="background:#FDECEA;color:#A32D2D;font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">🔒 Zona Tensionada</span>')
     if cochera_v: badges.append(f'<span style="background:#EDF7F1;color:#1a7a40;font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">🅿️ Cochera Vinculada</span>')
     tipo_color = {"Larga Duración":"#EAF3DE","Temporada":"#FFF9E6","Vacacional":"#FDECEA"}.get(tipo_arr,"#EAF3DE")
     tipo_texto = {"Larga Duración":"#3B6D11","Temporada":"#854F0B","Vacacional":"#A32D2D"}.get(tipo_arr,"#3B6D11")
     badges.append(f'<span style="background:{tipo_color};color:{tipo_texto};font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">📋 {tipo_arr}</span>')
-    if badges:
-        st.markdown("<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem;'>"+"".join(badges)+"</div>", unsafe_allow_html=True)
+    st.markdown("<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem;'>"+"".join(badges)+"</div>", unsafe_allow_html=True)
 
-    # Alerta zona tensionada
     if zona_tens:
-        st.markdown(f'<div class="status-red" style="margin-bottom:1rem;"><b>🔒 Zona de Mercado Tensionado</b><br>No puedes subir la renta por encima del índice legal. El simulador de subida está limitado al IPC vigente.</div>', unsafe_allow_html=True)
-
-    # Alerta cochera
+        st.markdown(f'<div class="status-red" style="margin-bottom:1rem;"><b>🔒 Zona de Mercado Tensionado</b><br>No puedes subir la renta por encima del índice legal.</div>', unsafe_allow_html=True)
     if not cochera_v and str(f.get("Parking","N"))=="S":
-        st.markdown(f'<div class="status-yellow" style="margin-bottom:1rem;"><b>🅿️ Cochera Independiente</b><br>Tributa de forma separada con sus propios ingresos. Revisar en declaración IRPF.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="status-yellow" style="margin-bottom:1rem;"><b>🅿️ Cochera Independiente</b><br>Tributa de forma separada. Revisar en declaración IRPF.</div>', unsafe_allow_html=True)
 
-    # Alerta vencimiento
     tipo_v, msg_v = alerta_vencimiento(f)
     if tipo_v:
-        cls_v = "status-red" if tipo_v in ("vencido","urgente") else "status-yellow" if tipo_v=="aviso" else "status-green"
+        cls_v = "status-red" if tipo_v in ("vencido","urgente") else ("status-yellow" if tipo_v=="aviso" else "status-green")
         st.markdown(f'<div class="{cls_v}" style="margin-bottom:1rem;"><b>📅 Contrato:</b> {msg_v}</div>', unsafe_allow_html=True)
 
     c1,c2 = st.columns(2)
@@ -370,62 +326,51 @@ elif menu == "Fichas (Benchmark)":
             lucro_html=f'<div style="margin-top:12px;padding-top:12px;border-top:1px dashed rgba(0,0,0,0.15);"><span style="font-size:0.88rem;"><b>💸 Lucro Cesante:</b><br>Pérdida mensual: <b>{perdida_m:,.2f} €</b><br>Pérdida anualizada: <b style="color:{RED};font-size:1.15rem;">{perdida_a:,.2f} €/año</b></span></div>'
         st.markdown(f'<div class="{clase}"><b style="font-size:1.1rem;">{icon} {msg}</b><br>Desviación: <b>{desv:.1f}%</b>{lucro_html}</div>', unsafe_allow_html=True)
 
-    # ── COMPARATIVA FISCAL ────────────────────
     st.markdown('<div class="section-title">⚖️ Comparativa Fiscal por Modalidad</div>', unsafe_allow_html=True)
     st.caption("Rentabilidad neta real tras aplicar reducción IRPF según tipo de arrendamiento")
+    renta_anual  = renta_act*12
+    gastos_anual = gastos_u*12
+    rto_neto     = renta_anual-gastos_anual
+    tipo_irpf    = 0.45
+    modalidades  = {"Larga Duración":{"reduccion":0.60,"iva":False},"Temporada":{"reduccion":0.00,"iva":False},"Vacacional":{"reduccion":0.00,"iva":True}}
+    cf1,cf2,cf3  = st.columns(3)
+    cols_fiscal  = [cf1,cf2,cf3]
+    mejor_mod,mejor_rn = None,-99999
 
-    renta_anual = renta_act * 12
-    gastos_anual = gastos_u * 12
-    rto_neto = renta_anual - gastos_anual
-    tipo_irpf = 0.45  # tipo marginal estimado
-
-    modalidades = {
-        "Larga Duración": {"reduccion": 0.60, "iva": False},
-        "Temporada":      {"reduccion": 0.00, "iva": False},
-        "Vacacional":     {"reduccion": 0.00, "iva": True},
-    }
-
-    cf1, cf2, cf3 = st.columns(3)
-    cols_fiscal = [cf1, cf2, cf3]
-    mejor_mod = None
-    mejor_rn  = -99999
-
-    for idx, (mod, params) in enumerate(modalidades.items()):
-        red    = params["reduccion"]
-        base_imp = rto_neto * (1 - red)
-        impuesto = max(0, base_imp * tipo_irpf)
-        rn_real  = (rto_neto - impuesto) / f["Valor_Construccion"] * 100 if f["Valor_Construccion"]>0 else 0
-        if rn_real > mejor_rn:
-            mejor_rn = rn_real; mejor_mod = mod
-        es_actual = (mod == tipo_arr)
+    for idx,(mod,params) in enumerate(modalidades.items()):
+        red      = params["reduccion"]
+        base_imp = rto_neto*(1-red)
+        impuesto = max(0,base_imp*tipo_irpf)
+        rn_real  = (rto_neto-impuesto)/f["Valor_Construccion"]*100 if f["Valor_Construccion"]>0 else 0
+        if rn_real>mejor_rn: mejor_rn=rn_real; mejor_mod=mod
+        es_actual = (mod==tipo_arr)
         borde = f"border:2px solid {ACCENT};" if es_actual else f"border:1px solid {BORDER};"
         iva_txt = "<br><span style='font-size:0.7rem;color:#854F0B;'>⚠️ Puede llevar IVA</span>" if params["iva"] else ""
         red_txt = f"Reducción IRPF: <b>{int(red*100)}%</b>" if red>0 else "Sin reducción fiscal"
+        actual_badge = "<div style='margin-top:8px;font-size:0.7rem;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;'>✅ Modalidad actual</div>" if es_actual else ""
         cols_fiscal[idx].markdown(f"""
 <div style="background:{CARD_BG};{borde}border-radius:10px;padding:1.1rem;text-align:center;">
   <div style="font-size:0.72rem;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">{mod}</div>
-  <div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div>
+  <div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{''+ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div>
   <div style="font-size:0.7rem;color:{TEXT_SEC};margin-top:4px;">Rent. neta real/año</div>
   <div style="font-size:0.75rem;color:{TEXT_PRI};margin-top:8px;">{red_txt}{iva_txt}</div>
   <div style="font-size:0.7rem;color:{RED};margin-top:4px;">Impuesto est.: {impuesto:,.0f} €/año</div>
-  {"<div style='margin-top:8px;font-size:0.7rem;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;'>✅ Modalidad actual</div>" if es_actual else ""}
+  {actual_badge}
 </div>""", unsafe_allow_html=True)
 
     if mejor_mod:
-        st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%) para este inmueble con los gastos actuales.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%) para este inmueble.</div>', unsafe_allow_html=True)
 
-    # ── SIMULADOR SUBIDA ─────────────────────
     st.markdown('<div class="section-title">Simulador de Subida de Renta</div>', unsafe_allow_html=True)
     if zona_tens:
         ipc_limite = 3.0
-        max_renta  = int(renta_act * (1 + ipc_limite/100))
-        st.warning(f"🔒 Zona tensionada: subida máxima limitada al IPC ({ipc_limite}%). Renta máxima permitida: {max_renta:,.0f} €/mes")
+        max_renta  = int(renta_act*(1+ipc_limite/100))
+        st.warning(f"🔒 Zona tensionada: subida máxima al IPC ({ipc_limite}%). Renta máxima: {max_renta:,.0f} €/mes")
         nueva_renta = st.slider("Ajusta la renta (€)", min_value=int(renta_act*0.9), max_value=max_renta, value=int(renta_act), step=10)
     else:
         nueva_renta = st.slider("Ajusta la renta mensual (€)", min_value=int(renta_act*0.8), max_value=int(renta_mer*1.2), value=int(renta_act), step=25)
 
-    ganancia_m = nueva_renta-renta_act
-    ganancia_a = ganancia_m*12
+    ganancia_m = nueva_renta-renta_act; ganancia_a = ganancia_m*12
     nueva_neta = ((nueva_renta-gastos_u)*12/f["Valor_Construccion"]*100) if f["Valor_Construccion"]>0 else 0
     s1,s2,s3 = st.columns(3)
     s1.metric("Nueva Renta",      f"{nueva_renta:,.0f} €/mes", delta=f"{ganancia_m:+.0f} €")
@@ -457,18 +402,15 @@ elif menu == "Auditoría IA":
 
     año_actual = datetime.now().year
     for i,row in df_inm.reset_index().iterrows():
-        ant = año_actual - int(row.get("Año_Reforma",año_actual))
+        ant = año_actual-int(row.get("Año_Reforma",año_actual))
         st.markdown(f"### 📍 {row['Nombre']}")
         if ant>=8:   st.error(f"⚠️ Reforma hace {ant} años. Revisión estructural recomendada.")
         elif ant>=5: st.warning(f"🔧 Reforma hace {ant} años. Revisión preventiva en 6 meses.")
         elif ant>=3: st.info(f"📋 Reforma hace {ant} años. Próxima revisión en 12 meses.")
         else:        st.success(f"✅ Reforma reciente ({ant} años). Sin acciones necesarias.")
-
-        # Cruce vencimiento + reforma
-        tipo_v, msg_v = alerta_vencimiento(row)
+        tipo_v,msg_v = alerta_vencimiento(row)
         if tipo_v in ("vencido","urgente","aviso") and ant>=3:
-            st.markdown(f'<div class="status-yellow" style="margin-top:4px;"><b>🎯 Oportunidad:</b> El contrato {msg_v.lower()} y el inmueble tiene {ant} años desde la última reforma. Momento óptimo para negociar reforma + renegociación.</div>', unsafe_allow_html=True)
-
+            st.markdown(f'<div class="status-yellow" style="margin-top:4px;"><b>🎯 Oportunidad:</b> El contrato {msg_v.lower()} y el inmueble tiene {ant} años desde la reforma. Momento óptimo para renegociar.</div>', unsafe_allow_html=True)
         ca = st.columns(4)
         ca[0].metric("Año Reforma", int(row.get("Año_Reforma","-")))
         ca[1].metric("Antigüedad",  f"{ant} años")
@@ -487,7 +429,6 @@ elif menu == "Diario Contable":
     l_inm = df_inm["Nombre"].tolist()+["Global"]
     l_cat = ["Ingresos","Financiero","Tributario","Suministros","Seguros","Mantenimiento","Estructura","Comunidad","Otros"]
     l_con = ["Renta Mensual","Hipoteca (Intereses)","Hipoteca (Capital)","IBI","Comunidad Ordinaria","Seguro Hogar","Seguro Vida","Luz","Agua","Reparación","Sueldo Pedro"]
-
     config = {
         "Apartamento": st.column_config.SelectboxColumn("Inmueble",  options=l_inm,required=True),
         "Concepto":    st.column_config.SelectboxColumn("Concepto",  options=l_con,required=True),
@@ -521,10 +462,10 @@ elif menu == "Suministros":
     col1,col2 = st.columns(2)
     with col1:
         potencia_actual = st.number_input("Potencia contratada (kW)",min_value=1.0,max_value=30.0,value=4.4,step=0.1)
-        tiene_ac      = st.checkbox("¿Aire acondicionado?",value=True)
-        tiene_vitro   = st.checkbox("¿Vitrocerámica/inducción?",value=True)
-        tiene_termo   = st.checkbox("¿Termo eléctrico?",value=False)
-        tiene_cargador= st.checkbox("¿Cargador vehículo eléctrico?",value=False)
+        tiene_ac       = st.checkbox("¿Aire acondicionado?",value=True)
+        tiene_vitro    = st.checkbox("¿Vitrocerámica/inducción?",value=True)
+        tiene_termo    = st.checkbox("¿Termo eléctrico?",value=False)
+        tiene_cargador = st.checkbox("¿Cargador vehículo eléctrico?",value=False)
 
     base_kw={1:2.3,2:3.3,3:3.3,4:4.4,5:5.5}.get(min(hab,5),4.4)
     extra=0.0
@@ -555,14 +496,20 @@ elif menu == "Suministros":
     with c2: pfijo=st.number_input("Tarifa fija (€/kWh)",min_value=0.05,max_value=0.50,value=0.18,step=0.01,format="%.3f")
     with c3: ppool=st.number_input("Pool PVPC (€/kWh)",min_value=0.02,max_value=0.40,value=0.12,step=0.01,format="%.3f",help="Histórico 2024 ≈ 0.08–0.14 €/kWh")
     pind=ppool+0.04; cf_mes=kwh*pfijo; ci_mes=kwh*pind; dif_a=(cf_mes-ci_mes)*12
-    fig_tar=go.Figure(go.Bar(x=["Tarifa Fija","Tarifa Indexada"],y=[cf_mes,ci_mes],marker_color=[ACCENT,"#639922"],text=[f"{cf_mes:.2f} €/mes",f"{ci_mes:.2f} €/mes"],textposition="outside",width=0.35))
-    fig_tar.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=20,b=10),height=260,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=13),showlegend=False)
+    fig_tar=go.Figure(go.Bar(x=["Tarifa Fija","Tarifa Indexada"],y=[cf_mes,ci_mes],marker_color=[ACCENT,"#639922"],
+        text=[f"{cf_mes:.2f} €/mes",f"{ci_mes:.2f} €/mes"],textposition="outside",width=0.35))
+    fig_tar.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10,r=10,t=20,b=10),height=260,
+        yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),
+        font=dict(family="DM Sans",size=13),showlegend=False)
     st.plotly_chart(fig_tar,use_container_width=True)
     r1,r2,r3=st.columns(3)
     r1.metric("Coste fijo/mes",f"{cf_mes:.2f} €")
     r2.metric("Coste indexado/mes",f"{ci_mes:.2f} €",delta=f"{-(cf_mes-ci_mes):+.2f} €")
     r3.metric("Ahorro anual",f"{dif_a:+.0f} €")
-    rec,cls=("✅ Tarifa <b>indexada</b> más barata. Ahorro: <b>{:.0f} €/año</b>.".format(dif_a),"status-green") if dif_a>30 else (("⚠️ Tarifa <b>fija</b> más económica con pool actual.","status-yellow") if dif_a<-30 else ("➡️ Diferencia marginal.","status-yellow"))
+    if dif_a>30:   rec,cls=f"✅ Tarifa <b>indexada</b> más barata. Ahorro: <b>{dif_a:.0f} €/año</b>.","status-green"
+    elif dif_a<-30: rec,cls="⚠️ Tarifa <b>fija</b> más económica con pool actual.","status-yellow"
+    else:           rec,cls="➡️ Diferencia marginal. Depende de tu tolerancia al riesgo.","status-yellow"
     st.markdown(f'<div class="{cls}" style="margin-top:0.5rem;">{rec}</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
@@ -571,15 +518,15 @@ elif menu == "Suministros":
 elif menu == "Datos de la Cartera":
     st.markdown('<div class="brand-header">Datos de la Cartera</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Parámetros maestros y copias de seguridad</div>', unsafe_allow_html=True)
-    st.info("ℹ️ Nuevos campos: Tipo_Arrendamiento, Cochera_Vinculada, Zona_Tensionada, Fecha_Inicio_Contrato, Fecha_Vencimiento_Contrato")
+    st.info("ℹ️ Campos nuevos: Tipo_Arrendamiento · Cochera_Vinculada · Zona_Tensionada · Fechas contrato")
 
     col_cfg = {
-        "Tipo_Arrendamiento": st.column_config.SelectboxColumn("Tipo Arrend.", options=["Larga Duración","Temporada","Vacacional"],required=True),
-        "Cochera_Vinculada":  st.column_config.SelectboxColumn("Cochera Vinc.", options=["S","N"],required=True),
-        "Zona_Tensionada":    st.column_config.SelectboxColumn("Zona Tensión",  options=["S","N"],required=True),
-        "Estado":             st.column_config.SelectboxColumn("Estado",        options=["Reformado","Bueno","Regular"],required=True),
-        "Mobiliario":         st.column_config.SelectboxColumn("Mobiliario",    options=["S","N"],required=True),
-        "Parking":            st.column_config.SelectboxColumn("Parking",       options=["S","N"],required=True),
+        "Tipo_Arrendamiento": st.column_config.SelectboxColumn("Tipo Arrend.",options=["Larga Duración","Temporada","Vacacional"],required=True),
+        "Cochera_Vinculada":  st.column_config.SelectboxColumn("Cochera Vinc.",options=["S","N"],required=True),
+        "Zona_Tensionada":    st.column_config.SelectboxColumn("Zona Tensión", options=["S","N"],required=True),
+        "Estado":             st.column_config.SelectboxColumn("Estado",       options=["Reformado","Bueno","Regular"],required=True),
+        "Mobiliario":         st.column_config.SelectboxColumn("Mobiliario",   options=["S","N"],required=True),
+        "Parking":            st.column_config.SelectboxColumn("Parking",      options=["S","N"],required=True),
     }
     df_ed = st.data_editor(df_inm,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=col_cfg)
     if st.button("✅ Actualizar Cartera"):
