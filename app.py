@@ -281,10 +281,8 @@ def calcular_dias_arrendado(row, año_fiscal=None):
         return 365
 def calcular_amortizacion(principal, tasa_anual, plazo_años, modo="cuota_fija"):
     # ... código completo ...
-
 def stress_test_euribor(saldo_actual, margen, euribor_base, plazo_restante_años):
     # ... código completo ...
-
 def analisis_sensibilidad_renta(renta_actual, gastos_anuales, valor_construccion, variaciones=None):
     # ... código completo ...
 def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
