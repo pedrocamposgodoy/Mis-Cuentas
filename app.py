@@ -143,6 +143,7 @@ with st.sidebar:
 
 menu = st.session_state.menu
 
+# ─── HELPERS ─────────────────────────────────
 def bench_pill(desv):
     if desv < -15: return "pill-red","🔴"
     if desv < -5:  return "pill-amber","🟡"
@@ -177,6 +178,45 @@ def alerta_vencimiento(row):
     if dias < 60:     return "urgente", f"🔴 Vence en {dias} días — actuar ahora"
     if dias < 180:    return "aviso",   f"🟡 Vence en {dias} días ({round(dias/30)} meses)"
     return "ok", f"✅ Vence en {round(dias/30)} meses"
+
+def guardar_movimientos(nuevos):
+    """Añade registros nuevos al CSV de movimientos"""
+    df_actual = pd.read_csv(DB_MOV)
+    df_nuevos = pd.DataFrame(nuevos)
+    df_final  = pd.concat([df_actual, df_nuevos], ignore_index=True)
+    df_final.to_csv(DB_MOV, index=False)
+
+def parsear_ingresos(texto, df_inm_local):
+    """Detecta qué inmuebles han pagado a partir de texto libre"""
+    rentas   = dict(zip(df_inm_local["Nombre"], df_inm_local["Renta"]))
+    nombres  = df_inm_local["Nombre"].tolist()
+    texto_l  = texto.lower()
+    registros = []
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    mes = datetime.now().strftime("%B %Y")
+
+    # Detectar inmuebles mencionados como NO pagados
+    no_pagaron = [n for n in nombres if any(p in texto_l for p in [n.lower(), n.split()[0].lower(), n.split()[-1].lower()]) and ("menos" in texto_l or "excepto" in texto_l or "no" in texto_l or "pendiente" in texto_l or "falta" in texto_l)]
+
+    if "todos" in texto_l and no_pagaron:
+        # Todos menos los mencionados
+        for n in nombres:
+            estado = "Pendiente" if n in no_pagaron else "Cobrado"
+            registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":estado})
+    elif "todos" in texto_l:
+        for n in nombres:
+            registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":"Cobrado"})
+    else:
+        # Detectar cuáles se mencionan como pagados
+        mencionados = [n for n in nombres if any(p in texto_l for p in [n.lower(), n.split()[0].lower(), n.split()[-1].lower()])]
+        for n in nombres:
+            if n in mencionados:
+                estado = "Pendiente" if any(p in texto_l for p in ["no","pendiente","falta","sin"]) else "Cobrado"
+            else:
+                estado = "Cobrado"
+            registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":estado})
+
+    return registros
 
 # ══════════════════════════════════════════════
 # TORRE DE CONTROL
@@ -328,44 +368,40 @@ elif menu == "Fichas (Benchmark)":
 
     st.markdown('<div class="section-title">⚖️ Comparativa Fiscal por Modalidad</div>', unsafe_allow_html=True)
     st.caption("Rentabilidad neta real tras aplicar reducción IRPF según tipo de arrendamiento")
-    renta_anual  = renta_act*12
-    gastos_anual = gastos_u*12
-    rto_neto     = renta_anual-gastos_anual
-    tipo_irpf    = 0.45
-    modalidades  = {"Larga Duración":{"reduccion":0.60,"iva":False},"Temporada":{"reduccion":0.00,"iva":False},"Vacacional":{"reduccion":0.00,"iva":True}}
-    cf1,cf2,cf3  = st.columns(3)
-    cols_fiscal  = [cf1,cf2,cf3]
+    rto_neto    = (renta_act-gastos_u)*12
+    tipo_irpf   = 0.45
+    modalidades = {"Larga Duración":{"reduccion":0.60,"iva":False},"Temporada":{"reduccion":0.00,"iva":False},"Vacacional":{"reduccion":0.00,"iva":True}}
+    cf1,cf2,cf3 = st.columns(3)
+    cols_fiscal = [cf1,cf2,cf3]
     mejor_mod,mejor_rn = None,-99999
 
     for idx,(mod,params) in enumerate(modalidades.items()):
         red      = params["reduccion"]
-        base_imp = rto_neto*(1-red)
-        impuesto = max(0,base_imp*tipo_irpf)
+        impuesto = max(0, rto_neto*(1-red)*tipo_irpf)
         rn_real  = (rto_neto-impuesto)/f["Valor_Construccion"]*100 if f["Valor_Construccion"]>0 else 0
         if rn_real>mejor_rn: mejor_rn=rn_real; mejor_mod=mod
         es_actual = (mod==tipo_arr)
         borde = f"border:2px solid {ACCENT};" if es_actual else f"border:1px solid {BORDER};"
         iva_txt = "<br><span style='font-size:0.7rem;color:#854F0B;'>⚠️ Puede llevar IVA</span>" if params["iva"] else ""
         red_txt = f"Reducción IRPF: <b>{int(red*100)}%</b>" if red>0 else "Sin reducción fiscal"
-        actual_badge = "<div style='margin-top:8px;font-size:0.7rem;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;'>✅ Modalidad actual</div>" if es_actual else ""
+        badge   = "<div style='margin-top:8px;font-size:0.7rem;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;'>✅ Modalidad actual</div>" if es_actual else ""
         cols_fiscal[idx].markdown(f"""
 <div style="background:{CARD_BG};{borde}border-radius:10px;padding:1.1rem;text-align:center;">
   <div style="font-size:0.72rem;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">{mod}</div>
-  <div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{''+ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div>
+  <div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div>
   <div style="font-size:0.7rem;color:{TEXT_SEC};margin-top:4px;">Rent. neta real/año</div>
   <div style="font-size:0.75rem;color:{TEXT_PRI};margin-top:8px;">{red_txt}{iva_txt}</div>
   <div style="font-size:0.7rem;color:{RED};margin-top:4px;">Impuesto est.: {impuesto:,.0f} €/año</div>
-  {actual_badge}
+  {badge}
 </div>""", unsafe_allow_html=True)
 
     if mejor_mod:
-        st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%) para este inmueble.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%).</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="section-title">Simulador de Subida de Renta</div>', unsafe_allow_html=True)
     if zona_tens:
-        ipc_limite = 3.0
-        max_renta  = int(renta_act*(1+ipc_limite/100))
-        st.warning(f"🔒 Zona tensionada: subida máxima al IPC ({ipc_limite}%). Renta máxima: {max_renta:,.0f} €/mes")
+        max_renta = int(renta_act*1.03)
+        st.warning(f"🔒 Zona tensionada: subida máxima al IPC (3%). Renta máxima: {max_renta:,.0f} €/mes")
         nueva_renta = st.slider("Ajusta la renta (€)", min_value=int(renta_act*0.9), max_value=max_renta, value=int(renta_act), step=10)
     else:
         nueva_renta = st.slider("Ajusta la renta mensual (€)", min_value=int(renta_act*0.8), max_value=int(renta_mer*1.2), value=int(renta_act), step=25)
@@ -420,32 +456,124 @@ elif menu == "Auditoría IA":
             st.markdown(f"<hr style='border:0;border-top:1px solid {BORDER};margin:1rem 0;'>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
-# DIARIO CONTABLE
+# DIARIO CONTABLE — 3 TABS
 # ══════════════════════════════════════════════
 elif menu == "Diario Contable":
-    st.markdown('<div class="brand-header">Registro de Operaciones</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Diario contable dinámico</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-header">Diario Contable</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-sub">Registro de operaciones · Ingresos · Gastos</div>', unsafe_allow_html=True)
 
-    l_inm = df_inm["Nombre"].tolist()+["Global"]
-    l_cat = ["Ingresos","Financiero","Tributario","Suministros","Seguros","Mantenimiento","Estructura","Comunidad","Otros"]
-    l_con = ["Renta Mensual","Hipoteca (Intereses)","Hipoteca (Capital)","IBI","Comunidad Ordinaria","Seguro Hogar","Seguro Vida","Luz","Agua","Reparación","Sueldo Pedro"]
-    config = {
-        "Apartamento": st.column_config.SelectboxColumn("Inmueble",  options=l_inm,required=True),
-        "Concepto":    st.column_config.SelectboxColumn("Concepto",  options=l_con,required=True),
-        "Categoría":   st.column_config.SelectboxColumn("Categoría", options=l_cat,required=True),
-        "Tipo":        st.column_config.SelectboxColumn("Tipo",      options=["Ingreso","Gasto"],required=True),
-        "Deducible":   st.column_config.SelectboxColumn("Fiscal",    options=["S","N"],required=True),
-        "Importe":     st.column_config.NumberColumn("Importe (€)",  format="%.2f",min_value=0),
-    }
-    df_ed = st.data_editor(df_mov,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=config)
-    t_ing = df_ed[df_ed["Tipo"]=="Ingreso"]["Importe"].sum()
-    t_gas = df_ed[df_ed["Tipo"]=="Gasto"]["Importe"].sum()
-    m1,m2,m3 = st.columns(3)
-    m1.metric("Ingresos Registrados",f"{t_ing:,.2f} €")
-    m2.metric("Gastos Registrados",  f"−{t_gas:,.2f} €")
-    m3.metric("Balance Total",       f"{t_ing-t_gas:,.2f} €")
-    if st.button("💾 Guardar Cambios"):
-        df_ed.to_csv(DB_MOV,index=False); st.success("✓ Operaciones guardadas."); st.rerun()
+    tab1, tab2, tab3 = st.tabs(["📋 Registro de Operaciones", "📥 Registrar Ingresos", "📤 Registrar Gastos"])
+
+    # ── TAB 1: TABLA ─────────────────────────
+    with tab1:
+        l_inm = df_inm["Nombre"].tolist()+["Global"]
+        l_cat = ["Ingresos","Financiero","Tributario","Suministros","Seguros","Mantenimiento","Estructura","Comunidad","Otros"]
+        l_con = ["Renta Mensual","Hipoteca (Intereses)","Hipoteca (Capital)","IBI","Comunidad Ordinaria","Seguro Hogar","Seguro Vida","Luz","Agua","Reparación","Sueldo Pedro"]
+        config = {
+            "Apartamento": st.column_config.SelectboxColumn("Inmueble",  options=l_inm,required=True),
+            "Concepto":    st.column_config.SelectboxColumn("Concepto",  options=l_con,required=True),
+            "Categoría":   st.column_config.SelectboxColumn("Categoría", options=l_cat,required=True),
+            "Tipo":        st.column_config.SelectboxColumn("Tipo",      options=["Ingreso","Gasto"],required=True),
+            "Deducible":   st.column_config.SelectboxColumn("Fiscal",    options=["S","N"],required=True),
+            "Importe":     st.column_config.NumberColumn("Importe (€)",  format="%.2f",min_value=0),
+        }
+        df_ed = st.data_editor(df_mov,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=config)
+        t_ing = df_ed[df_ed["Tipo"]=="Ingreso"]["Importe"].sum()
+        t_gas = df_ed[df_ed["Tipo"]=="Gasto"]["Importe"].sum()
+        m1,m2,m3 = st.columns(3)
+        m1.metric("Ingresos Registrados", f"{t_ing:,.2f} €")
+        m2.metric("Gastos Registrados",   f"−{t_gas:,.2f} €")
+        m3.metric("Balance Total",        f"{t_ing-t_gas:,.2f} €")
+        if st.button("💾 Guardar Cambios", key="guardar_tabla"):
+            df_ed.to_csv(DB_MOV,index=False); st.success("✓ Operaciones guardadas."); st.rerun()
+
+    # ── TAB 2: INGRESOS ──────────────────────
+    with tab2:
+        st.markdown("### 📥 Registrar Ingresos del Mes")
+        st.markdown("Escribe de forma natural quién ha pagado y quién no")
+        st.caption('Ejemplo: "Todos han pagado menos Abarqueros" · "Solo pagaron Huerto 1 y Salón"')
+
+        texto_ingresos = st.text_area(
+            "¿Quién ha pagado este mes?",
+            placeholder="Todos han pagado menos Abarqueros...",
+            height=90
+        )
+
+        if st.button("🔄 Procesar ingresos", type="primary", key="procesar_ing"):
+            if texto_ingresos.strip():
+                registros = parsear_ingresos(texto_ingresos, df_inm)
+                if registros:
+                    st.markdown("---")
+                    st.markdown("**✓ Registros detectados — revisa antes de guardar:**")
+                    for r in registros:
+                        color  = "#EDF7F1" if r["Estado"]=="Cobrado" else "#FDECEA"
+                        bcolor = GREEN if r["Estado"]=="Cobrado" else RED
+                        icon   = "✅" if r["Estado"]=="Cobrado" else "⏳"
+                        st.markdown(f"""
+<div style="background:{color};border-left:4px solid {bcolor};padding:0.8rem 1rem;border-radius:6px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+  <div>
+    <span style="font-weight:600;font-size:0.88rem;">{icon} {r['Apartamento']}</span>
+    <span style="font-size:0.75rem;color:{TEXT_SEC};margin-left:8px;">{r['Concepto']}</span>
+  </div>
+  <span style="font-family:'DM Serif Display',serif;font-size:1.1rem;color:{bcolor};">{r['Importe']:,.0f} €</span>
+</div>""", unsafe_allow_html=True)
+
+                    st.session_state["ingresos_pendientes"] = registros
+            else:
+                st.warning("Escribe una descripción primero")
+
+        if "ingresos_pendientes" in st.session_state and st.session_state["ingresos_pendientes"]:
+            if st.button("💾 Guardar todos en tabla", key="guardar_ingresos"):
+                # Filtrar solo los Cobrados para guardar
+                a_guardar = [r for r in st.session_state["ingresos_pendientes"]]
+                # Quitar columna Estado que no existe en CSV
+                for r in a_guardar:
+                    r.pop("Estado", None)
+                guardar_movimientos(a_guardar)
+                st.session_state.pop("ingresos_pendientes")
+                st.success("✅ Ingresos guardados correctamente")
+                st.rerun()
+
+    # ── TAB 3: GASTOS ────────────────────────
+    with tab3:
+        st.markdown("### 📤 Registrar Gasto")
+        st.caption("Sube una factura (OCR próximamente) o describe el gasto manualmente")
+
+        archivo = st.file_uploader("Adjunta factura PDF o foto", type=["pdf","jpg","png","jpeg"])
+        if archivo:
+            st.info("📝 Lectura automática de facturas — próximamente disponible. Completa los datos manualmente.")
+
+        st.markdown("**Describe el gasto:**")
+        concepto_gasto = st.text_input("Concepto", placeholder="Reparación lavadora Huerto 1...")
+
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            inmueble_g = st.selectbox("Inmueble", ["— Selecciona —"]+df_inm["Nombre"].tolist(), key="inmg")
+            importe_g  = st.number_input("Importe (€)", min_value=0.0, step=0.01, format="%.2f")
+        with col_g2:
+            categoria_g = st.selectbox("Categoría", ["Mantenimiento","Suministros","Comunidad","Seguros","Tributario","Financiero","Otros"])
+            deducible_g = st.selectbox("¿Es deducible?", ["S","N"])
+
+        if st.button("💾 Guardar Gasto", type="primary", key="guardar_gasto"):
+            if inmueble_g == "— Selecciona —":
+                st.error("Selecciona un inmueble")
+            elif importe_g <= 0:
+                st.error("El importe debe ser mayor que 0")
+            elif not concepto_gasto.strip():
+                st.error("Escribe un concepto")
+            else:
+                nuevo = [{
+                    "Fecha":      datetime.now().strftime("%Y-%m-%d"),
+                    "Apartamento":inmueble_g,
+                    "Concepto":   concepto_gasto,
+                    "Categoría":  categoria_g,
+                    "Tipo":       "Gasto",
+                    "Importe":    importe_g,
+                    "Deducible":  deducible_g,
+                }]
+                guardar_movimientos(nuevo)
+                st.success(f"✅ Gasto de {importe_g:.2f} € guardado en {inmueble_g}")
+                st.rerun()
 
 # ══════════════════════════════════════════════
 # SUMINISTROS
@@ -507,7 +635,7 @@ elif menu == "Suministros":
     r1.metric("Coste fijo/mes",f"{cf_mes:.2f} €")
     r2.metric("Coste indexado/mes",f"{ci_mes:.2f} €",delta=f"{-(cf_mes-ci_mes):+.2f} €")
     r3.metric("Ahorro anual",f"{dif_a:+.0f} €")
-    if dif_a>30:   rec,cls=f"✅ Tarifa <b>indexada</b> más barata. Ahorro: <b>{dif_a:.0f} €/año</b>.","status-green"
+    if dif_a>30:    rec,cls=f"✅ Tarifa <b>indexada</b> más barata. Ahorro: <b>{dif_a:.0f} €/año</b>.","status-green"
     elif dif_a<-30: rec,cls="⚠️ Tarifa <b>fija</b> más económica con pool actual.","status-yellow"
     else:           rec,cls="➡️ Diferencia marginal. Depende de tu tolerancia al riesgo.","status-yellow"
     st.markdown(f'<div class="{cls}" style="margin-top:0.5rem;">{rec}</div>', unsafe_allow_html=True)
