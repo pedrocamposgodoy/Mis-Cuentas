@@ -134,47 +134,36 @@ def inicializar_bd():
         ]).to_csv(DB_MOV, index=False)
 
 inicializar_bd()
-# ═══════════════════════════════════════════
-# INICIALIZAR BD HIPOTECAS
-# ═══════════════════════════════════════════
+df_inm = pd.read_csv(DB_INM)
+df_mov = pd.read_csv(DB_MOV)
 
-DB_HIP = "nolasco_hipotecas_v13.csv"
-
+DB_HIP = "nolasco_hipotecas_v14.csv"
 def inicializar_hipotecas():
     if not os.path.exists(DB_HIP):
         rows = [
-            {"Inmueble": "Casa Abarqueros", "Principal": 150000, "Tasa_Inicial": 2.5, "Plazo_Años": 20, 
-             "Fecha_Inicio": "2020-01-15", "Es_Variable": "N", "Indice_Variable": "", "Margen": 0, "Saldo_Actual": 0},
-            {"Inmueble": "Paseo del Salón", "Principal": 120000, "Tasa_Inicial": 2.8, "Plazo_Años": 25, 
-             "Fecha_Inicio": "2018-06-01", "Es_Variable": "S", "Indice_Variable": "Euríbor", "Margen": 0.85, "Saldo_Actual": 95000},
-            {"Inmueble": "Huerto Unidad 1", "Principal": 45000, "Tasa_Inicial": 3.0, "Plazo_Años": 15, 
-             "Fecha_Inicio": "2021-03-10", "Es_Variable": "N", "Indice_Variable": "", "Margen": 0, "Saldo_Actual": 0},
-            {"Inmueble": "Huerto Unidad 2", "Principal": 45000, "Tasa_Inicial": 3.0, "Plazo_Años": 15, 
-             "Fecha_Inicio": "2021-03-10", "Es_Variable": "N", "Indice_Variable": "", "Margen": 0, "Saldo_Actual": 0},
-            {"Inmueble": "Huerto Unidad 3", "Principal": 45000, "Tasa_Inicial": 3.0, "Plazo_Años": 15, 
-             "Fecha_Inicio": "2021-03-10", "Es_Variable": "N", "Indice_Variable": "", "Margen": 0, "Saldo_Actual": 0},
-            {"Inmueble": "Huerto Unidad 4", "Principal": 0, "Tasa_Inicial": 0, "Plazo_Años": 0, 
-             "Fecha_Inicio": "2024-01-01", "Es_Variable": "N", "Indice_Variable": "", "Margen": 0, "Saldo_Actual": 0},
+            {"Inmueble":"Casa Abarqueros","Principal":150000,"Tasa_Inicial":2.5,"Plazo_Años":20,"Fecha_Inicio":"2020-01-15","Es_Variable":"N","Indice_Variable":"","Margen":0,"Saldo_Actual":0},
+            {"Inmueble":"Paseo del Salón","Principal":120000,"Tasa_Inicial":2.8,"Plazo_Años":25,"Fecha_Inicio":"2018-06-01","Es_Variable":"S","Indice_Variable":"Euríbor","Margen":0.85,"Saldo_Actual":95000},
+            {"Inmueble":"Huerto Unidad 1","Principal":45000,"Tasa_Inicial":3.0,"Plazo_Años":15,"Fecha_Inicio":"2021-03-10","Es_Variable":"N","Indice_Variable":"","Margen":0,"Saldo_Actual":0},
+            {"Inmueble":"Huerto Unidad 2","Principal":45000,"Tasa_Inicial":3.0,"Plazo_Años":15,"Fecha_Inicio":"2021-03-10","Es_Variable":"N","Indice_Variable":"","Margen":0,"Saldo_Actual":0},
+            {"Inmueble":"Huerto Unidad 3","Principal":45000,"Tasa_Inicial":3.0,"Plazo_Años":15,"Fecha_Inicio":"2021-03-10","Es_Variable":"N","Indice_Variable":"","Margen":0,"Saldo_Actual":0},
+            {"Inmueble":"Huerto Unidad 4","Principal":0,"Tasa_Inicial":0,"Plazo_Años":0,"Fecha_Inicio":"2024-01-01","Es_Variable":"N","Indice_Variable":"","Margen":0,"Saldo_Actual":0},
         ]
         pd.DataFrame(rows).to_csv(DB_HIP, index=False)
-
 inicializar_hipotecas()
 df_hip = pd.read_csv(DB_HIP)
-df_inm = pd.read_csv(DB_INM)
-df_mov = pd.read_csv(DB_MOV)
 
 if "menu" not in st.session_state:      st.session_state.menu = "Torre de Control"
 if "ficha_sel" not in st.session_state:  st.session_state.ficha_sel = None
 
 PAGES = [
-      ("📊", "Torre de Control"),
-    ("🏠", "Fichas (Benchmark)"),
-    ("🤖", "Auditoría IA"),
-    ("📝", "Diario Contable"),
-    ("⚡", "Suministros"),
-    ("💰", "Fiscalidad"),
-    ("💎", "Macrofinanzas"),    # ← NUEVA LÍNEA
-    ("📂", "Datos de la Cartera"),
+    ("📊","Torre de Control"),
+    ("🏠","Fichas (Benchmark)"),
+    ("🤖","Auditoría IA"),
+    ("📝","Diario Contable"),
+    ("⚡","Suministros"),
+    ("💰","Fiscalidad"),
+    ("💎","Macrofinanzas"),
+    ("📂","Datos de la Cartera"),
 ]
 
 with st.sidebar:
@@ -279,100 +268,7 @@ def calcular_dias_arrendado(row, año_fiscal=None):
         return (fin_efectivo - inicio_efectivo).days + 1
     except:
         return 365
-def calcular_amortizacion(principal, tasa_anual, plazo_años, modo="cuota_fija"):
-    """Calcula amortización de hipoteca con método francés o alemán."""
-    tasa_mensual = tasa_anual / 100 / 12
-    num_cuotas = plazo_años * 12
-    
-    if modo == "cuota_fija":
-        if tasa_mensual == 0:
-            cuota_mensual = principal / num_cuotas
-        else:
-            cuota_mensual = principal * (tasa_mensual * (1 + tasa_mensual)**num_cuotas) / \
-                           ((1 + tasa_mensual)**num_cuotas - 1)
-    else:
-        cuota_mensual = None
-    
-    tabla = []
-    capital_pendiente = principal
-    total_intereses = 0
-    
-    for mes in range(1, int(num_cuotas) + 1):
-        if modo == "cuota_fija":
-            interes = capital_pendiente * tasa_mensual
-            capital = cuota_mensual - interes
-            capital_pendiente -= capital
-        else:
-            capital = principal / num_cuotas
-            interes = capital_pendiente * tasa_mensual
-            cuota = capital + interes
-            capital_pendiente -= capital
-        
-        total_intereses += interes
-        tabla.append({
-            "Mes": mes,
-            "Cuota": cuota_mensual if modo == "cuota_fija" else interes + capital,
-            "Capital": capital,
-            "Intereses": interes,
-            "Pendiente": max(0, capital_pendiente)
-        })
-    
-    df_tabla = pd.DataFrame(tabla)
-    return {
-        "cuota_mensual": cuota_mensual if modo == "cuota_fija" else "variable",
-        "total_intereses": round(total_intereses, 2),
-        "total_pagado": round(principal + total_intereses, 2),
-        "tabla": df_tabla
-    }
 
-def stress_test_euribor(saldo_actual, margen, euribor_base, plazo_restante_años):
-    """Calcula impacto de variaciones del Euríbor en cuota mensual."""
-    escenarios = {
-        "Euríbor -1%": euribor_base - 1,
-        "Euríbor actual": euribor_base,
-        "Euríbor +1%": euribor_base + 1,
-        "Euríbor +2%": euribor_base + 2,
-        "Euríbor +3%": euribor_base + 3,
-    }
-    
-    resultados = {}
-    for escenario, tasa in escenarios.items():
-        tasa_total = (tasa + margen) / 100
-        if tasa_total == 0:
-            cuota = saldo_actual / (plazo_restante_años * 12)
-        else:
-            cuota = saldo_actual * (tasa_total / 12 * (1 + tasa_total/12)**(plazo_restante_años*12)) / \
-                    ((1 + tasa_total/12)**(plazo_restante_años*12) - 1)
-        
-        resultados[escenario] = {
-            "tasa_total": round(tasa + margen, 2),
-            "cuota_mensual": round(cuota, 2),
-            "cuota_anual": round(cuota * 12, 2),
-        }
-    return resultados
-
-def analisis_sensibilidad_renta(renta_actual, gastos_anuales, valor_construccion, variaciones=None):
-    """Calcula rentabilidad neta en diferentes escenarios de renta."""
-    if variaciones is None:
-        variaciones = [-15, -10, -5, 0, 5, 10, 15]
-    
-    escenarios = []
-    for var_pct in variaciones:
-        nueva_renta = renta_actual * (1 + var_pct / 100)
-        ingresos_anuales = nueva_renta * 12
-        neto_anual = ingresos_anuales - gastos_anuales
-        rentabilidad = (neto_anual / valor_construccion * 100) if valor_construccion > 0 else 0
-        
-        escenarios.append({
-            "Variación": f"{var_pct:+.0f}%",
-            "Renta Mensual": f"{nueva_renta:.2f} €",
-            "Ingresos Anuales": f"{ingresos_anuales:.2f} €",
-            "Gastos Anuales": f"{gastos_anuales:.2f} €",
-            "Neto Anual": f"{neto_anual:.2f} €",
-            "Rentabilidad": f"{rentabilidad:.2f}%"
-        })
-    
-    return pd.DataFrame(escenarios)
 def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
     dias_arrendado = calcular_dias_arrendado(row, año_fiscal=año_fiscal)
     renta_mensual = float(row.get("Renta", 0))
@@ -412,6 +308,88 @@ def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
         "0150": round(reduccion_importe, 2), "0153": round(retenciones, 2),
         "0152": round(rendimiento_final, 2), "reduccion_pct": int(reduccion_pct * 100)
     }
+
+def calcular_amortizacion(principal, tasa_anual, plazo_años, modo="cuota_fija"):
+    tasa_mensual = tasa_anual / 100 / 12
+    num_cuotas = plazo_años * 12
+    if modo == "cuota_fija":
+        if tasa_mensual == 0:
+            cuota_mensual = principal / num_cuotas
+        else:
+            cuota_mensual = principal * (tasa_mensual * (1 + tasa_mensual)**num_cuotas) / \
+                           ((1 + tasa_mensual)**num_cuotas - 1)
+    else:
+        cuota_mensual = None
+    tabla = []
+    capital_pendiente = principal
+    total_intereses = 0
+    for mes in range(1, int(num_cuotas) + 1):
+        if modo == "cuota_fija":
+            interes = capital_pendiente * tasa_mensual
+            capital = cuota_mensual - interes
+            capital_pendiente -= capital
+        else:
+            capital = principal / num_cuotas
+            interes = capital_pendiente * tasa_mensual
+            cuota = capital + interes
+            capital_pendiente -= capital
+        total_intereses += interes
+        tabla.append({
+            "Mes": mes,
+            "Cuota": cuota_mensual if modo == "cuota_fija" else interes + capital,
+            "Capital": capital,
+            "Intereses": interes,
+            "Pendiente": max(0, capital_pendiente)
+        })
+    df_tabla = pd.DataFrame(tabla)
+    return {
+        "cuota_mensual": cuota_mensual if modo == "cuota_fija" else "variable",
+        "total_intereses": round(total_intereses, 2),
+        "total_pagado": round(principal + total_intereses, 2),
+        "tabla": df_tabla
+    }
+
+def stress_test_euribor(saldo_actual, margen, euribor_base, plazo_restante_años):
+    escenarios = {
+        "Euríbor -1%": euribor_base - 1,
+        "Euríbor actual": euribor_base,
+        "Euríbor +1%": euribor_base + 1,
+        "Euríbor +2%": euribor_base + 2,
+        "Euríbor +3%": euribor_base + 3,
+    }
+    resultados = {}
+    for escenario, tasa in escenarios.items():
+        tasa_total = (tasa + margen) / 100
+        if tasa_total == 0:
+            cuota = saldo_actual / (plazo_restante_años * 12)
+        else:
+            cuota = saldo_actual * (tasa_total / 12 * (1 + tasa_total/12)**(plazo_restante_años*12)) / \
+                    ((1 + tasa_total/12)**(plazo_restante_años*12) - 1)
+        resultados[escenario] = {
+            "tasa_total": round(tasa + margen, 2),
+            "cuota_mensual": round(cuota, 2),
+            "cuota_anual": round(cuota * 12, 2),
+        }
+    return resultados
+
+def analisis_sensibilidad_renta(renta_actual, gastos_anuales, valor_construccion, variaciones=None):
+    if variaciones is None:
+        variaciones = [-15, -10, -5, 0, 5, 10, 15]
+    escenarios = []
+    for var_pct in variaciones:
+        nueva_renta = renta_actual * (1 + var_pct / 100)
+        ingresos_anuales = nueva_renta * 12
+        neto_anual = ingresos_anuales - gastos_anuales
+        rentabilidad = (neto_anual / valor_construccion * 100) if valor_construccion > 0 else 0
+        escenarios.append({
+            "Variación": f"{var_pct:+.0f}%",
+            "Renta Mensual": f"{nueva_renta:.2f} €",
+            "Ingresos Anuales": f"{ingresos_anuales:.2f} €",
+            "Gastos Anuales": f"{gastos_anuales:.2f} €",
+            "Neto Anual": f"{neto_anual:.2f} €",
+            "Rentabilidad": f"{rentabilidad:.2f}%"
+        })
+    return pd.DataFrame(escenarios)
 
 def generar_pdf_modelo100(inmueble_data, modelo):
     if not REPORTLAB_OK:
@@ -1048,11 +1026,149 @@ elif menu == "Fiscalidad":
     st.markdown(f"""<div class="status-yellow"><b>⚠️ Antes de confirmar:</b><br>• Este pre-relleno es orientativo. Verifica con tu asesor fiscal.<br>• Cochera vinculada: {f_fiscal.get('Cochera_Vinculada','N')} — {cochera_txt}<br>• Modalidad: {f_fiscal.get('Tipo_Arrendamiento','Larga Duración')} — Reducción aplicable: {modelo['reduccion_pct']}%<br>• Los datos provienen de: Fichas de inmuebles + Diario Contable</div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
-# DATOS DE LA CARTERA
+# MACROFINANZAS
 # ══════════════════════════════════════════════
 elif menu == "Macrofinanzas":
-    # ... TODO EL CÓDIGO DE MACROFINANZAS ...
-    # (copiar de BLOQUE_5_CODIGO_LISTO.py, sección PASO 3)
+    st.markdown('<div class="brand-header">Macrofinanzas</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-sub">Simulador hipoteca · Stress test Euríbor · Análisis sensibilidad</div>', unsafe_allow_html=True)
+
+    tab1, tab2, tab3 = st.tabs(["📊 Simulador Amortización", "⚠️ Stress Test Euríbor", "📈 Sensibilidad Rentabilidad"])
+
+    with tab1:
+        st.markdown('<div class="section-title">Simulador de Amortización</div>', unsafe_allow_html=True)
+        st.caption("Compara modalidades: cuota fija (método francés) vs capital fijo (método alemán)")
+        inmuebles_con_hip = df_hip[df_hip["Principal"] > 0]["Inmueble"].tolist()
+        if not inmuebles_con_hip:
+            st.warning("⚠️ No hay hipotecas cargadas.")
+        else:
+            sel_hip = st.selectbox("Selecciona inmueble:", inmuebles_con_hip, key="hip_sel")
+            hip_row = df_hip[df_hip["Inmueble"] == sel_hip].iloc[0]
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                principal = st.number_input("Principal (€)", value=int(hip_row["Principal"]), min_value=0)
+            with col2:
+                tasa = st.number_input("Tasa (%)", value=float(hip_row["Tasa_Inicial"]), min_value=0.0, max_value=10.0, step=0.1)
+            with col3:
+                plazo = st.number_input("Plazo (años)", value=int(hip_row["Plazo_Años"]) if int(hip_row["Plazo_Años"]) > 0 else 20, min_value=1, max_value=50)
+            with col4:
+                modo = st.selectbox("Modalidad", ["Cuota Fija", "Capital Fijo"], key="modo_amort")
+            modo_code = "cuota_fija" if modo == "Cuota Fija" else "capital_fijo"
+            resultado = calcular_amortizacion(principal, tasa, plazo, modo_code)
+            k1, k2, k3 = st.columns(3)
+            cuota_val = resultado["cuota_mensual"]
+            k1.metric("Cuota Mensual", f"{cuota_val:,.2f} €" if isinstance(cuota_val, float) else "Variable")
+            k2.metric("Total Intereses", f"{resultado['total_intereses']:,.0f} €")
+            k3.metric("Total Pagado", f"{resultado['total_pagado']:,.0f} €")
+            tabla = resultado["tabla"].copy()
+            tabla["Año"] = tabla["Mes"] // 12
+            fig_amort = go.Figure()
+            fig_amort.add_trace(go.Scatter(x=tabla["Año"], y=tabla["Pendiente"], mode="lines",
+                name="Capital Pendiente", fill="tozeroy", line=dict(color=ACCENT)))
+            fig_amort.add_trace(go.Scatter(x=tabla["Año"], y=tabla["Intereses"].cumsum(), mode="lines",
+                name="Intereses Acumulados", line=dict(color=RED, dash="dash")))
+            fig_amort.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=10, r=10, t=10, b=10), height=300,
+                font=dict(family="DM Sans", size=12), hovermode="x unified")
+            st.plotly_chart(fig_amort, use_container_width=True)
+            st.markdown("**Primeros y últimos 12 meses:**")
+            col_t1, col_t2 = st.columns(2)
+            with col_t1:
+                st.caption("Primeros 12 meses")
+                st.dataframe(tabla.head(12)[["Mes","Cuota","Capital","Intereses","Pendiente"]].style.format({
+                    "Cuota":"{:,.2f} €","Capital":"{:,.2f} €","Intereses":"{:,.2f} €","Pendiente":"{:,.2f} €"
+                }), use_container_width=True, hide_index=True)
+            with col_t2:
+                st.caption("Últimos 12 meses")
+                st.dataframe(tabla.tail(12)[["Mes","Cuota","Capital","Intereses","Pendiente"]].style.format({
+                    "Cuota":"{:,.2f} €","Capital":"{:,.2f} €","Intereses":"{:,.2f} €","Pendiente":"{:,.2f} €"
+                }), use_container_width=True, hide_index=True)
+
+    with tab2:
+        st.markdown('<div class="section-title">Stress Test Euríbor</div>', unsafe_allow_html=True)
+        st.caption("¿Cuánto sube tu cuota si el Euríbor sube 1%, 2% o 3%?")
+        hips_variable = df_hip[(df_hip["Es_Variable"] == "S") & (df_hip["Principal"] > 0)]
+        if hips_variable.empty:
+            st.warning("⚠️ No hay hipotecas variables. Paseo del Salón tiene hipoteca variable de ejemplo.")
+        else:
+            sel_var = st.selectbox("Hipoteca variable:", hips_variable["Inmueble"].tolist(), key="hip_var")
+            hip_var = hips_variable[hips_variable["Inmueble"] == sel_var].iloc[0]
+            col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+            with col_s1:
+                saldo = st.number_input("Saldo Actual (€)", value=int(hip_var["Saldo_Actual"]), min_value=0)
+            with col_s2:
+                margen = st.number_input("Margen (%)", value=float(hip_var["Margen"]), min_value=0.0, max_value=3.0, step=0.05)
+            with col_s3:
+                euribor_ahora = st.number_input("Euríbor Actual (%)", value=3.5, min_value=0.0, max_value=10.0, step=0.1)
+            with col_s4:
+                plazo_rest = st.number_input("Años Restantes", value=20, min_value=1, max_value=40)
+            stress_results = stress_test_euribor(saldo, margen, euribor_ahora, plazo_rest)
+            tabla_stress = []
+            for escenario, datos in stress_results.items():
+                tabla_stress.append({
+                    "Escenario": escenario,
+                    "Tasa Total": f"{datos['tasa_total']:.2f}%",
+                    "Cuota Mensual": f"{datos['cuota_mensual']:,.2f} €",
+                    "Cuota Anual": f"{datos['cuota_anual']:,.2f} €"
+                })
+            st.dataframe(pd.DataFrame(tabla_stress), use_container_width=True, hide_index=True)
+            fig_stress = go.Figure(go.Bar(
+                x=list(stress_results.keys()),
+                y=[v["cuota_mensual"] for v in stress_results.values()],
+                marker_color=[RED if k != "Euríbor actual" else ACCENT for k in stress_results.keys()],
+                text=[f"{v['cuota_mensual']:,.0f} €" for v in stress_results.values()],
+                textposition="outside"
+            ))
+            fig_stress.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=10, r=10, t=10, b=10), height=300,
+                font=dict(family="DM Sans", size=12), showlegend=False)
+            st.plotly_chart(fig_stress, use_container_width=True)
+            cuota_base = stress_results["Euríbor actual"]["cuota_mensual"]
+            cuota_peligro = stress_results["Euríbor +2%"]["cuota_mensual"]
+            impacto = cuota_peligro - cuota_base
+            if impacto > 500:
+                cls_r, msg_r = "status-red", f"🔴 RIESGO ALTO: Subida +2% = +{impacto:,.0f} €/mes. Considera pasar a tipo fijo."
+            elif impacto > 200:
+                cls_r, msg_r = "status-yellow", f"🟡 RIESGO MEDIO: Subida +2% = +{impacto:,.0f} €/mes. Monitorear."
+            else:
+                cls_r, msg_r = "status-green", f"🟢 RIESGO BAJO: Subida +2% = +{impacto:,.0f} €/mes. Asumible."
+            st.markdown(f'<div class="{cls_r}">{msg_r}</div>', unsafe_allow_html=True)
+
+    with tab3:
+        st.markdown('<div class="section-title">Análisis de Sensibilidad</div>', unsafe_allow_html=True)
+        st.caption("Cómo cambia la rentabilidad si subes o bajas la renta")
+        sel_sens = st.selectbox("Inmueble:", df_inm["Nombre"].tolist(), key="sens_inmueble")
+        row_sens = df_inm[df_inm["Nombre"] == sel_sens].iloc[0]
+        gastos_esp = df_mov[(df_mov["Apartamento"] == sel_sens) & (df_mov["Tipo"] == "Gasto")]["Importe"].sum()
+        comunidad_esp = float(row_sens.get("Comunidad", 0)) * 12
+        gastos_anuales_sens = gastos_esp + comunidad_esp
+        col_var1, col_var2 = st.columns(2)
+        with col_var1:
+            renta_sens = st.number_input("Renta Mensual (€)", value=float(row_sens["Renta"]), min_value=0.0)
+        with col_var2:
+            variaciones = st.multiselect("Variaciones a analizar (%)",
+                options=[-15, -10, -5, 0, 5, 10, 15], default=[-10, -5, 0, 5, 10])
+        if variaciones:
+            tabla_sens = analisis_sensibilidad_renta(renta_sens, gastos_anuales_sens, float(row_sens["Valor_Construccion"]), variaciones)
+            st.dataframe(tabla_sens, use_container_width=True, hide_index=True)
+            datos_graf = []
+            for var_pct in sorted(variaciones):
+                nueva_renta = renta_sens * (1 + var_pct / 100)
+                neto = (nueva_renta * 12 - gastos_anuales_sens)
+                rent = (neto / float(row_sens["Valor_Construccion"]) * 100) if float(row_sens["Valor_Construccion"]) > 0 else 0
+                datos_graf.append({"var": var_pct, "rent": rent})
+            df_graf = pd.DataFrame(datos_graf)
+            fig_sens = go.Figure(go.Scatter(x=df_graf["var"], y=df_graf["rent"],
+                mode="lines+markers", line=dict(color=ACCENT, width=3),
+                marker=dict(size=10), fill="tozeroy"))
+            fig_sens.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=10, r=10, t=10, b=10), height=300,
+                xaxis_title="Variación Renta (%)", yaxis_title="Rentabilidad Neta (%)",
+                font=dict(family="DM Sans", size=12))
+            st.plotly_chart(fig_sens, use_container_width=True)
+
+# ══════════════════════════════════════════════
+# DATOS DE LA CARTERA
+# ══════════════════════════════════════════════
 elif menu == "Datos de la Cartera":
     st.markdown('<div class="brand-header">Datos de la Cartera</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Parámetros maestros y copias de seguridad</div>', unsafe_allow_html=True)
