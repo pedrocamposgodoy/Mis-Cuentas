@@ -1295,29 +1295,251 @@ elif menu == "Macrofinanzas":
 
 # ================================================================
 # PANTALLA 8 — DATOS DE LA CARTERA
-# Editor maestro de inmuebles y copias de seguridad
+# Gestión de inmuebles con vista de cards + formulario organizado
 # ================================================================
 elif menu == "Datos de la Cartera":
     st.markdown('<div class="brand-header">Datos de la Cartera</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Parámetros maestros y copias de seguridad</div>', unsafe_allow_html=True)
-    st.info("ℹ️ Campos fiscales: NIF_Inquilino · Intereses_Hipoteca · IBI_Anual · Seguro_Anual · etc.")
-    col_cfg = {
-        "Tipo_Arrendamiento": st.column_config.SelectboxColumn("Tipo Arrend.",options=["Larga Duración","Temporada","Vacacional"],required=True),
-        "Cochera_Vinculada": st.column_config.SelectboxColumn("Cochera Vinc.",options=["S","N"],required=True),
-        "Zona_Tensionada": st.column_config.SelectboxColumn("Zona Tensión",options=["S","N"],required=True),
-        "Estado": st.column_config.SelectboxColumn("Estado",options=["Reformado","Bueno","Regular"],required=True),
-        "Mobiliario": st.column_config.SelectboxColumn("Mobiliario",options=["S","N"],required=True),
-        "Parking": st.column_config.SelectboxColumn("Parking",options=["S","N"],required=True),
-        "IBI_Anual": st.column_config.NumberColumn("IBI/año",format="%.0f €"),
-        "Seguro_Anual": st.column_config.NumberColumn("Seguro/año",format="%.0f €"),
-        "Intereses_Hipoteca": st.column_config.NumberColumn("Intereses Hip.",format="%.0f €"),
-    }
-    df_ed = st.data_editor(df_inm,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=col_cfg)
-    if st.button("✅ Actualizar Cartera"):
-        df_ed.to_csv(DB_INM,index=False); st.success("✓ Datos actualizados."); st.rerun()
-    st.markdown('<div class="section-title">Copias de Seguridad</div>', unsafe_allow_html=True)
-    b1,b2=st.columns(2)
-    with b1:
-        with open(DB_INM,"rb") as fi: st.download_button("📥 Descargar Inmuebles",fi,"nolasco_inmuebles.csv","text/csv")
-    with b2:
-        with open(DB_MOV,"rb") as fm: st.download_button("📥 Descargar Movimientos",fm,"nolasco_movimientos.csv","text/csv")
+    st.markdown('<div class="brand-sub">Gestión de inmuebles · Backups · Configuración</div>', unsafe_allow_html=True)
+
+    # Inicializar estados de sesión
+    if "modo_cartera" not in st.session_state:
+        st.session_state.modo_cartera = "lista"  # lista, editar, nuevo
+    if "inmueble_editando" not in st.session_state:
+        st.session_state.inmueble_editando = None
+
+    # Botones superiores
+    col_btn1, col_btn2, col_btn3, col_btn4 = st.columns(4)
+    with col_btn1:
+        if st.button("📋 Ver Lista", key="btn_lista", use_container_width=True):
+            st.session_state.modo_cartera = "lista"
+            st.rerun()
+    with col_btn2:
+        if st.button("➕ Añadir Inmueble", key="btn_nuevo", use_container_width=True):
+            st.session_state.modo_cartera = "nuevo"
+            st.session_state.inmueble_editando = None
+            st.rerun()
+    with col_btn3:
+        if st.button("📊 Ver Tabla Completa", key="btn_tabla", use_container_width=True):
+            st.session_state.modo_cartera = "tabla"
+            st.rerun()
+    with col_btn4:
+        if st.button("💾 Backups", key="btn_backup", use_container_width=True):
+            st.session_state.modo_cartera = "backup"
+            st.rerun()
+
+    st.markdown("---")
+
+    # ═══════════════════════════════════════════════════════════
+    # MODO: LISTA DE INMUEBLES (cards)
+    # ═══════════════════════════════════════════════════════════
+    if st.session_state.modo_cartera == "lista":
+        st.markdown(f'<div class="section-title">🏠 Mis Inmuebles ({len(df_inm)})</div>', unsafe_allow_html=True)
+        
+        for idx, row in df_inm.iterrows():
+            with st.container():
+                col_info, col_btn = st.columns([4, 1])
+                
+                with col_info:
+                    st.markdown(f"""
+                    <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;padding:1rem;margin-bottom:0.8rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:start;">
+                            <div>
+                                <div style="font-size:1.1rem;font-weight:600;color:{TEXT_PRI};margin-bottom:4px;">🏠 {row['Nombre']}</div>
+                                <div style="font-size:0.85rem;color:{TEXT_SEC};">👤 {row.get('Inquilino', 'Sin inquilino')} · 📍 CP {row.get('CP', 'N/A')}</div>
+                                <div style="margin-top:8px;font-size:0.82rem;">
+                                    <span style="background:#EDF7F1;color:#3B6D11;padding:3px 8px;border-radius:4px;margin-right:4px;">💰 {row['Renta']:,.0f} €/mes</span>
+                                    <span style="background:#F0F6FF;color:{ACCENT};padding:3px 8px;border-radius:4px;margin-right:4px;">📐 {row.get('M2_Construidos', 'N/A')} m²</span>
+                                    <span style="background:#FFF9E6;color:#854F0B;padding:3px 8px;border-radius:4px;">🛏️ {row.get('Habitaciones', 'N/A')} hab</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col_btn:
+                    if st.button("✏️ Editar", key=f"edit_{idx}", use_container_width=True):
+                        st.session_state.modo_cartera = "editar"
+                        st.session_state.inmueble_editando = idx
+                        st.rerun()
+                    if st.button("🗑️", key=f"del_{idx}", use_container_width=True):
+                        if len(df_inm) > 1:
+                            df_inm_new = df_inm.drop(idx).reset_index(drop=True)
+                            df_inm_new.to_csv(DB_INM, index=False)
+                            st.success(f"✓ {row['Nombre']} eliminado")
+                            st.rerun()
+                        else:
+                            st.error("No puedes eliminar el último inmueble")
+
+    # ═══════════════════════════════════════════════════════════
+    # MODO: FORMULARIO (EDITAR O NUEVO)
+    # ═══════════════════════════════════════════════════════════
+    elif st.session_state.modo_cartera in ["editar", "nuevo"]:
+        es_nuevo = st.session_state.modo_cartera == "nuevo"
+        titulo = "➕ Añadir Inmueble Nuevo" if es_nuevo else f"✏️ Editar: {df_inm.iloc[st.session_state.inmueble_editando]['Nombre']}"
+        
+        st.markdown(f'<div class="section-title">{titulo}</div>', unsafe_allow_html=True)
+
+        # Obtener datos actuales si es edición
+        if es_nuevo:
+            datos = {col: DEFAULTS_FISCAL.get(col, "") for col in COLS_INM}
+        else:
+            datos = df_inm.iloc[st.session_state.inmueble_editando].to_dict()
+
+        with st.form("form_inmueble"):
+            st.markdown("### 📋 Datos Básicos")
+            col1, col2 = st.columns(2)
+            with col1:
+                nombre = st.text_input("Nombre del Inmueble *", value=datos.get("Nombre", ""), placeholder="Ej: Casa Abarqueros")
+                inquilino = st.text_input("Inquilino", value=datos.get("Inquilino", ""), placeholder="Nombre del inquilino")
+                renta = st.number_input("Renta Mensual (€) *", value=float(datos.get("Renta", 0)), min_value=0.0, step=50.0)
+            with col2:
+                renta_mercado = st.number_input("Renta de Mercado (€)", value=float(datos.get("Renta_Mercado", 0)), min_value=0.0, step=50.0)
+                comunidad = st.number_input("Comunidad Mensual (€)", value=float(datos.get("Comunidad", 0)), min_value=0.0, step=10.0)
+                valor_construccion = st.number_input("Valor Construcción (€) *", value=float(datos.get("Valor_Construccion", 0)), min_value=0.0, step=1000.0)
+
+            st.markdown("### 🏠 Características")
+            col3, col4, col5 = st.columns(3)
+            with col3:
+                m2 = st.number_input("M² Construidos *", value=float(datos.get("M2_Construidos", 80)), min_value=10.0, step=5.0)
+                habitaciones = st.number_input("Habitaciones *", value=int(datos.get("Habitaciones", 2)), min_value=1, max_value=10)
+                planta = st.number_input("Planta", value=int(datos.get("Planta", 1)), min_value=0, max_value=20)
+            with col4:
+                cp = st.text_input("Código Postal *", value=str(datos.get("CP", "18005")), max_chars=5)
+                tipo = st.selectbox("Tipo", ["Piso", "Casa", "Estudio", "Local"], index=["Piso", "Casa", "Estudio", "Local"].index(datos.get("Tipo", "Piso")))
+                estado = st.selectbox("Estado", ["Reformado", "Bueno", "Regular"], index=["Reformado", "Bueno", "Regular"].index(datos.get("Estado", "Bueno")))
+            with col5:
+                mobiliario = st.selectbox("Mobiliario", ["S", "N"], index=0 if datos.get("Mobiliario") == "S" else 1)
+                parking = st.selectbox("Parking", ["S", "N"], index=0 if datos.get("Parking") == "S" else 1)
+                año_construccion = st.number_input("Año Construcción", value=int(datos.get("Año_Construccion", 2000)), min_value=1900, max_value=2030)
+
+            st.markdown("### 📝 Información Adicional")
+            col6, col7 = st.columns(2)
+            with col6:
+                ref_catastral = st.text_input("Ref. Catastral", value=datos.get("Ref_Catastral", ""), placeholder="00XX00000")
+                titular = st.text_input("Titular", value=datos.get("Titular", ""), placeholder="Nombre del propietario")
+                año_reforma = st.number_input("Año Última Reforma", value=int(datos.get("Año_Reforma", 2020)), min_value=1900, max_value=2030)
+            with col7:
+                tipo_arrendamiento = st.selectbox("Tipo Arrendamiento", ["Larga Duración", "Temporada", "Vacacional"], 
+                    index=["Larga Duración", "Temporada", "Vacacional"].index(datos.get("Tipo_Arrendamiento", "Larga Duración")))
+                cochera_vinculada = st.selectbox("Cochera Vinculada", ["N", "S"], index=0 if datos.get("Cochera_Vinculada") == "N" else 1)
+                zona_tensionada = st.selectbox("Zona Tensionada", ["N", "S"], index=0 if datos.get("Zona_Tensionada") == "N" else 1)
+
+            st.markdown("### 💰 Datos Fiscales")
+            col8, col9, col10 = st.columns(3)
+            with col8:
+                nif_inquilino = st.text_input("NIF Inquilino", value=datos.get("NIF_Inquilino", ""), placeholder="12345678A")
+                ibi_anual = st.number_input("IBI Anual (€)", value=float(datos.get("IBI_Anual", 0)), min_value=0.0, step=10.0)
+            with col9:
+                seguro_anual = st.number_input("Seguro Anual (€)", value=float(datos.get("Seguro_Anual", 0)), min_value=0.0, step=10.0)
+                intereses_hipoteca = st.number_input("Intereses Hipoteca (€)", value=float(datos.get("Intereses_Hipoteca", 0)), min_value=0.0, step=100.0)
+            with col10:
+                gastos_juridicos = st.number_input("Gastos Jurídicos (€)", value=float(datos.get("Gastos_Juridicos", 0)), min_value=0.0, step=10.0)
+                retenciones_irpf = st.number_input("Retenciones IRPF (€)", value=float(datos.get("Retenciones_IRPF", 0)), min_value=0.0, step=10.0)
+
+            st.markdown("### 📅 Contrato")
+            col11, col12 = st.columns(2)
+            with col11:
+                fecha_inicio = st.date_input("Fecha Inicio Contrato", value=pd.to_datetime(datos.get("Fecha_Inicio_Contrato", "2024-01-01")).date() if pd.notna(datos.get("Fecha_Inicio_Contrato")) else date(2024, 1, 1))
+            with col12:
+                fecha_vencimiento = st.date_input("Fecha Vencimiento Contrato", value=pd.to_datetime(datos.get("Fecha_Vencimiento_Contrato", "2025-12-31")).date() if pd.notna(datos.get("Fecha_Vencimiento_Contrato")) else date(2025, 12, 31))
+
+            col_otros1, col_otros2 = st.columns(2)
+            with col_otros1:
+                gastos_formalizacion = st.number_input("Gastos Formalización (€)", value=float(datos.get("Gastos_Formalizacion", 0)), min_value=0.0, step=10.0)
+            with col_otros2:
+                gastos_pend_años_ant = st.number_input("Gastos Pend. Años Ant. (€)", value=float(datos.get("Gastos_Pendientes_Años_Ant", 0)), min_value=0.0, step=10.0)
+
+            servicios_suministros = st.number_input("Servicios y Suministros (€)", value=float(datos.get("Servicios_Suministros", 0)), min_value=0.0, step=10.0)
+
+            st.markdown("---")
+            col_submit, col_cancel = st.columns(2)
+            with col_submit:
+                submitted = st.form_submit_button("💾 Guardar Inmueble", type="primary", use_container_width=True)
+            with col_cancel:
+                cancelled = st.form_submit_button("❌ Cancelar", use_container_width=True)
+
+            if submitted:
+                if not nombre.strip():
+                    st.error("El nombre del inmueble es obligatorio")
+                elif renta <= 0:
+                    st.error("La renta debe ser mayor que 0")
+                elif valor_construccion <= 0:
+                    st.error("El valor de construcción debe ser mayor que 0")
+                else:
+                    nuevo_inmueble = {
+                        "Nombre": nombre, "Inquilino": inquilino, "Renta": renta, "Renta_Mercado": renta_mercado,
+                        "Comunidad": comunidad, "Valor_Construccion": valor_construccion, "Año_Reforma": año_reforma,
+                        "Año_Construccion": año_construccion, "Mobiliario": mobiliario, "Tipo": tipo,
+                        "Ref_Catastral": ref_catastral, "Titular": titular, "M2_Construidos": m2,
+                        "Habitaciones": habitaciones, "CP": cp, "Planta": planta, "Parking": parking,
+                        "Estado": estado, "Tipo_Arrendamiento": tipo_arrendamiento,
+                        "Cochera_Vinculada": cochera_vinculada, "Zona_Tensionada": zona_tensionada,
+                        "Fecha_Inicio_Contrato": fecha_inicio.strftime("%Y-%m-%d"),
+                        "Fecha_Vencimiento_Contrato": fecha_vencimiento.strftime("%Y-%m-%d"),
+                        "NIF_Inquilino": nif_inquilino, "Intereses_Hipoteca": intereses_hipoteca,
+                        "IBI_Anual": ibi_anual, "Seguro_Anual": seguro_anual, "Gastos_Juridicos": gastos_juridicos,
+                        "Retenciones_IRPF": retenciones_irpf, "Gastos_Formalizacion": gastos_formalizacion,
+                        "Gastos_Pendientes_Años_Ant": gastos_pend_años_ant, "Servicios_Suministros": servicios_suministros
+                    }
+
+                    if es_nuevo:
+                        df_inm_new = pd.concat([df_inm, pd.DataFrame([nuevo_inmueble])], ignore_index=True)
+                        df_inm_new.to_csv(DB_INM, index=False)
+                        st.success(f"✅ Inmueble '{nombre}' añadido correctamente")
+                    else:
+                        df_inm.loc[st.session_state.inmueble_editando] = nuevo_inmueble
+                        df_inm.to_csv(DB_INM, index=False)
+                        st.success(f"✅ Inmueble '{nombre}' actualizado correctamente")
+                    
+                    st.session_state.modo_cartera = "lista"
+                    st.rerun()
+
+            if cancelled:
+                st.session_state.modo_cartera = "lista"
+                st.rerun()
+
+    # ═══════════════════════════════════════════════════════════
+    # MODO: TABLA COMPLETA (data_editor original)
+    # ═══════════════════════════════════════════════════════════
+    elif st.session_state.modo_cartera == "tabla":
+        st.markdown('<div class="section-title">📊 Tabla Completa de Datos</div>', unsafe_allow_html=True)
+        st.warning("⚠️ Vista avanzada — solo para usuarios experimentados")
+        
+        col_cfg = {
+            "Tipo_Arrendamiento": st.column_config.SelectboxColumn("Tipo Arrend.", options=["Larga Duración", "Temporada", "Vacacional"], required=True),
+            "Cochera_Vinculada": st.column_config.SelectboxColumn("Cochera Vinc.", options=["S", "N"], required=True),
+            "Zona_Tensionada": st.column_config.SelectboxColumn("Zona Tensión", options=["S", "N"], required=True),
+            "Estado": st.column_config.SelectboxColumn("Estado", options=["Reformado", "Bueno", "Regular"], required=True),
+            "Mobiliario": st.column_config.SelectboxColumn("Mobiliario", options=["S", "N"], required=True),
+            "Parking": st.column_config.SelectboxColumn("Parking", options=["S", "N"], required=True),
+            "IBI_Anual": st.column_config.NumberColumn("IBI/año", format="%.0f €"),
+            "Seguro_Anual": st.column_config.NumberColumn("Seguro/año", format="%.0f €"),
+            "Intereses_Hipoteca": st.column_config.NumberColumn("Intereses Hip.", format="%.0f €"),
+        }
+        df_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True, hide_index=True, column_config=col_cfg)
+        if st.button("✅ Guardar Cambios de Tabla", type="primary"):
+            df_ed.to_csv(DB_INM, index=False)
+            st.success("✓ Datos actualizados.")
+            st.rerun()
+
+    # ═══════════════════════════════════════════════════════════
+    # MODO: BACKUPS
+    # ═══════════════════════════════════════════════════════════
+    elif st.session_state.modo_cartera == "backup":
+        st.markdown('<div class="section-title">💾 Copias de Seguridad</div>', unsafe_allow_html=True)
+        st.info("💡 Descarga tus datos regularmente para no perder información")
+        
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            with open(DB_INM, "rb") as fi:
+                st.download_button("📥 Descargar Inmuebles (CSV)", fi, "nolasco_inmuebles_backup.csv", "text/csv", use_container_width=True)
+        with col_b2:
+            with open(DB_MOV, "rb") as fm:
+                st.download_button("📥 Descargar Movimientos (CSV)", fm, "nolasco_movimientos_backup.csv", "text/csv", use_container_width=True)
+
+        st.markdown("---")
+        st.markdown("### 📤 Restaurar desde Backup")
+        st.caption("Próximamente: podrás subir CSVs para restaurar datos")
+        uploaded_inm = st.file_uploader("Subir Inmuebles (CSV)", type=["csv"], key="upload_inm")
+        if uploaded_inm:
+            st.info("📝 Función de restauración — disponible en Bloque 6")
