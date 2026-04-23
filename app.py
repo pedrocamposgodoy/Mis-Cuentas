@@ -748,6 +748,9 @@ if menu == "Torre de Control":
     num_inmuebles = len(df_inm)
     margen = (neto/ing_b*100) if ing_b > 0 else 0
     
+    # DEBUG: Mostrar info de carga de datos
+    st.caption(f"🔍 Debug: {len(df_mov)} operaciones cargadas | Ingresos: {total_ingresos_registrados:,.0f}€ | Gastos: {total_gastos_registrados:,.0f}€")
+    
     # Detectar alertas y oportunidades
     alertas_pendientes = []
     oportunidades = []
@@ -1244,7 +1247,12 @@ elif menu == "Diario Contable":
             
             st.session_state.df_mov_persistent = df_final
             df_final.to_csv(DB_MOV, index=False)
-            st.success("✓ Operaciones guardadas correctamente.")
+            
+            # Debug: verificar que se guardó correctamente
+            total_movs = len(df_final)
+            total_ingresos = df_final[df_final["Tipo"]=="Ingreso"]["Importe"].sum()
+            
+            st.success(f"✓ Guardado: {total_movs} operaciones | Ingresos totales: {total_ingresos:,.0f}€")
             st.rerun()
     with tab2:
         st.markdown("### 📥 Registrar Ingresos del Mes")
