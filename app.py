@@ -1422,6 +1422,13 @@ elif menu == "Datos de la Cartera":
             except (ValueError, TypeError):
                 return default
 
+        def safe_index(options, val, default=0):
+            """Devuelve el índice de val en options, o default si no existe"""
+            try:
+                return options.index(val) if val in options else default
+            except (ValueError, TypeError):
+                return default
+
         with st.form("form_inmueble"):
             st.markdown("### 📋 Datos Básicos")
             col1, col2 = st.columns(2)
@@ -1442,8 +1449,8 @@ elif menu == "Datos de la Cartera":
                 planta = st.number_input("Planta", value=safe_int(datos.get("Planta"), 1), min_value=0, max_value=20)
             with col4:
                 cp = st.text_input("Código Postal *", value=str(datos.get("CP", "18005")), max_chars=5)
-                tipo = st.selectbox("Tipo", ["Piso", "Casa", "Estudio", "Local"], index=["Piso", "Casa", "Estudio", "Local"].index(datos.get("Tipo", "Piso")))
-                estado = st.selectbox("Estado", ["Reformado", "Bueno", "Regular"], index=["Reformado", "Bueno", "Regular"].index(datos.get("Estado", "Bueno")))
+                tipo = st.selectbox("Tipo", ["Piso", "Casa", "Estudio", "Local"], index=safe_index(["Piso", "Casa", "Estudio", "Local"], datos.get("Tipo"), 0))
+                estado = st.selectbox("Estado", ["Reformado", "Bueno", "Regular"], index=safe_index(["Reformado", "Bueno", "Regular"], datos.get("Estado"), 1))
             with col5:
                 mobiliario = st.selectbox("Mobiliario", ["S", "N"], index=0 if datos.get("Mobiliario") == "S" else 1)
                 parking = st.selectbox("Parking", ["S", "N"], index=0 if datos.get("Parking") == "S" else 1)
@@ -1457,7 +1464,7 @@ elif menu == "Datos de la Cartera":
                 año_reforma = st.number_input("Año Última Reforma", value=safe_int(datos.get("Año_Reforma"), 2020), min_value=1900, max_value=2030)
             with col7:
                 tipo_arrendamiento = st.selectbox("Tipo Arrendamiento", ["Larga Duración", "Temporada", "Vacacional"], 
-                    index=["Larga Duración", "Temporada", "Vacacional"].index(datos.get("Tipo_Arrendamiento", "Larga Duración")))
+                    index=safe_index(["Larga Duración", "Temporada", "Vacacional"], datos.get("Tipo_Arrendamiento"), 0))
                 cochera_vinculada = st.selectbox("Cochera Vinculada", ["N", "S"], index=0 if datos.get("Cochera_Vinculada") == "N" else 1)
                 zona_tensionada = st.selectbox("Zona Tensionada", ["N", "S"], index=0 if datos.get("Zona_Tensionada") == "N" else 1)
 
