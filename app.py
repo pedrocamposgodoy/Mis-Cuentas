@@ -1288,7 +1288,12 @@ elif menu == "Diario Contable":
                 # Añadir al DataFrame
                 df_nuevos = pd.DataFrame(nuevos_ingresos)
                 df_completo = pd.concat([st.session_state.df_mov_persistent, df_nuevos], ignore_index=True)
+                
+                # Convertir Fecha a datetime antes de ordenar
+                df_completo["Fecha"] = pd.to_datetime(df_completo["Fecha"], errors="coerce")
                 df_completo = df_completo.sort_values("Fecha", ascending=False).reset_index(drop=True)
+                # Volver a convertir a string para guardar en CSV
+                df_completo["Fecha"] = df_completo["Fecha"].dt.strftime("%Y-%m-%d")
                 
                 st.session_state.df_mov_persistent = df_completo
                 df_completo.to_csv(DB_MOV, index=False)
