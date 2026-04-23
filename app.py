@@ -38,18 +38,6 @@ RED        = "#C0392B"
 AMBER      = "#854F0B"
 COLOR_TOPS = ["#185FA5","#0F6E56","#378ADD","#639922","#D85A30","#7F77DD"]
 
-# Robot IA en base64 (Gemini generated) - con fallback si no existe
-try:
-    robot_path = os.path.join(os.getcwd(), 'robot_ia.png')
-    if os.path.exists(robot_path):
-        with open(robot_path, 'rb') as f:
-            ROBOT_BASE64 = base64.b64encode(f.read()).decode()
-    else:
-        # Fallback: usar emoji si no encuentra la imagen
-        ROBOT_BASE64 = None
-except:
-    ROBOT_BASE64 = None
-
 # ================================================================
 # SECCIÓN 2 — ESTILOS CSS (diseño visual)
 # No tocar salvo que quieras cambiar colores o tipografía
@@ -808,16 +796,10 @@ if menu == "Torre de Control":
     with st.container():
         col_header, col_toggle = st.columns([5, 1])
         with col_header:
-            # Usar imagen si está disponible, emoji si no
-            if ROBOT_BASE64:
-                robot_html = f'<img src="data:image/png;base64,{ROBOT_BASE64}" style="width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1));">'
-            else:
-                robot_html = '<span style="font-size:2.5rem;">🤖</span>'
-            
             st.markdown(f"""
             <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:8px;padding:0.8rem 1rem;margin-bottom:1rem;">
                 <div style="display:flex;align-items:center;gap:12px;">
-                    {robot_html}
+                    <span style="font-size:2.5rem;line-height:1;">🤖</span>
                     <span style="font-weight:600;color:{TEXT_PRI};font-size:0.95rem;">Resumen IA</span>
                     <span style="color:{TEXT_SEC};font-size:0.85rem;">│</span>
                     <span style="font-size:0.85rem;color:{TEXT_PRI};">{estado_corto}</span>
