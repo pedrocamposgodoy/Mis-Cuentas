@@ -741,16 +741,15 @@ if menu == "Torre de Control":
     # CHATBOT COMPACTO — TARJETA PLEGABLE
     # ═══════════════════════════════════════════════════════════
     
-    # Calcular métricas
-    ing_b  = df_inm["Renta"].sum()
-    gas_co = df_inm["Comunidad"].sum()
-    gastos = gas_co + df_mov[(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
-    neto   = ing_b - gastos
+    # Calcular métricas REALES desde el Diario Contable
     total_ingresos_registrados = df_mov[df_mov["Tipo"]=="Ingreso"]["Importe"].sum()
     total_gastos_registrados = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
     balance_real = total_ingresos_registrados - total_gastos_registrados
     num_inmuebles = len(df_inm)
-    margen = (neto/ing_b*100) if ing_b > 0 else 0
+    margen_real = (balance_real / total_ingresos_registrados * 100) if total_ingresos_registrados > 0 else 0
+    
+    # Valores teóricos (para comparación)
+    ing_b_teorico  = df_inm["Renta"].sum()
     
     # DEBUG: Mostrar info de carga de datos
     st.caption(f"🔍 Debug: {len(df_mov)} operaciones cargadas | Ingresos: {total_ingresos_registrados:,.0f}€ | Gastos: {total_gastos_registrados:,.0f}€")
@@ -760,8 +759,8 @@ if menu == "Torre de Control":
     oportunidades = []
     
     # 1. Ingresos no registrados
-    if total_ingresos_registrados < ing_b * 0.5:
-        alertas_pendientes.append(f"Registra los cobros del mes en el Diario Contable (esperados: {ing_b:,.0f}€)")
+    if total_ingresos_registrados < ing_b_teorico * 0.5:
+        alertas_pendientes.append(f"Registra los cobros del mes en el Diario Contable (esperados: {ing_b_teorico:,.0f}€)")
     
     # 2. Contratos próximos a vencer
     for _, row in df_inm.iterrows():
@@ -780,22 +779,22 @@ if menu == "Torre de Control":
             oportunidades.append(f"{row['Nombre']} está {abs(desv):.0f}% bajo mercado → Puedes subir {potencial:,.0f}€/mes")
     
     # 4. Margen bajo
-    if margen < 50 and margen > 0:
-        oportunidades.append(f"Margen ajustado ({margen:.1f}%). Revisa gastos en Suministros")
+    if margen_real < 50 and margen_real > 0:
+        oportunidades.append(f"Margen ajustado ({margen_real:.1f}%). Revisa gastos en Suministros")
     
-    # Estado general (1 línea para header plegado)
-    if neto > 0 and margen > 70:
+    # Estado general basado en DATOS REALES
+    if balance_real > 0 and margen_real > 70:
         estado_corto = "✅ Todo excelente"
-        estado_largo = f"**Genial!** Tus {num_inmuebles} inmuebles están generando **{neto:,.0f}€/mes** neto con un margen excelente del **{margen:.1f}%**."
-    elif neto > 0 and margen > 50:
+        estado_largo = f"**Genial!** Has registrado **{total_ingresos_registrados:,.0f}€** de ingresos contra **{total_gastos_registrados:,.0f}€** de gastos = **{balance_real:,.0f}€** de balance neto con un margen excelente del **{margen_real:.1f}%**."
+    elif balance_real > 0 and margen_real > 50:
         estado_corto = "✅ Todo bien"
-        estado_largo = f"**Bien!** {num_inmuebles} inmuebles generando **{neto:,.0f}€/mes** neto con un **{margen:.1f}%** de margen."
-    elif neto > 0:
+        estado_largo = f"**Bien!** Balance real: **{balance_real:,.0f}€** ({total_ingresos_registrados:,.0f}€ ingresos - {total_gastos_registrados:,.0f}€ gastos) con **{margen_real:.1f}%** de margen."
+    elif balance_real > 0:
         estado_corto = "⚠️ Margen ajustado"
-        estado_largo = f"Tus {num_inmuebles} inmuebles generan **{neto:,.0f}€/mes**, pero el margen es ajustado (**{margen:.1f}%**)."
+        estado_largo = f"Balance positivo de **{balance_real:,.0f}€**, pero el margen es ajustado (**{margen_real:.1f}%**). Ingresos: {total_ingresos_registrados:,.0f}€ | Gastos: {total_gastos_registrados:,.0f}€"
     else:
         estado_corto = "⚠️ Revisar gastos"
-        estado_largo = "**Atención:** El margen está muy ajustado. Revisa los gastos urgentemente."
+        estado_largo = f"**Atención:** Balance negativo de **{balance_real:,.0f}€**. Gastos ({total_gastos_registrados:,.0f}€) superan ingresos ({total_ingresos_registrados:,.0f}€)."
     
     # Inicializar estado de expansión
     if "chatbot_expandido" not in st.session_state:
