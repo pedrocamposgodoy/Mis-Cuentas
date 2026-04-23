@@ -702,9 +702,8 @@ if menu == "Torre de Control":
     st.markdown('<div class="brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
     
     # ═══════════════════════════════════════════════════════════
-    # CHATBOT IA — ALERTAS INTELIGENTES (Tono cercano)
+    # CHATBOT COMPACTO — TARJETA PLEGABLE
     # ═══════════════════════════════════════════════════════════
-    st.markdown("### 🔔 Centro de Alertas y Recomendaciones")
     
     # Calcular métricas
     ing_b  = df_inm["Renta"].sum()
@@ -721,81 +720,92 @@ if menu == "Torre de Control":
     alertas_pendientes = []
     oportunidades = []
     
-    # 1. Detectar ingresos no registrados
-    if total_ingresos_registrados < ing_b * 0.5:  # Menos del 50% cobrado
-        alertas_pendientes.append(f"📥 Registra los cobros del mes en el Diario Contable (esperados: {ing_b:,.0f}€)")
+    # 1. Ingresos no registrados
+    if total_ingresos_registrados < ing_b * 0.5:
+        alertas_pendientes.append(f"Registra los cobros del mes en el Diario Contable (esperados: {ing_b:,.0f}€)")
     
-    # 2. Detectar contratos próximos a vencer
-    hoy = date.today()
+    # 2. Contratos próximos a vencer
     for _, row in df_inm.iterrows():
         tipo_alert, msg = alerta_vencimiento(row)
         if tipo_alert in ["vencido", "urgente"]:
             dias = dias_para_vencimiento(row.get("Fecha_Vencimiento_Contrato"))
             if dias and dias < 60:
-                alertas_pendientes.append(f"📅 {row['Nombre']}: Contrato vence en {abs(dias)} días")
+                alertas_pendientes.append(f"{row['Nombre']}: Contrato vence en {abs(dias)} días")
     
-    # 3. Detectar rentas por debajo del mercado
+    # 3. Rentas por debajo del mercado
     for _, row in df_inm.iterrows():
         rm = tasacion(row)
         desv = (row["Renta"] - rm) / rm * 100
-        if desv < -10:  # Más de 10% por debajo
+        if desv < -10:
             potencial = (rm - row["Renta"])
-            oportunidades.append(f"💰 {row['Nombre']} está {abs(desv):.0f}% bajo mercado → Puedes subir {potencial:,.0f}€/mes en renovación")
+            oportunidades.append(f"{row['Nombre']} está {abs(desv):.0f}% bajo mercado → Puedes subir {potencial:,.0f}€/mes")
     
-    # 4. Detectar margen bajo
-    if margen < 50:
-        oportunidades.append(f"⚠️ Margen ajustado ({margen:.1f}%). Revisa gastos en Suministros o comunidades")
+    # 4. Margen bajo
+    if margen < 50 and margen > 0:
+        oportunidades.append(f"Margen ajustado ({margen:.1f}%). Revisa gastos en Suministros")
     
-    # 5. Oportunidad de ampliar cartera
-    if num_inmuebles < 10 and margen > 60:
-        oportunidades.append(f"🚀 Cartera rentable ({margen:.1f}% margen). Considera ampliar con nuevos inmuebles")
-    
-    # Generar mensaje principal
-    if neto > 0:
-        if margen > 70:
-            estado = f"✅ **Genial!** Tus {num_inmuebles} inmuebles están generando {neto:,.0f}€ limpios al mes. Margen excelente del {margen:.1f}%."
-        elif margen > 50:
-            estado = f"✅ **Bien!** {num_inmuebles} inmuebles generando {neto:,.0f}€/mes neto con un {margen:.1f}% de margen."
-        else:
-            estado = f"⚠️ Tus {num_inmuebles} inmuebles generan {neto:,.0f}€/mes, pero el margen es ajustado ({margen:.1f}%)."
+    # Estado general (1 línea para header plegado)
+    if neto > 0 and margen > 70:
+        estado_corto = "✅ Todo excelente"
+        estado_largo = f"**Genial!** Tus {num_inmuebles} inmuebles están generando **{neto:,.0f}€/mes** neto con un margen excelente del **{margen:.1f}%**."
+    elif neto > 0 and margen > 50:
+        estado_corto = "✅ Todo bien"
+        estado_largo = f"**Bien!** {num_inmuebles} inmuebles generando **{neto:,.0f}€/mes** neto con un **{margen:.1f}%** de margen."
+    elif neto > 0:
+        estado_corto = "⚠️ Margen ajustado"
+        estado_largo = f"Tus {num_inmuebles} inmuebles generan **{neto:,.0f}€/mes**, pero el margen es ajustado (**{margen:.1f}%**)."
     else:
-        estado = f"⚠️ **Atención:** Margen muy ajustado. Revisa gastos urgentemente."
+        estado_corto = "⚠️ Revisar gastos"
+        estado_largo = "**Atención:** El margen está muy ajustado. Revisa los gastos urgentemente."
     
-    # Construir mensaje del chatbot
-    lineas_mensaje = [estado]
+    # Inicializar estado de expansión
+    if "chatbot_expandido" not in st.session_state:
+        st.session_state.chatbot_expandido = False
     
-    if alertas_pendientes:
-        lineas_mensaje.append("")
-        lineas_mensaje.append("**📋 PENDIENTES HOY:**")
-        for alerta in alertas_pendientes[:3]:
-            lineas_mensaje.append(f"• {alerta}")
-    
-    if oportunidades:
-        lineas_mensaje.append("")
-        lineas_mensaje.append("**💡 OPORTUNIDADES:**")
-        for oport in oportunidades[:3]:
-            lineas_mensaje.append(f"• {oport}")
-    
-    if not alertas_pendientes and not oportunidades:
-        lineas_mensaje.append("")
-        lineas_mensaje.append("✅ **Todo está en orden.** Sigue así y revisa las Fichas Benchmark de vez en cuando para optimizar rentas.")
-    
-    mensaje_completo = "\n\n".join(lineas_mensaje)
-    
-    # Mostrar chatbot con markdown nativo de Streamlit
-    st.markdown(f"""
-    <div style="background:{CARD_BG};border-left:4px solid {ACCENT};border-radius:10px;padding:1.2rem;margin-bottom:1.5rem;">
-        <div style="display:flex;gap:12px;align-items:flex-start;">
-            <div style="font-size:2.5rem;">🔔</div>
-            <div style="flex:1;">
-                <div style="font-weight:600;color:{TEXT_PRI};margin-bottom:12px;">Hola Pedro, aquí tu resumen</div>
+    # Mostrar tarjeta plegable
+    with st.container():
+        col_header, col_toggle = st.columns([5, 1])
+        with col_header:
+            st.markdown(f"""
+            <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:8px;padding:0.8rem 1rem;margin-bottom:1rem;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="font-size:1.5rem;">🤖</span>
+                    <span style="font-weight:600;color:{TEXT_PRI};font-size:0.95rem;">Resumen IA</span>
+                    <span style="color:{TEXT_SEC};font-size:0.85rem;">│</span>
+                    <span style="font-size:0.85rem;color:{TEXT_PRI};">{estado_corto}</span>
+                </div>
             </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
+        with col_toggle:
+            if st.button("▼ Expandir" if not st.session_state.chatbot_expandido else "▲ Contraer", key="toggle_chatbot", use_container_width=True):
+                st.session_state.chatbot_expandido = not st.session_state.chatbot_expandido
+                st.rerun()
     
-    # Mensaje en markdown estándar (sin HTML custom)
-    st.markdown(mensaje_completo)
+    # Mostrar contenido expandido si está activo
+    if st.session_state.chatbot_expandido:
+        with st.container():
+            st.markdown(f"""
+            <div style="background:{CARD_BG};border:1px solid {ACCENT};border-left:4px solid {ACCENT};border-radius:8px;padding:1rem;margin-bottom:1.5rem;margin-top:-0.5rem;">
+                <div style="font-size:0.9rem;color:{TEXT_PRI};line-height:1.6;margin-bottom:12px;">
+                    {estado_largo}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if alertas_pendientes:
+                st.markdown("**📋 Pendientes:**")
+                for alerta in alertas_pendientes[:3]:
+                    st.markdown(f"• {alerta}")
+                st.markdown("")
+            
+            if oportunidades:
+                st.markdown("**💡 Oportunidades:**")
+                for oport in oportunidades[:3]:
+                    st.markdown(f"• {oport}")
+                st.markdown("")
+            
+            if not alertas_pendientes and not oportunidades:
+                st.success("✅ Todo está en orden. Continúa registrando movimientos para optimizar deducciones fiscales.")
 
     st.markdown("---")
     
