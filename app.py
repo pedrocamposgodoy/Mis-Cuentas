@@ -8,6 +8,7 @@ import os
 import io
 import plotly.graph_objects as go
 from datetime import datetime, date
+from anthropic import Anthropic
 
 # Importar reportlab con fallback si no está instalado
 try:
@@ -18,6 +19,9 @@ try:
     REPORTLAB_OK = True
 except ImportError:
     REPORTLAB_OK = False
+
+# Inicializar cliente de Anthropic
+client = Anthropic()
 
 # ================================================================
 # SECCIÓN 1 — CONFIGURACIÓN Y COLORES
@@ -700,12 +704,72 @@ def generar_pdf_modelo100(inmueble_data, modelo):
 if menu == "Torre de Control":
     st.markdown('<div class="brand-header">Torre de Control</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
+    
+    # ═══════════════════════════════════════════════════════════
+    # CHATBOT IA — RESUMEN CUENTAS
+    # ═══════════════════════════════════════════════════════════
+    st.markdown("### 🤖 Asistente IA — Análisis de Cuentas")
+    
+    # Calcular métricas
     ing_b  = df_inm["Renta"].sum()
     gas_co = df_inm["Comunidad"].sum()
     gastos = gas_co + df_mov[(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
     neto   = ing_b - gastos
-    margen = (neto/ing_b*100) if ing_b>0 else 0
-    c1,c2,c3 = st.columns(3)
+    total_ingresos_registrados = df_mov[df_mov["Tipo"]=="Ingreso"]["Importe"].sum()
+    total_gastos_registrados = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
+    num_inmuebles = len(df_inm)
+    
+    # Generar análisis con Claude
+    prompt_analisis = f"""Eres un asesor financiero especializado en inmuebles. Analiza brevemente el estado de cuentas:
+
+DATOS:
+- Cartera: {num_inmuebles} inmueble(s)
+- Ingresos mensuales esperados: {ing_b:,.0f}€
+- Gastos mensuales (comunidad + especiales): {gastos:,.0f}€
+- Beneficio neto mensual: {neto:,.0f}€
+- Ingresos registrados a fecha: {total_ingresos_registrados:,.0f}€
+- Gastos registrados a fecha: {total_gastos_registrados:,.0f}€
+
+INSTRUCCIONES:
+Proporciona un análisis muy conciso (máximo 100 palabras):
+1. Una frase sobre el estado general
+2. 2-3 puntos clave
+3. Una recomendación
+
+Usa emojis ocasionalmente. Tono profesional pero cercano."""
+
+    try:
+        response = client.messages.create(
+            model="claude-opus-4-20250805",
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt_analisis}]
+        )
+        analisis_texto = response.content[0].text
+    except Exception as e:
+        # Fallback si falla API
+        analisis_texto = f"""📊 Cartera saludable con {num_inmuebles} inmueble(s).
+
+✅ **Ingresos esperados:** {ing_b:,.0f}€/mes  
+💰 **Beneficio neto:** {neto:,.0f}€/mes  
+
+**Recomendación:** Continúa registrando movimientos para optimizar el análisis fiscal."""
+
+    # Mostrar chatbot
+    st.markdown(f"""
+    <div style="background:{CARD_BG};border-left:4px solid {ACCENT};border-radius:10px;padding:1.2rem;margin-bottom:1.5rem;">
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div style="font-size:2.5rem;">🤖</div>
+            <div style="flex:1;">
+                <div style="font-weight:600;color:{TEXT_PRI};margin-bottom:8px;">Análisis de tu Cartera</div>
+                <div style="font-size:0.92rem;color:{TEXT_PRI};line-height:1.7;white-space:pre-wrap;">{analisis_texto}</div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    
+    # KPIs principales
     c1.markdown(f'<div class="kpi-card"><div class="kpi-label">Ingresos Brutos</div><div class="kpi-value" style="color:{GREEN};">{ing_b:,.0f} €</div><div class="kpi-sub">Renta mensual total</div></div>', unsafe_allow_html=True)
     c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Operativos</div><div class="kpi-value" style="color:{RED};">−{gastos:,.0f} €</div><div class="kpi-sub">Comunidad + registrados</div></div>', unsafe_allow_html=True)
     c3.markdown(f'<div class="kpi-card highlight"><div class="kpi-label">Beneficio Neto</div><div class="kpi-value">{neto:,.0f} €</div><div class="kpi-sub">Margen {margen:.1f}%</div></div>', unsafe_allow_html=True)
