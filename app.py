@@ -795,25 +795,25 @@ if menu == "Torre de Control":
     # Mostrar tarjeta plegable
     with st.container():
         # Header con robot e info
-        col_robot, col_info, col_toggle = st.columns([0.7, 4.3, 1])
+        col_robot, col_info, col_toggle = st.columns([1.2, 3.8, 1])
         
         with col_robot:
-            # Intentar cargar imagen del robot, si falla usar emoji
             try:
-                st.image("robot_ia.png", width=55)
+                st.image("robot_ia.png", width=120)
             except:
-                st.markdown('<div style="font-size:3rem;line-height:1;margin-top:-8px;">🤖</div>', unsafe_allow_html=True)
+                st.markdown('<div style="font-size:3.5rem;line-height:1;">🤖</div>', unsafe_allow_html=True)
         
         with col_info:
             st.markdown(f"""
-            <div style="padding-top:8px;">
-                <span style="font-weight:600;color:{TEXT_PRI};font-size:0.95rem;">Resumen IA</span>
-                <span style="color:{TEXT_SEC};font-size:0.85rem;"> │ </span>
-                <span style="font-size:0.85rem;color:{TEXT_PRI};">{estado_corto}</span>
+            <div style="padding-top:30px;">
+                <span style="font-weight:600;color:{TEXT_PRI};font-size:1.1rem;">Resumen IA</span>
+                <span style="color:{TEXT_SEC};font-size:0.95rem;"> │ </span>
+                <span style="font-size:0.95rem;color:{TEXT_PRI};">{estado_corto}</span>
             </div>
             """, unsafe_allow_html=True)
         
         with col_toggle:
+            st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
             if st.button("▼" if not st.session_state.chatbot_expandido else "▲", key="toggle_chatbot", use_container_width=True):
                 st.session_state.chatbot_expandido = not st.session_state.chatbot_expandido
                 st.rerun()
