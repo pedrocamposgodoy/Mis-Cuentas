@@ -1217,10 +1217,34 @@ elif menu == "Diario Contable":
         m2.metric("Gastos Registrados", f"−{t_gas:,.2f} €")
         m3.metric("Balance Total", f"{t_ing-t_gas:,.2f} €")
         if st.button("💾 Guardar Cambios", key="guardar_tabla"):
-            # Actualizar solo las filas editadas en el DataFrame completo
-            st.session_state.df_mov_persistent = df_ed
-            df_ed.to_csv(DB_MOV, index=False)
-            st.success("✓ Operaciones guardadas.")
+            # CRÍTICO: No sobrescribir todo el DataFrame, solo actualizar las filas editadas
+            # Si hay filtros activos, df_ed solo contiene las filas visibles
+            # Necesitamos merge con el DataFrame completo
+            
+            if año_filtro != "Todos" or mes_filtro != "Todos":
+                # Hay filtros activos - hacer merge inteligente
+                # Eliminar del DataFrame completo las filas que estaban en el filtro
+                df_completo = st.session_state.df_mov_persistent.copy()
+                df_completo["Fecha"] = pd.to_datetime(df_completo["Fecha"], errors="coerce")
+                
+                # Crear máscara de las filas que NO estaban en el filtro
+                mascara = pd.Series([True] * len(df_completo))
+                if año_filtro != "Todos":
+                    mascara = mascara & (df_completo["Fecha"].dt.year != año_filtro)
+                if mes_filtro != "Todos":
+                    mes_num = meses_nombres.index(mes_filtro)
+                    mascara = mascara & (df_completo["Fecha"].dt.month != mes_num)
+                
+                # Combinar: filas NO filtradas + filas editadas
+                df_final = pd.concat([df_completo[mascara], df_ed], ignore_index=True)
+                df_final = df_final.sort_values("Fecha", ascending=False).reset_index(drop=True)
+            else:
+                # No hay filtros - df_ed contiene todo
+                df_final = df_ed
+            
+            st.session_state.df_mov_persistent = df_final
+            df_final.to_csv(DB_MOV, index=False)
+            st.success("✓ Operaciones guardadas correctamente.")
             st.rerun()
     with tab2:
         st.markdown("### 📥 Registrar Ingresos del Mes")
