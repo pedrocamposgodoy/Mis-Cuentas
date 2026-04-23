@@ -950,64 +950,97 @@ elif menu == "Fichas (Benchmark)":
 
 # ================================================================
 # PANTALLA 3 — AUDITORÍA IA DE MANTENIMIENTO
-# Presupuestos urgente/medio/largo por inmueble
+# Diseño acordeón compacto - sin colores llamativos
 # ================================================================
 elif menu == "Auditoría IA":
     st.markdown('<div class="brand-header">Auditoría de Mantenimiento</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Planificación de reformas · Costos e impacto por plazo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-sub">Planificación de reformas por inmueble</div>', unsafe_allow_html=True)
+    
+    # Datos de mantenimiento por inmueble
     datos_mantenimiento = {
-        "Casa Abarqueros": {"urgente": {"total":4500,"items":[("Revisión estructura",2500,0.55),("Pintura fachada",1500,0.33),("Canalones",500,0.12)]},"medio": {"total":12000,"items":[("Tuberías",8000,0.67),("Electricidad",3500,0.29),("Calderas",600,0.05)]},"largo": {"total":8000,"items":[("Ventanas",5000,0.62),("Aislamiento",2500,0.31),("Cubierta",500,0.06)]}},
-        "Paseo del Salón": {"urgente": {"total":3000,"items":[("Pinturas",1500,0.5),("Fontanería menor",1000,0.33),("Mantenimiento",500,0.17)]},"medio": {"total":7000,"items":[("Tuberías",4000,0.57),("Electricidad",2500,0.36),("Otros",500,0.07)]},"largo": {"total":4500,"items":[("Ventanas",2500,0.56),("Aislamiento",1500,0.33),("Cubierta",500,0.11)]}},
-        "Huerto Unidad 1": {"urgente": {"total":2000,"items":[("Pintura",1000,0.5),("Reparaciones",800,0.4),("Otros",200,0.1)]},"medio": {"total":4500,"items":[("Tuberías",2500,0.56),("Electricidad",1500,0.33),("Otros",500,0.11)]},"largo": {"total":3000,"items":[("Ventanas",1800,0.6),("Aislamiento",1000,0.33),("Cubierta",200,0.07)]}},
-        "Huerto Unidad 2": {"urgente": {"total":2000,"items":[("Pintura",1000,0.5),("Reparaciones",800,0.4),("Otros",200,0.1)]},"medio": {"total":4500,"items":[("Tuberías",2500,0.56),("Electricidad",1500,0.33),("Otros",500,0.11)]},"largo": {"total":3000,"items":[("Ventanas",1800,0.6),("Aislamiento",1000,0.33),("Cubierta",200,0.07)]}},
-        "Huerto Unidad 3": {"urgente": {"total":1500,"items":[("Pintura",800,0.53),("Reparaciones",600,0.4),("Otros",100,0.07)]},"medio": {"total":4000,"items":[("Tuberías",2300,0.575),("Electricidad",1400,0.35),("Otros",300,0.075)]},"largo": {"total":2500,"items":[("Ventanas",1500,0.6),("Aislamiento",800,0.32),("Cubierta",200,0.08)]}},
-        "Huerto Unidad 4": {"urgente": {"total":1000,"items":[("Pintura",600,0.6),("Reparaciones",300,0.3),("Otros",100,0.1)]},"medio": {"total":3500,"items":[("Tuberías",2000,0.57),("Electricidad",1200,0.34),("Otros",300,0.09)]},"largo": {"total":2000,"items":[("Ventanas",1200,0.6),("Aislamiento",600,0.3),("Cubierta",200,0.1)]}},
+        "Casa Abarqueros": {"urgente": 4500, "medio": 12000, "largo": 8000, "reforma": 2018, "desc": "Pintura exterior + tuberías"},
+        "Paseo del Salón": {"urgente": 3000, "medio": 7000, "largo": 4500, "reforma": 2020, "desc": "Fontanería menor + pinturas"},
+        "Huerto Unidad 1": {"urgente": 2000, "medio": 4500, "largo": 3000, "reforma": 2022, "desc": "AC + revisión eléctrica"},
+        "Huerto Unidad 2": {"urgente": 2000, "medio": 4500, "largo": 3000, "reforma": 2022, "desc": "AC + revisión eléctrica"},
+        "Huerto Unidad 3": {"urgente": 1500, "medio": 4000, "largo": 2500, "reforma": 2021, "desc": "Pintura + electricidad"},
+        "Huerto Unidad 4": {"urgente": 1000, "medio": 3500, "largo": 2000, "reforma": 2024, "desc": "Mantenimiento general"},
     }
-    inmueble_sel_aud = st.selectbox("Selecciona inmueble a auditar:", df_inm["Nombre"].tolist(), key="aud_inmueble")
-    if inmueble_sel_aud in datos_mantenimiento:
-        row_aud = df_inm[df_inm["Nombre"]==inmueble_sel_aud].iloc[0]
-        año_actual = datetime.now().year
-        ant = año_actual - int(row_aud.get("Año_Reforma", año_actual))
-        col_a1, col_a2, col_a3, col_a4 = st.columns(4)
-        col_a1.metric("Construcción", int(row_aud.get("Año_Construccion", 0)))
-        col_a2.metric("Última reforma", int(row_aud.get("Año_Reforma", 0)))
-        col_a3.metric("Antigüedad", f"{ant} años")
-        col_a4.metric("Estado", row_aud.get("Estado", "—"))
-        st.markdown("---")
-        datos_aud = datos_mantenimiento[inmueble_sel_aud]
-        total_presupuesto = datos_aud["urgente"]["total"] + datos_aud["medio"]["total"] + datos_aud["largo"]["total"]
-        def mostrar_seccion(plazo_label, color_hex, datos_plazo):
-            col_sec1, col_sec2 = st.columns([3, 1])
-            with col_sec1:
-                st.markdown(f"### {plazo_label}")
-            with col_sec2:
-                st.markdown(f'<div style="font-family:\'DM Serif Display\',serif;font-size:1.5rem;color:{color_hex};font-weight:600;">{datos_plazo["total"]:,.0f}€</div>', unsafe_allow_html=True)
-            cols_items = st.columns(len(datos_plazo["items"]))
-            for idx_item, (nombre, monto, pct) in enumerate(datos_plazo["items"]):
-                with cols_items[idx_item]:
-                    st.markdown(f"""<div style="background:{color_hex};height:50px;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;font-size:0.7rem;font-weight:600;padding:0.4rem;text-align:center;margin-bottom:0.5rem;"><span style="font-size:0.65rem;">{nombre}</span><span style="font-size:0.75rem;margin-top:2px;">{monto:,.0f}€</span></div>""", unsafe_allow_html=True)
-                    st.caption(f"{pct*100:.0f}%")
-            desglose = " • ".join([f"{n} ({m:,.0f}€)" for n, m, _ in datos_plazo["items"]])
-            st.markdown(f'<div style="font-size:0.8rem;color:{TEXT_SEC};margin-top:0.5rem;">📊 {desglose}</div>', unsafe_allow_html=True)
-            st.markdown("---")
-        mostrar_seccion("🔴 URGENTE (0-6 meses)", RED, datos_aud["urgente"])
-        mostrar_seccion("🟠 MEDIO (6-18 meses)", AMBER, datos_aud["medio"])
-        mostrar_seccion("🟢 LARGO (18+ meses)", GREEN, datos_aud["largo"])
-        st.markdown('<div class="section-title">💰 Resumen Presupuestario</div>', unsafe_allow_html=True)
-        col_res1, col_res2, col_res3 = st.columns(3)
-        col_res1.metric("Inversión Total", f"{total_presupuesto:,.0f} €", "todas las categorías")
-        col_res2.metric("Urgente + Medio", f"{datos_aud['urgente']['total'] + datos_aud['medio']['total']:,.0f} €", "próximos 18 meses")
-        col_res3.metric("% sobre valor", f"{total_presupuesto/row_aud['Valor_Construccion']*100:.1f}%", f"de {row_aud['Valor_Construccion']:,.0f}€")
-        st.markdown('<div class="section-title">📋 Recomendaciones</div>', unsafe_allow_html=True)
-        if ant >= 8:
-            st.markdown(f'<div class="status-red"><b>🚨 Reforma muy antigua</b><br>Con {ant} años desde la última reforma, las intervenciones urgentes son críticas.</div>', unsafe_allow_html=True)
-        elif ant >= 5:
-            st.markdown(f'<div class="status-yellow"><b>⚠️ Reforma antigua</b><br>Con {ant} años, planifica presupuesto para las intervenciones del plazo medio.</div>', unsafe_allow_html=True)
+    
+    # Inicializar estado de expansión
+    if "auditoria_expandido" not in st.session_state:
+        st.session_state.auditoria_expandido = {}
+    
+    # Función para determinar urgencia
+    def get_urgencia(reforma_año):
+        años = datetime.now().year - reforma_año
+        if años >= 8:
+            return "🔴 Urgente", RED
+        elif años >= 5:
+            return "🟡 Medio", AMBER
         else:
-            st.markdown(f'<div class="status-green"><b>✅ Reforma reciente</b><br>Con {ant} años, el inmueble está en buen estado.</div>', unsafe_allow_html=True)
-        tipo_v, msg_v = alerta_vencimiento(row_aud)
-        if tipo_v in ("vencido", "urgente", "aviso") and ant >= 3:
-            st.markdown(f'<div class="status-yellow" style="margin-top:0.8rem;"><b>🎯 Oportunidad de Negociación:</b><br>El contrato {msg_v.lower()}. Momento óptimo para renegociar.</div>', unsafe_allow_html=True)
+            return "🟢 Largo", GREEN
+    
+    # Mostrar cada inmueble como acordeón
+    for nombre, datos in datos_mantenimiento.items():
+        if nombre not in df_inm["Nombre"].tolist():
+            continue
+            
+        urgencia_label, urgencia_color = get_urgencia(datos["reforma"])
+        años = datetime.now().year - datos["reforma"]
+        total = datos["urgente"] + datos["medio"] + datos["largo"]
+        
+        # Estado de expansión para este inmueble
+        expandido = st.session_state.auditoria_expandido.get(nombre, False)
+        
+        # Header del acordeón
+        col_header, col_btn = st.columns([5, 1])
+        with col_header:
+            st.markdown(f"""
+            <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:6px;padding:0.7rem 1rem;margin-bottom:0.5rem;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <div style="flex:1;">
+                        <span style="font-weight:600;color:{TEXT_PRI};font-size:0.95rem;">{nombre}</span>
+                        <span style="color:{TEXT_SEC};font-size:0.8rem;margin-left:12px;">{urgencia_label} • {total:,.0f}€</span>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col_btn:
+            if st.button("▼" if not expandido else "▲", key=f"toggle_audit_{nombre}", use_container_width=True):
+                st.session_state.auditoria_expandido[nombre] = not expandido
+                st.rerun()
+        
+        # Contenido expandido
+        if expandido:
+            with st.container():
+                st.markdown(f"""
+                <div style="background:{CARD_BG};border:1px solid {BORDER};border-left:3px solid {urgencia_color};border-radius:6px;padding:1rem;margin-bottom:1rem;margin-top:-0.3rem;">
+                    <div style="font-size:0.88rem;color:{TEXT_PRI};line-height:1.7;">
+                        <div style="margin-bottom:8px;"><b>Reforma:</b> {datos["reforma"]} ({años} años)</div>
+                        <div style="margin-bottom:8px;"><b>Urgencia:</b> {datos["desc"]}</div>
+                        <div style="margin-bottom:8px;"><b>Presupuesto:</b> {total:,.0f}€</div>
+                        <div style="margin-top:12px;padding-top:12px;border-top:1px dashed {BORDER};">
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:0.85rem;">
+                                <div>
+                                    <div style="color:{TEXT_SEC};font-size:0.75rem;">Urgente (0-6m)</div>
+                                    <div style="font-weight:600;color:{RED};">{datos["urgente"]:,.0f}€</div>
+                                </div>
+                                <div>
+                                    <div style="color:{TEXT_SEC};font-size:0.75rem;">Medio (6-18m)</div>
+                                    <div style="font-weight:600;color:{AMBER};">{datos["medio"]:,.0f}€</div>
+                                </div>
+                                <div>
+                                    <div style="color:{TEXT_SEC};font-size:0.75rem;">Largo (18+m)</div>
+                                    <div style="font-weight:600;color:{GREEN};">{datos["largo"]:,.0f}€</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top:12px;padding-top:12px;border-top:1px dashed {BORDER};font-size:0.82rem;color:{TEXT_SEC};">
+                            <b>Recomendación:</b> {"Actuar en próximos 3 meses — reforma muy antigua" if años >= 8 else ("Planifica presupuesto para plazo medio" if años >= 5 else "Inmueble en buen estado")}
+                        </div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
 # ================================================================
 # PANTALLA 4 — DIARIO CONTABLE
