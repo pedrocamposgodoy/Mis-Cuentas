@@ -8,7 +8,6 @@ import os
 import io
 import plotly.graph_objects as go
 from datetime import datetime, date
-from anthropic import Anthropic
 
 # Importar reportlab con fallback si no está instalado
 try:
@@ -19,9 +18,6 @@ try:
     REPORTLAB_OK = True
 except ImportError:
     REPORTLAB_OK = False
-
-# Inicializar cliente de Anthropic
-client = Anthropic()
 
 # ================================================================
 # SECCIÓN 1 — CONFIGURACIÓN Y COLORES
@@ -717,42 +713,53 @@ if menu == "Torre de Control":
     neto   = ing_b - gastos
     total_ingresos_registrados = df_mov[df_mov["Tipo"]=="Ingreso"]["Importe"].sum()
     total_gastos_registrados = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
+    balance_real = total_ingresos_registrados - total_gastos_registrados
     num_inmuebles = len(df_inm)
+    margen = (neto/ing_b*100) if ing_b > 0 else 0
     
-    # Generar análisis con Claude
-    prompt_analisis = f"""Eres un asesor financiero especializado en inmuebles. Analiza brevemente el estado de cuentas:
-
-DATOS:
-- Cartera: {num_inmuebles} inmueble(s)
-- Ingresos mensuales esperados: {ing_b:,.0f}€
-- Gastos mensuales (comunidad + especiales): {gastos:,.0f}€
-- Beneficio neto mensual: {neto:,.0f}€
-- Ingresos registrados a fecha: {total_ingresos_registrados:,.0f}€
-- Gastos registrados a fecha: {total_gastos_registrados:,.0f}€
-
-INSTRUCCIONES:
-Proporciona un análisis muy conciso (máximo 100 palabras):
-1. Una frase sobre el estado general
-2. 2-3 puntos clave
-3. Una recomendación
-
-Usa emojis ocasionalmente. Tono profesional pero cercano."""
-
-    try:
-        response = client.messages.create(
-            model="claude-opus-4-20250805",
-            max_tokens=200,
-            messages=[{"role": "user", "content": prompt_analisis}]
-        )
-        analisis_texto = response.content[0].text
-    except Exception as e:
-        # Fallback si falla API
-        analisis_texto = f"""📊 Cartera saludable con {num_inmuebles} inmueble(s).
-
-✅ **Ingresos esperados:** {ing_b:,.0f}€/mes  
-💰 **Beneficio neto:** {neto:,.0f}€/mes  
-
-**Recomendación:** Continúa registrando movimientos para optimizar el análisis fiscal."""
+    # Generar análisis inteligente basado en reglas
+    def generar_analisis():
+        lineas = []
+        
+        # Estado general
+        if neto > 0:
+            estado = "✅ **Cartera rentable**"
+            if margen > 70:
+                estado += " con excelente margen"
+            elif margen > 50:
+                estado += " con buen margen"
+        else:
+            estado = "⚠️ **Cartera con margen ajustado**"
+        
+        lineas.append(f"{estado}: {num_inmuebles} inmueble(s) generando {neto:,.0f}€/mes neto ({margen:.1f}% margen).")
+        lineas.append("")
+        
+        # Puntos clave
+        lineas.append("**📊 Puntos clave:**")
+        lineas.append(f"• Ingresos esperados: {ing_b:,.0f}€/mes")
+        lineas.append(f"• Gastos operativos: {gastos:,.0f}€/mes")
+        
+        if total_ingresos_registrados > 0:
+            lineas.append(f"• Cobrado hasta hoy: {total_ingresos_registrados:,.0f}€ ({balance_real:+,.0f}€ balance)")
+        else:
+            lineas.append("• Aún no hay ingresos registrados en el diario contable")
+        
+        lineas.append("")
+        
+        # Recomendación
+        lineas.append("**💡 Recomendación:**")
+        if total_ingresos_registrados == 0:
+            lineas.append("Registra los cobros de este mes en el Diario Contable para ver tu balance real.")
+        elif margen < 40:
+            lineas.append("Margen bajo. Revisa gastos en Suministros o renegocia comunidades.")
+        elif num_inmuebles < 10:
+            lineas.append("Considera ampliar cartera o revisar rentas vs mercado en Fichas Benchmark.")
+        else:
+            lineas.append("Continúa registrando movimientos para optimizar deducciones fiscales.")
+        
+        return "\n".join(lineas)
+    
+    analisis_texto = generar_analisis()
 
     # Mostrar chatbot
     st.markdown(f"""
