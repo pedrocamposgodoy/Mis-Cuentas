@@ -855,11 +855,11 @@ if menu == "Torre de Control":
 
     st.markdown("---")
     
-    # KPIs principales
+    # KPIs principales - MOSTRAR INGRESOS REALES REGISTRADOS
     c1, c2, c3 = st.columns(3)
-    c1.markdown(f'<div class="kpi-card"><div class="kpi-label">Ingresos Brutos</div><div class="kpi-value" style="color:{GREEN};">{ing_b:,.0f} €</div><div class="kpi-sub">Renta mensual total</div></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Operativos</div><div class="kpi-value" style="color:{RED};">−{gastos:,.0f} €</div><div class="kpi-sub">Comunidad + registrados</div></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="kpi-card highlight"><div class="kpi-label">Beneficio Neto</div><div class="kpi-value">{neto:,.0f} €</div><div class="kpi-sub">Margen {margen:.1f}%</div></div>', unsafe_allow_html=True)
+    c1.markdown(f'<div class="kpi-card"><div class="kpi-label">Ingresos Registrados</div><div class="kpi-value" style="color:{GREEN};">{total_ingresos_registrados:,.0f} €</div><div class="kpi-sub">Total cobrado real</div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Registrados</div><div class="kpi-value" style="color:{RED};">−{total_gastos_registrados:,.0f} €</div><div class="kpi-sub">Total pagado real</div></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="kpi-card highlight"><div class="kpi-label">Balance Real</div><div class="kpi-value">{balance_real:,.0f} €</div><div class="kpi-sub">Ingresos - Gastos</div></div>', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Rentabilidad por Activo</div>', unsafe_allow_html=True)
     cols = st.columns(len(df_inm))
     for i, row in df_inm.iterrows():
