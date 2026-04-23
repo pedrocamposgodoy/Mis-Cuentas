@@ -302,6 +302,8 @@ def guardar_movimientos(nuevos):
     df_final = pd.concat([st.session_state.df_mov_persistent, df_nuevos], ignore_index=True)
     st.session_state.df_mov_persistent = df_final
     df_final.to_csv(DB_MOV, index=False)
+    # CRÍTICO: Forzar recarga desde CSV
+    st.session_state.df_mov_persistent = pd.read_csv(DB_MOV)
 
 def parsear_ingresos(texto, df_inm_local):
     rentas  = dict(zip(df_inm_local["Nombre"], df_inm_local["Renta"]))
@@ -1248,9 +1250,12 @@ elif menu == "Diario Contable":
             st.session_state.df_mov_persistent = df_final
             df_final.to_csv(DB_MOV, index=False)
             
+            # CRÍTICO: Forzar recarga desde CSV para asegurar persistencia
+            st.session_state.df_mov_persistent = pd.read_csv(DB_MOV)
+            
             # Debug: verificar que se guardó correctamente
-            total_movs = len(df_final)
-            total_ingresos = df_final[df_final["Tipo"]=="Ingreso"]["Importe"].sum()
+            total_movs = len(st.session_state.df_mov_persistent)
+            total_ingresos = st.session_state.df_mov_persistent[st.session_state.df_mov_persistent["Tipo"]=="Ingreso"]["Importe"].sum()
             
             st.success(f"✓ Guardado: {total_movs} operaciones | Ingresos totales: {total_ingresos:,.0f}€")
             st.rerun()
@@ -1297,6 +1302,9 @@ elif menu == "Diario Contable":
                 
                 st.session_state.df_mov_persistent = df_completo
                 df_completo.to_csv(DB_MOV, index=False)
+                
+                # CRÍTICO: Forzar recarga desde CSV para asegurar persistencia
+                st.session_state.df_mov_persistent = pd.read_csv(DB_MOV)
                 
                 total_registrado = df_nuevos["Importe"].sum()
                 st.success(f"✓ Registradas {len(nuevos_ingresos)} rentas por {total_registrado:,.0f}€")
