@@ -702,9 +702,9 @@ if menu == "Torre de Control":
     st.markdown('<div class="brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
     
     # ═══════════════════════════════════════════════════════════
-    # CHATBOT IA — RESUMEN CUENTAS
+    # CHATBOT IA — ALERTAS INTELIGENTES (Tono cercano)
     # ═══════════════════════════════════════════════════════════
-    st.markdown("### 🤖 Asistente IA — Análisis de Cuentas")
+    st.markdown("### 🔔 Centro de Alertas y Recomendaciones")
     
     # Calcular métricas
     ing_b  = df_inm["Renta"].sum()
@@ -717,62 +717,99 @@ if menu == "Torre de Control":
     num_inmuebles = len(df_inm)
     margen = (neto/ing_b*100) if ing_b > 0 else 0
     
-    # Generar análisis inteligente basado en reglas
-    def generar_analisis():
-        lineas = []
-        
-        # Estado general
-        if neto > 0:
-            estado = "✅ **Cartera rentable**"
-            if margen > 70:
-                estado += " con excelente margen"
-            elif margen > 50:
-                estado += " con buen margen"
-        else:
-            estado = "⚠️ **Cartera con margen ajustado**"
-        
-        lineas.append(f"{estado}: {num_inmuebles} inmueble(s) generando {neto:,.0f}€/mes neto ({margen:.1f}% margen).")
-        lineas.append("")
-        
-        # Puntos clave
-        lineas.append("**📊 Puntos clave:**")
-        lineas.append(f"• Ingresos esperados: {ing_b:,.0f}€/mes")
-        lineas.append(f"• Gastos operativos: {gastos:,.0f}€/mes")
-        
-        if total_ingresos_registrados > 0:
-            lineas.append(f"• Cobrado hasta hoy: {total_ingresos_registrados:,.0f}€ ({balance_real:+,.0f}€ balance)")
-        else:
-            lineas.append("• Aún no hay ingresos registrados en el diario contable")
-        
-        lineas.append("")
-        
-        # Recomendación
-        lineas.append("**💡 Recomendación:**")
-        if total_ingresos_registrados == 0:
-            lineas.append("Registra los cobros de este mes en el Diario Contable para ver tu balance real.")
-        elif margen < 40:
-            lineas.append("Margen bajo. Revisa gastos en Suministros o renegocia comunidades.")
-        elif num_inmuebles < 10:
-            lineas.append("Considera ampliar cartera o revisar rentas vs mercado en Fichas Benchmark.")
-        else:
-            lineas.append("Continúa registrando movimientos para optimizar deducciones fiscales.")
-        
-        return "\n".join(lineas)
+    # Detectar alertas y oportunidades
+    alertas_pendientes = []
+    oportunidades = []
     
-    analisis_texto = generar_analisis()
-
-    # Mostrar chatbot
-    st.markdown(f"""
+    # 1. Detectar ingresos no registrados
+    if total_ingresos_registrados < ing_b * 0.5:  # Menos del 50% cobrado
+        alertas_pendientes.append(f"📥 Registra los cobros del mes en el Diario Contable (esperados: {ing_b:,.0f}€)")
+    
+    # 2. Detectar contratos próximos a vencer
+    hoy = date.today()
+    for _, row in df_inm.iterrows():
+        tipo_alert, msg = alerta_vencimiento(row)
+        if tipo_alert in ["vencido", "urgente"]:
+            dias = dias_para_vencimiento(row.get("Fecha_Vencimiento_Contrato"))
+            if dias and dias < 60:
+                alertas_pendientes.append(f"📅 {row['Nombre']}: Contrato vence en {abs(dias)} días")
+    
+    # 3. Detectar rentas por debajo del mercado
+    for _, row in df_inm.iterrows():
+        rm = tasacion(row)
+        desv = (row["Renta"] - rm) / rm * 100
+        if desv < -10:  # Más de 10% por debajo
+            potencial = (rm - row["Renta"])
+            oportunidades.append(f"💰 {row['Nombre']} está {abs(desv):.0f}% bajo mercado → Puedes subir {potencial:,.0f}€/mes en renovación")
+    
+    # 4. Detectar margen bajo
+    if margen < 50:
+        oportunidades.append(f"⚠️ Margen ajustado ({margen:.1f}%). Revisa gastos en Suministros o comunidades")
+    
+    # 5. Oportunidad de ampliar cartera
+    if num_inmuebles < 10 and margen > 60:
+        oportunidades.append(f"🚀 Cartera rentable ({margen:.1f}% margen). Considera ampliar con nuevos inmuebles")
+    
+    # Generar mensaje principal
+    if neto > 0:
+        if margen > 70:
+            estado = f"✅ **Genial!** Tus {num_inmuebles} inmuebles están generando {neto:,.0f}€ limpios al mes. Margen excelente del {margen:.1f}%."
+        elif margen > 50:
+            estado = f"✅ **Bien!** {num_inmuebles} inmuebles generando {neto:,.0f}€/mes neto con un {margen:.1f}% de margen."
+        else:
+            estado = f"⚠️ Tus {num_inmuebles} inmuebles generan {neto:,.0f}€/mes, pero el margen es ajustado ({margen:.1f}%)."
+    else:
+        estado = f"⚠️ **Atención:** Margen muy ajustado. Revisa gastos urgentemente."
+    
+    # Construir HTML del chatbot
+    chatbot_html = f"""
     <div style="background:{CARD_BG};border-left:4px solid {ACCENT};border-radius:10px;padding:1.2rem;margin-bottom:1.5rem;">
         <div style="display:flex;gap:12px;align-items:flex-start;">
-            <div style="font-size:2.5rem;">🤖</div>
+            <div style="font-size:2.5rem;">🔔</div>
             <div style="flex:1;">
-                <div style="font-weight:600;color:{TEXT_PRI};margin-bottom:8px;">Análisis de tu Cartera</div>
-                <div style="font-size:0.92rem;color:{TEXT_PRI};line-height:1.7;white-space:pre-wrap;">{analisis_texto}</div>
+                <div style="font-weight:600;color:{TEXT_PRI};margin-bottom:12px;">Hola Pedro, aquí tu resumen</div>
+                <div style="font-size:0.92rem;color:{TEXT_PRI};line-height:1.7;margin-bottom:16px;">
+                    {estado}
+                </div>
+    """
+    
+    # Añadir alertas pendientes
+    if alertas_pendientes:
+        chatbot_html += f"""
+                <div style="background:#FFF9E6;border-left:3px solid #F59E0B;padding:12px;border-radius:6px;margin-bottom:12px;">
+                    <div style="font-weight:600;color:#92400E;font-size:0.85rem;margin-bottom:8px;">📋 PENDIENTES HOY:</div>
+        """
+        for alerta in alertas_pendientes[:3]:  # Máximo 3
+            chatbot_html += f'<div style="font-size:0.88rem;color:#92400E;margin-bottom:6px;">• {alerta}</div>'
+        chatbot_html += "</div>"
+    
+    # Añadir oportunidades
+    if oportunidades:
+        chatbot_html += f"""
+                <div style="background:#EDF7F1;border-left:3px solid {GREEN};padding:12px;border-radius:6px;">
+                    <div style="font-weight:600;color:#1a7a40;font-size:0.85rem;margin-bottom:8px;">💡 OPORTUNIDADES:</div>
+        """
+        for oport in oportunidades[:3]:  # Máximo 3
+            chatbot_html += f'<div style="font-size:0.88rem;color:#1a7a40;margin-bottom:6px;">• {oport}</div>'
+        chatbot_html += "</div>"
+    
+    # Si no hay alertas ni oportunidades
+    if not alertas_pendientes and not oportunidades:
+        chatbot_html += f"""
+                <div style="background:#EDF7F1;border-left:3px solid {GREEN};padding:12px;border-radius:6px;">
+                    <div style="font-size:0.88rem;color:#1a7a40;">
+                        ✅ <b>Todo está en orden.</b> Sigue así y revisa las Fichas Benchmark de vez en cuando para optimizar rentas.
+                    </div>
+                </div>
+        """
+    
+    chatbot_html += """
             </div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    
+    st.markdown(chatbot_html, unsafe_allow_html=True)
 
     st.markdown("---")
     
