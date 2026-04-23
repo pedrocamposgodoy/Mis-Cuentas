@@ -1257,15 +1257,45 @@ elif menu == "Diario Contable":
     with tab2:
         st.markdown("### 📥 Registrar Ingresos del Mes")
         st.caption("Escribe con tus propias palabras quién ha pagado este mes")
-
-        st.markdown(f"""<div class="status-green" style="font-size:0.8rem;">
-        <b>Ejemplos que entiendo:</b><br>
-        · "Ha pagado solo Huerto 1"<br>
-        · "Todos han pagado"<br>
-        · "Todos han pagado menos Abarqueros"<br>
-        · "Falta Huerto 2 por pagar"<br>
-        · "Han pagado Huerto 1 y Huerto 3"
-        </div>""", unsafe_allow_html=True)
+        
+        # BOTÓN RÁPIDO: Registrar todas las rentas
+        col_quick1, col_quick2 = st.columns([2, 1])
+        with col_quick1:
+            st.markdown(f"""<div class="status-green" style="font-size:0.8rem;">
+            <b>Ejemplos que entiendo:</b><br>
+            · "Ha pagado solo Huerto 1"<br>
+            · "Todos han pagado"<br>
+            · "Todos han pagado menos Abarqueros"<br>
+            · "Falta Huerto 2 por pagar"<br>
+            · "Han pagado Huerto 1 y Huerto 3"
+            </div>""", unsafe_allow_html=True)
+        with col_quick2:
+            if st.button("⚡ Registrar TODAS las rentas", type="primary", use_container_width=True, key="registrar_todas_rentas"):
+                # Registrar automáticamente todos los inmuebles
+                hoy = datetime.now().strftime("%Y-%m-%d")
+                nuevos_ingresos = []
+                for _, inm in df_inm.iterrows():
+                    nuevos_ingresos.append({
+                        "Fecha": hoy,
+                        "Apartamento": inm["Nombre"],
+                        "Concepto": "Renta Mensual",
+                        "Categoría": "Ingresos",
+                        "Tipo": "Ingreso",
+                        "Importe": inm["Renta"],
+                        "Deducible": "N"
+                    })
+                
+                # Añadir al DataFrame
+                df_nuevos = pd.DataFrame(nuevos_ingresos)
+                df_completo = pd.concat([st.session_state.df_mov_persistent, df_nuevos], ignore_index=True)
+                df_completo = df_completo.sort_values("Fecha", ascending=False).reset_index(drop=True)
+                
+                st.session_state.df_mov_persistent = df_completo
+                df_completo.to_csv(DB_MOV, index=False)
+                
+                total_registrado = df_nuevos["Importe"].sum()
+                st.success(f"✓ Registradas {len(nuevos_ingresos)} rentas por {total_registrado:,.0f}€")
+                st.rerun()
 
         texto_ingresos = st.text_area("¿Quién ha pagado este mes?", placeholder="Ha pagado solo Huerto 1...", height=90, key="txt_ingresos")
 
