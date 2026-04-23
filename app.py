@@ -874,6 +874,46 @@ if menu == "Torre de Control":
                 dv=(row["Renta"]-rm)/rm*100; cv=RED if dv<-15 else AMBER
                 st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:{CARD_BG};border:1px solid {BORDER};border-radius:8px;margin-bottom:6px;"><span style="font-size:0.8rem;color:{TEXT_SEC};">{row["Nombre"]}</span><span style="font-size:0.9rem;font-weight:600;color:{cv};">−{pa:,.0f} €/año</span></div>', unsafe_allow_html=True)
         st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:{ACCENT};border-radius:8px;margin-top:4px;"><span style="font-size:0.72rem;font-weight:500;color:#B5D4F4;text-transform:uppercase;letter-spacing:0.06em;">Total pérdida anual</span><span style="font-size:1.3rem;font-weight:600;color:#fff;">−{total_lc:,.0f} €</span></div>', unsafe_allow_html=True)
+    
+    # Gráfico histórico últimos 12 meses
+    st.markdown('<div class="section-title">📈 Evolución Últimos 12 Meses</div>', unsafe_allow_html=True)
+    
+    # Generar datos históricos agregando movimientos por mes
+    df_mov["Fecha"] = pd.to_datetime(df_mov["Fecha"], errors="coerce")
+    df_mov_12m = df_mov[df_mov["Fecha"].notna()].copy()
+    df_mov_12m["Mes"] = df_mov_12m["Fecha"].dt.to_period("M")
+    
+    # Agrupar por mes
+    ingresos_mes = df_mov_12m[df_mov_12m["Tipo"]=="Ingreso"].groupby("Mes")["Importe"].sum()
+    gastos_mes   = df_mov_12m[df_mov_12m["Tipo"]=="Gasto"].groupby("Mes")["Importe"].sum()
+    
+    # Últimos 12 meses
+    hoy = pd.Period(datetime.now(), freq="M")
+    meses = [hoy - i for i in range(11, -1, -1)]
+    meses_str = [str(m) for m in meses]
+    
+    ing_data = [ingresos_mes.get(m, 0) for m in meses]
+    gas_data = [gastos_mes.get(m, 0) for m in meses]
+    neto_data = [i - g for i, g in zip(ing_data, gas_data)]
+    
+    fig_hist = go.Figure()
+    fig_hist.add_trace(go.Scatter(x=meses_str, y=ing_data, mode='lines+markers', name='Ingresos', 
+        line=dict(color=GREEN, width=3), marker=dict(size=7)))
+    fig_hist.add_trace(go.Scatter(x=meses_str, y=gas_data, mode='lines+markers', name='Gastos', 
+        line=dict(color=RED, width=3), marker=dict(size=7)))
+    fig_hist.add_trace(go.Scatter(x=meses_str, y=neto_data, mode='lines+markers', name='Neto', 
+        line=dict(color=ACCENT, width=3, dash='dot'), marker=dict(size=7)))
+    
+    fig_hist.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10,r=10,t=10,b=40), height=280,
+        xaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.05)", title=""),
+        yaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.05)", title="€"),
+        font=dict(family="DM Sans", size=11),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        hovermode="x unified"
+    )
+    st.plotly_chart(fig_hist, use_container_width=True)
     alertas = [(row["Nombre"],*alerta_vencimiento(row)) for _,row in df_inm.iterrows() if alerta_vencimiento(row)[0] in ("vencido","urgente","aviso")]
     if alertas:
         st.markdown('<div class="section-title">📅 Alertas de Contratos</div>', unsafe_allow_html=True)
@@ -888,9 +928,24 @@ if menu == "Torre de Control":
 elif menu == "Fichas (Benchmark)":
     st.markdown('<div class="brand-header">Benchmark y Análisis Fiscal</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Análisis de mercado · Comparativa fiscal por modalidad</div>', unsafe_allow_html=True)
-    default_idx = df_inm["Nombre"].tolist().index(st.session_state.ficha_sel) if st.session_state.ficha_sel in df_inm["Nombre"].tolist() else 0
-    sel = st.selectbox("Inmueble a auditar:", df_inm["Nombre"].tolist(), index=default_idx)
-    st.session_state.ficha_sel = sel
+    
+    # Navegación con botones prev/next
+    lista_inmuebles = df_inm["Nombre"].tolist()
+    default_idx = lista_inmuebles.index(st.session_state.ficha_sel) if st.session_state.ficha_sel in lista_inmuebles else 0
+    
+    col_nav1, col_nav2, col_nav3 = st.columns([1, 6, 1])
+    with col_nav1:
+        if st.button("←", key="prev_inmueble", use_container_width=True, disabled=(default_idx == 0)):
+            st.session_state.ficha_sel = lista_inmuebles[default_idx - 1]
+            st.rerun()
+    with col_nav2:
+        sel = st.selectbox("Inmueble a auditar:", lista_inmuebles, index=default_idx, label_visibility="collapsed")
+        st.session_state.ficha_sel = sel
+    with col_nav3:
+        if st.button("→", key="next_inmueble", use_container_width=True, disabled=(default_idx == len(lista_inmuebles) - 1)):
+            st.session_state.ficha_sel = lista_inmuebles[default_idx + 1]
+            st.rerun()
+    
     f = df_inm[df_inm["Nombre"]==sel].iloc[0]
     renta_act = f["Renta"]; renta_mer = tasacion(f); desv = (renta_act-renta_mer)/renta_mer*100
     perdida_m = max(0,renta_mer-renta_act); perdida_a = perdida_m*12
@@ -985,15 +1040,38 @@ elif menu == "Auditoría IA":
     st.markdown('<div class="brand-header">Auditoría de Mantenimiento</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Planificación de reformas por inmueble</div>', unsafe_allow_html=True)
     
-    # Datos de mantenimiento por inmueble
-    datos_mantenimiento = {
-        "Casa Abarqueros": {"urgente": 4500, "medio": 12000, "largo": 8000, "reforma": 2018, "desc": "Pintura exterior + tuberías"},
-        "Paseo del Salón": {"urgente": 3000, "medio": 7000, "largo": 4500, "reforma": 2020, "desc": "Fontanería menor + pinturas"},
-        "Huerto Unidad 1": {"urgente": 2000, "medio": 4500, "largo": 3000, "reforma": 2022, "desc": "AC + revisión eléctrica"},
-        "Huerto Unidad 2": {"urgente": 2000, "medio": 4500, "largo": 3000, "reforma": 2022, "desc": "AC + revisión eléctrica"},
-        "Huerto Unidad 3": {"urgente": 1500, "medio": 4000, "largo": 2500, "reforma": 2021, "desc": "Pintura + electricidad"},
-        "Huerto Unidad 4": {"urgente": 1000, "medio": 3500, "largo": 2000, "reforma": 2024, "desc": "Mantenimiento general"},
-    }
+    # Generar datos dinámicamente desde el CSV
+    # Función para calcular costes estimados según años reforma
+    def calcular_costes_reforma(años_reforma, valor_construccion):
+        if años_reforma >= 8:
+            return {"urgente": valor_construccion * 0.03, "medio": valor_construccion * 0.08, "largo": valor_construccion * 0.05}
+        elif años_reforma >= 5:
+            return {"urgente": valor_construccion * 0.02, "medio": valor_construccion * 0.05, "largo": valor_construccion * 0.04}
+        else:
+            return {"urgente": valor_construccion * 0.01, "medio": valor_construccion * 0.03, "largo": valor_construccion * 0.02}
+    
+    def desc_reforma(años_reforma):
+        if años_reforma >= 8:
+            return "Pintura exterior + tuberías + electricidad"
+        elif años_reforma >= 5:
+            return "Pintura + revisión instalaciones"
+        else:
+            return "Mantenimiento preventivo"
+    
+    año_actual = datetime.now().year
+    datos_mantenimiento = {}
+    for _, row in df_inm.iterrows():
+        nombre = row["Nombre"]
+        reforma = int(row.get("Año_Reforma", año_actual))
+        años = año_actual - reforma
+        costes = calcular_costes_reforma(años, row["Valor_Construccion"])
+        datos_mantenimiento[nombre] = {
+            "urgente": round(costes["urgente"]),
+            "medio": round(costes["medio"]),
+            "largo": round(costes["largo"]),
+            "reforma": reforma,
+            "desc": desc_reforma(años)
+        }
     
     # Inicializar estado de expansión
     if "auditoria_expandido" not in st.session_state:
@@ -1080,6 +1158,36 @@ elif menu == "Diario Contable":
     st.markdown('<div class="brand-sub">Registro de operaciones · Ingresos · Gastos</div>', unsafe_allow_html=True)
     tab1, tab2, tab3 = st.tabs(["📋 Registro de Operaciones", "📥 Registrar Ingresos", "📤 Registrar Gastos"])
     with tab1:
+        # Filtros de fecha
+        col_f1, col_f2, col_f3 = st.columns([2, 2, 1])
+        with col_f1:
+            años_disponibles = sorted(pd.to_datetime(df_mov["Fecha"], errors="coerce").dt.year.dropna().unique(), reverse=True)
+            año_filtro = st.selectbox("📅 Año", ["Todos"] + [int(a) for a in años_disponibles], key="filtro_año")
+        with col_f2:
+            meses_nombres = ["Todos", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
+                            "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+            mes_filtro = st.selectbox("📅 Mes", meses_nombres, key="filtro_mes")
+        with col_f3:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            if st.button("🔄 Limpiar", use_container_width=True, key="limpiar_filtros"):
+                st.session_state.filtro_año = "Todos"
+                st.session_state.filtro_mes = "Todos"
+                st.rerun()
+        
+        # Aplicar filtros
+        df_filtrado = df_mov.copy()
+        df_filtrado["Fecha"] = pd.to_datetime(df_filtrado["Fecha"], errors="coerce")
+        
+        if año_filtro != "Todos":
+            df_filtrado = df_filtrado[df_filtrado["Fecha"].dt.year == año_filtro]
+        
+        if mes_filtro != "Todos":
+            mes_num = meses_nombres.index(mes_filtro)
+            df_filtrado = df_filtrado[df_filtrado["Fecha"].dt.month == mes_num]
+        
+        # Mostrar contador
+        st.caption(f"📊 Mostrando {len(df_filtrado)} de {len(df_mov)} operaciones")
+        
         l_inm = df_inm["Nombre"].tolist()+["Global"]
         l_cat = ["Ingresos","Financiero","Tributario","Suministros","Seguros","Mantenimiento","Estructura","Comunidad","Otros"]
         l_con = ["Renta Mensual","Hipoteca (Intereses)","Hipoteca (Capital)","IBI","Comunidad Ordinaria","Seguro Hogar","Seguro Vida","Luz","Agua","Reparación","Sueldo Pedro"]
@@ -1091,7 +1199,7 @@ elif menu == "Diario Contable":
             "Deducible": st.column_config.SelectboxColumn("Fiscal",options=["S","N"],required=True),
             "Importe": st.column_config.NumberColumn("Importe (€)",format="%.2f",min_value=0),
         }
-        df_ed = st.data_editor(df_mov,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=config)
+        df_ed = st.data_editor(df_filtrado,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=config)
         t_ing = df_ed[df_ed["Tipo"]=="Ingreso"]["Importe"].sum()
         t_gas = df_ed[df_ed["Tipo"]=="Gasto"]["Importe"].sum()
         m1,m2,m3 = st.columns(3)
@@ -1099,6 +1207,7 @@ elif menu == "Diario Contable":
         m2.metric("Gastos Registrados", f"−{t_gas:,.2f} €")
         m3.metric("Balance Total", f"{t_ing-t_gas:,.2f} €")
         if st.button("💾 Guardar Cambios", key="guardar_tabla"):
+            # Actualizar solo las filas editadas en el DataFrame completo
             st.session_state.df_mov_persistent = df_ed
             df_ed.to_csv(DB_MOV, index=False)
             st.success("✓ Operaciones guardadas.")
@@ -1777,14 +1886,21 @@ elif menu == "Asesor Patrimonial IA":
     neto_total = ing_total - gas_total
     margen_pct = (neto_total / ing_total * 100) if ing_total > 0 else 0
 
-    datos_reforma = {
-        "Casa Abarqueros": {"coste": 8000,  "reforma": 2018},
-        "Paseo del Salón": {"coste": 5000,  "reforma": 2020},
-        "Huerto Unidad 1": {"coste": 3000,  "reforma": 2022},
-        "Huerto Unidad 2": {"coste": 3000,  "reforma": 2022},
-        "Huerto Unidad 3": {"coste": 2500,  "reforma": 2021},
-        "Huerto Unidad 4": {"coste": 1500,  "reforma": 2024},
-    }
+    # Generar datos de reforma dinámicamente desde el CSV
+    datos_reforma = {}
+    for _, row in df_inm.iterrows():
+        nombre = row["Nombre"]
+        reforma = int(row.get("Año_Reforma", año_actual))
+        años = año_actual - reforma
+        # Calcular coste estimado basado en valor construcción y antigüedad
+        if años >= 8:
+            coste = row["Valor_Construccion"] * 0.05  # 5% del valor
+        elif años >= 5:
+            coste = row["Valor_Construccion"] * 0.03  # 3% del valor
+        else:
+            coste = row["Valor_Construccion"] * 0.015  # 1.5% del valor
+        datos_reforma[nombre] = {"coste": round(coste), "reforma": reforma}
+    
     coste_total_reformas = sum(d["coste"] for d in datos_reforma.values())
     cash_disponible = df_mov[df_mov["Tipo"]=="Ingreso"]["Importe"].sum() - df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
     cash_disponible = max(cash_disponible, 0)
