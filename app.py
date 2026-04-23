@@ -761,55 +761,41 @@ if menu == "Torre de Control":
     else:
         estado = f"⚠️ **Atención:** Margen muy ajustado. Revisa gastos urgentemente."
     
-    # Construir HTML del chatbot
-    chatbot_html = f"""
+    # Construir mensaje del chatbot
+    lineas_mensaje = [estado]
+    
+    if alertas_pendientes:
+        lineas_mensaje.append("")
+        lineas_mensaje.append("**📋 PENDIENTES HOY:**")
+        for alerta in alertas_pendientes[:3]:
+            lineas_mensaje.append(f"• {alerta}")
+    
+    if oportunidades:
+        lineas_mensaje.append("")
+        lineas_mensaje.append("**💡 OPORTUNIDADES:**")
+        for oport in oportunidades[:3]:
+            lineas_mensaje.append(f"• {oport}")
+    
+    if not alertas_pendientes and not oportunidades:
+        lineas_mensaje.append("")
+        lineas_mensaje.append("✅ **Todo está en orden.** Sigue así y revisa las Fichas Benchmark de vez en cuando para optimizar rentas.")
+    
+    mensaje_completo = "\n\n".join(lineas_mensaje)
+    
+    # Mostrar chatbot con markdown nativo de Streamlit
+    st.markdown(f"""
     <div style="background:{CARD_BG};border-left:4px solid {ACCENT};border-radius:10px;padding:1.2rem;margin-bottom:1.5rem;">
         <div style="display:flex;gap:12px;align-items:flex-start;">
             <div style="font-size:2.5rem;">🔔</div>
             <div style="flex:1;">
                 <div style="font-weight:600;color:{TEXT_PRI};margin-bottom:12px;">Hola Pedro, aquí tu resumen</div>
-                <div style="font-size:0.92rem;color:{TEXT_PRI};line-height:1.7;margin-bottom:16px;">
-                    {estado}
-                </div>
-    """
-    
-    # Añadir alertas pendientes
-    if alertas_pendientes:
-        chatbot_html += f"""
-                <div style="background:#FFF9E6;border-left:3px solid #F59E0B;padding:12px;border-radius:6px;margin-bottom:12px;">
-                    <div style="font-weight:600;color:#92400E;font-size:0.85rem;margin-bottom:8px;">📋 PENDIENTES HOY:</div>
-        """
-        for alerta in alertas_pendientes[:3]:  # Máximo 3
-            chatbot_html += f'<div style="font-size:0.88rem;color:#92400E;margin-bottom:6px;">• {alerta}</div>'
-        chatbot_html += "</div>"
-    
-    # Añadir oportunidades
-    if oportunidades:
-        chatbot_html += f"""
-                <div style="background:#EDF7F1;border-left:3px solid {GREEN};padding:12px;border-radius:6px;">
-                    <div style="font-weight:600;color:#1a7a40;font-size:0.85rem;margin-bottom:8px;">💡 OPORTUNIDADES:</div>
-        """
-        for oport in oportunidades[:3]:  # Máximo 3
-            chatbot_html += f'<div style="font-size:0.88rem;color:#1a7a40;margin-bottom:6px;">• {oport}</div>'
-        chatbot_html += "</div>"
-    
-    # Si no hay alertas ni oportunidades
-    if not alertas_pendientes and not oportunidades:
-        chatbot_html += f"""
-                <div style="background:#EDF7F1;border-left:3px solid {GREEN};padding:12px;border-radius:6px;">
-                    <div style="font-size:0.88rem;color:#1a7a40;">
-                        ✅ <b>Todo está en orden.</b> Sigue así y revisa las Fichas Benchmark de vez en cuando para optimizar rentas.
-                    </div>
-                </div>
-        """
-    
-    chatbot_html += """
             </div>
         </div>
     </div>
-    """
+    """, unsafe_allow_html=True)
     
-    st.markdown(chatbot_html, unsafe_allow_html=True)
+    # Mensaje en markdown estándar (sin HTML custom)
+    st.markdown(mensaje_completo)
 
     st.markdown("---")
     
