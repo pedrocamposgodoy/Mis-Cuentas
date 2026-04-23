@@ -6,6 +6,7 @@ import streamlit as st
 import pandas as pd
 import os
 import io
+import base64
 import plotly.graph_objects as go
 from datetime import datetime, date
 
@@ -36,6 +37,10 @@ GREEN      = "#1a7a40"
 RED        = "#C0392B"
 AMBER      = "#854F0B"
 COLOR_TOPS = ["#185FA5","#0F6E56","#378ADD","#639922","#D85A30","#7F77DD"]
+
+# Robot IA en base64 (Gemini generated)
+with open(os.path.join(os.path.dirname(__file__), 'robot_ia.png'), 'rb') as f:
+    ROBOT_BASE64 = base64.b64encode(f.read()).decode()
 
 # ================================================================
 # SECCIÓN 2 — ESTILOS CSS (diseño visual)
@@ -797,8 +802,8 @@ if menu == "Torre de Control":
         with col_header:
             st.markdown(f"""
             <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:8px;padding:0.8rem 1rem;margin-bottom:1rem;">
-                <div style="display:flex;align-items:center;gap:10px;">
-                    <span style="font-size:1.5rem;">🤖</span>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <img src="data:image/png;base64,{ROBOT_BASE64}" style="width:48px;height:48px;object-fit:contain;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.1));">
                     <span style="font-weight:600;color:{TEXT_PRI};font-size:0.95rem;">Resumen IA</span>
                     <span style="color:{TEXT_SEC};font-size:0.85rem;">│</span>
                     <span style="font-size:0.85rem;color:{TEXT_PRI};">{estado_corto}</span>
