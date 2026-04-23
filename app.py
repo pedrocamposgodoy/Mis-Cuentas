@@ -48,12 +48,15 @@ st.markdown(f"""
 html,body,[class*="css"]{{font-family:'DM Sans',sans-serif;background-color:{MAIN_BG}!important;color:{TEXT_PRI};}}
 [data-testid="stSidebar"]{{background:{SIDEBAR_BG}!important;border-right:1px solid #1a3a5c;min-width:260px!important;}}
 [data-testid="stSidebar"] .stButton>button{{
-    background:transparent!important;border:none!important;color:transparent!important;
-    font-family:'DM Sans',sans-serif!important;font-size:0.88rem!important;font-weight:400!important;
-    text-align:left!important;padding:0!important;border-radius:0!important;
-    width:100%!important;margin-top:-42px!important;height:38px!important;
-    box-shadow:none!important;border-left:none!important;opacity:0!important;
-    position:relative!important;z-index:10!important;
+    background:transparent!important;border:none!important;color:#8ab4d4!important;
+    font-family:'DM Sans',sans-serif!important;font-size:0.9rem!important;font-weight:400!important;
+    text-align:left!important;padding:0.55rem 1rem!important;border-radius:0 6px 6px 0!important;
+    width:100%!important;margin-bottom:2px!important;box-shadow:none!important;
+    border-left:3px solid transparent!important;transition:all 0.15s ease!important;
+}}
+[data-testid="stSidebar"] .stButton>button:hover{{
+    background:rgba(96,180,255,0.1)!important;color:#fff!important;
+    border-left:3px solid rgba(96,180,255,0.4)!important;
 }}
 [data-testid="stSidebar"] .stButton>button:hover{{background:rgba(96,180,255,0.08)!important;color:#fff!important;border-left:3px solid rgba(96,180,255,0.3)!important;}}
 .nav-active{{border-left:3px solid #60B4FF;background:rgba(96,180,255,0.12);padding:0.65rem 1.4rem;margin-bottom:1px;border-radius:0 6px 6px 0;font-size:0.88rem;font-weight:600;color:#fff;font-family:'DM Sans',sans-serif;}}
@@ -218,99 +221,33 @@ with st.sidebar:
 <hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.6rem 0;'>
 """, unsafe_allow_html=True)
 
-    # Grupo CORE
-    st.markdown("<div style='font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#2a5070;padding:0.3rem 1.4rem 0.4rem;'>Gestión</div>", unsafe_allow_html=True)
-    for icon, page, grupo in PAGES:
-        if grupo != "Core": continue
-        is_active = st.session_state.menu == page
-        bg     = "rgba(96,180,255,0.13)" if is_active else "transparent"
-        color  = "#FFFFFF" if is_active else "#8ab4d4"
-        weight = "600" if is_active else "400"
-        border = "#60B4FF" if is_active else "transparent"
-        st.markdown(f"""
-        <div onclick="" style='
-            background:{bg};
-            border-left:3px solid {border};
-            padding:0.6rem 1rem 0.6rem 1.1rem;
-            border-radius:0 6px 6px 0;
-            margin-bottom:2px;
-            cursor:pointer;
-            display:flex;
-            align-items:center;
-            gap:10px;
-        '>
-            <span style='font-size:1rem;'>{icon}</span>
-            <span style='font-size:0.88rem;font-weight:{weight};color:{color};font-family:"DM Sans",sans-serif;'>{page}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        if not is_active:
-            # Botón invisible encima para capturar click
-            if st.button(page, key=f"nav_{page}", use_container_width=True):
-                st.session_state.menu = page
-                st.rerun()
+    def nav_group(label, grupo_id):
+        st.markdown(f"<div style='font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#3a6a8a;padding:0.5rem 1rem 0.3rem;'>{label}</div>", unsafe_allow_html=True)
+        for icon, page, grupo in PAGES:
+            if grupo != grupo_id: continue
+            is_active = st.session_state.menu == page
+            if is_active:
+                st.markdown(f"""
+                <div style='background:rgba(96,180,255,0.15);border-left:3px solid #60B4FF;
+                    padding:0.55rem 1rem;border-radius:0 6px 6px 0;margin-bottom:2px;
+                    display:flex;align-items:center;gap:10px;'>
+                    <span style='font-size:1rem;'>{icon}</span>
+                    <span style='font-size:0.9rem;font-weight:600;color:#fff;'>{page}</span>
+                </div>""", unsafe_allow_html=True)
+            else:
+                if st.button(f"{icon}  {page}", key=f"nav_{page}", use_container_width=True):
+                    st.session_state.menu = page
+                    st.rerun()
 
-    # Separador IA
-    st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.6rem 0;'><div style='font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#2a5070;padding:0.3rem 1.4rem 0.4rem;'>Inteligencia IA</div>", unsafe_allow_html=True)
-    for icon, page, grupo in PAGES:
-        if grupo != "IA": continue
-        is_active = st.session_state.menu == page
-        bg     = "rgba(96,180,255,0.13)" if is_active else "transparent"
-        color  = "#FFFFFF" if is_active else "#8ab4d4"
-        weight = "600" if is_active else "400"
-        border = "#60B4FF" if is_active else "transparent"
-        st.markdown(f"""
-        <div style='
-            background:{bg};
-            border-left:3px solid {border};
-            padding:0.6rem 1rem 0.6rem 1.1rem;
-            border-radius:0 6px 6px 0;
-            margin-bottom:2px;
-            display:flex;
-            align-items:center;
-            gap:10px;
-        '>
-            <span style='font-size:1rem;'>{icon}</span>
-            <span style='font-size:0.88rem;font-weight:{weight};color:{color};font-family:"DM Sans",sans-serif;'>{page}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        if not is_active:
-            if st.button(page, key=f"nav_{page}", use_container_width=True):
-                st.session_state.menu = page
-                st.rerun()
+    nav_group("Gestión", "Core")
+    st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
+    nav_group("Inteligencia IA", "IA")
+    st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
+    nav_group("Configuración", "Config")
 
-    # Separador Config
-    st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.6rem 0;'><div style='font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#2a5070;padding:0.3rem 1.4rem 0.4rem;'>Configuración</div>", unsafe_allow_html=True)
-    for icon, page, grupo in PAGES:
-        if grupo != "Config": continue
-        is_active = st.session_state.menu == page
-        bg     = "rgba(96,180,255,0.13)" if is_active else "transparent"
-        color  = "#FFFFFF" if is_active else "#8ab4d4"
-        weight = "600" if is_active else "400"
-        border = "#60B4FF" if is_active else "transparent"
-        st.markdown(f"""
-        <div style='
-            background:{bg};
-            border-left:3px solid {border};
-            padding:0.6rem 1rem 0.6rem 1.1rem;
-            border-radius:0 6px 6px 0;
-            margin-bottom:2px;
-            display:flex;
-            align-items:center;
-            gap:10px;
-        '>
-            <span style='font-size:1rem;'>{icon}</span>
-            <span style='font-size:0.88rem;font-weight:{weight};color:{color};font-family:"DM Sans",sans-serif;'>{page}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        if not is_active:
-            if st.button(page, key=f"nav_{page}", use_container_width=True):
-                st.session_state.menu = page
-                st.rerun()
-
-    # Footer
     st.markdown(f"""
     <hr style='border:0;border-top:1px solid #1a3a5c;margin:0.8rem 0 0.4rem;'>
-    <div style='padding:0.5rem 1.4rem;font-size:0.68rem;color:#2a5070;'>
+    <div style='padding:0.3rem 1rem;font-size:0.68rem;color:#2a5070;'>
         {len(df_inm)} activos · {datetime.now().strftime('%b %Y')}
     </div>
     """, unsafe_allow_html=True)
