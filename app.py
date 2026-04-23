@@ -999,8 +999,8 @@ elif menu == "Auditoría IA":
             <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:6px;padding:0.7rem 1rem;margin-bottom:0.5rem;">
                 <div style="display:flex;align-items:center;justify-content:space-between;">
                     <div style="flex:1;">
-                        <span style="font-weight:600;color:{TEXT_PRI};font-size:0.95rem;">{nombre}</span>
-                        <span style="color:{TEXT_SEC};font-size:0.8rem;margin-left:12px;">{urgencia_label} • {total:,.0f}€</span>
+                        <span style="font-weight:600;color:{TEXT_PRI};font-size:1.23rem;">{nombre}</span>
+                        <span style="color:{TEXT_SEC};font-size:1.04rem;margin-left:12px;">{urgencia_label} • {total:,.0f}€</span>
                     </div>
                 </div>
             </div>
@@ -1015,27 +1015,27 @@ elif menu == "Auditoría IA":
             with st.container():
                 st.markdown(f"""
                 <div style="background:{CARD_BG};border:1px solid {BORDER};border-left:3px solid {urgencia_color};border-radius:6px;padding:1rem;margin-bottom:1rem;margin-top:-0.3rem;">
-                    <div style="font-size:0.88rem;color:{TEXT_PRI};line-height:1.7;">
+                    <div style="font-size:1.14rem;color:{TEXT_PRI};line-height:1.7;">
                         <div style="margin-bottom:8px;"><b>Reforma:</b> {datos["reforma"]} ({años} años)</div>
                         <div style="margin-bottom:8px;"><b>Urgencia:</b> {datos["desc"]}</div>
                         <div style="margin-bottom:8px;"><b>Presupuesto:</b> {total:,.0f}€</div>
                         <div style="margin-top:12px;padding-top:12px;border-top:1px dashed {BORDER};">
-                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:0.85rem;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:1.1rem;">
                                 <div>
-                                    <div style="color:{TEXT_SEC};font-size:0.75rem;">Urgente (0-6m)</div>
+                                    <div style="color:{TEXT_SEC};font-size:0.98rem;">Urgente (0-6m)</div>
                                     <div style="font-weight:600;color:{RED};">{datos["urgente"]:,.0f}€</div>
                                 </div>
                                 <div>
-                                    <div style="color:{TEXT_SEC};font-size:0.75rem;">Medio (6-18m)</div>
+                                    <div style="color:{TEXT_SEC};font-size:0.98rem;">Medio (6-18m)</div>
                                     <div style="font-weight:600;color:{AMBER};">{datos["medio"]:,.0f}€</div>
                                 </div>
                                 <div>
-                                    <div style="color:{TEXT_SEC};font-size:0.75rem;">Largo (18+m)</div>
+                                    <div style="color:{TEXT_SEC};font-size:0.98rem;">Largo (18+m)</div>
                                     <div style="font-weight:600;color:{GREEN};">{datos["largo"]:,.0f}€</div>
                                 </div>
                             </div>
                         </div>
-                        <div style="margin-top:12px;padding-top:12px;border-top:1px dashed {BORDER};font-size:0.82rem;color:{TEXT_SEC};">
+                        <div style="margin-top:12px;padding-top:12px;border-top:1px dashed {BORDER};font-size:1.07rem;color:{TEXT_SEC};">
                             <b>Recomendación:</b> {"Actuar en próximos 3 meses — reforma muy antigua" if años >= 8 else ("Planifica presupuesto para plazo medio" if años >= 5 else "Inmueble en buen estado")}
                         </div>
                     </div>
