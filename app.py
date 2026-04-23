@@ -1401,13 +1401,24 @@ elif menu == "Datos de la Cartera":
         # Helper para convertir valores a float de forma segura
         def safe_float(val, default=0.0):
             try:
-                return float(val) if val not in [None, "", "nan", "NaN"] else default
+                if pd.isna(val) or val in [None, "", "nan", "NaN", "None"]:
+                    return default
+                result = float(val)
+                # Si el resultado es negativo o 0 y el default es mayor, usar default
+                if result <= 0 and default > 0:
+                    return default
+                return result
             except (ValueError, TypeError):
                 return default
 
         def safe_int(val, default=0):
             try:
-                return int(val) if val not in [None, "", "nan", "NaN"] else default
+                if pd.isna(val) or val in [None, "", "nan", "NaN", "None"]:
+                    return default
+                result = int(float(val))  # float primero por si viene "2.0"
+                if result <= 0 and default > 0:
+                    return default
+                return result
             except (ValueError, TypeError):
                 return default
 
