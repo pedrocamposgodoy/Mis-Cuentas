@@ -168,6 +168,8 @@ if "df_inm_persistent" not in st.session_state:
 if "df_mov_persistent" not in st.session_state:
     st.session_state.df_mov_persistent = pd.read_csv(DB_MOV)
 
+# Siempre trabajar con las referencias del session_state directamente
+# para que los cambios se propaguen inmediatamente
 df_inm = st.session_state.df_inm_persistent
 df_mov = st.session_state.df_mov_persistent
 
