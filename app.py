@@ -163,13 +163,15 @@ def inicializar_bd():
 inicializar_bd()
 
 # Usar session_state para persistir datos durante la sesión
+# IMPORTANTE: Recargar SIEMPRE desde CSV después de cualquier cambio
 if "df_inm_persistent" not in st.session_state:
     st.session_state.df_inm_persistent = pd.read_csv(DB_INM)
 if "df_mov_persistent" not in st.session_state:
     st.session_state.df_mov_persistent = pd.read_csv(DB_MOV)
 
-# Siempre trabajar con las referencias del session_state directamente
-# para que los cambios se propaguen inmediatamente
+# CRÍTICO: NO crear variables locales - usar DIRECTAMENTE session_state
+# Esto asegura que SIEMPRE leemos los datos más recientes
+# Crear alias para compatibilidad con código existente
 df_inm = st.session_state.df_inm_persistent
 df_mov = st.session_state.df_mov_persistent
 
@@ -1300,15 +1302,28 @@ elif menu == "Diario Contable":
                 # Volver a convertir a string para guardar en CSV
                 df_completo["Fecha"] = df_completo["Fecha"].dt.strftime("%Y-%m-%d")
                 
+                # DEBUG: Ver qué estamos guardando
+                st.write(f"🔍 DEBUG: Antes de guardar")
+                st.write(f"- Total operaciones: {len(df_completo)}")
+                st.write(f"- Total ingresos: {df_completo[df_completo['Tipo']=='Ingreso']['Importe'].sum():,.0f}€")
+                
                 st.session_state.df_mov_persistent = df_completo
                 df_completo.to_csv(DB_MOV, index=False)
                 
                 # CRÍTICO: Forzar recarga desde CSV para asegurar persistencia
                 st.session_state.df_mov_persistent = pd.read_csv(DB_MOV)
                 
+                # DEBUG: Ver qué se recargó
+                st.write(f"🔍 DEBUG: Después de recargar")
+                st.write(f"- Total operaciones: {len(st.session_state.df_mov_persistent)}")
+                st.write(f"- Total ingresos: {st.session_state.df_mov_persistent[st.session_state.df_mov_persistent['Tipo']=='Ingreso']['Importe'].sum():,.0f}€")
+                
                 total_registrado = df_nuevos["Importe"].sum()
                 st.success(f"✓ Registradas {len(nuevos_ingresos)} rentas por {total_registrado:,.0f}€")
-                st.rerun()
+                
+                if st.button("🔄 Ir a Torre de Control", key="go_to_dashboard"):
+                    st.session_state.menu = "Torre de Control"
+                    st.rerun()
 
         texto_ingresos = st.text_area("¿Quién ha pagado este mes?", placeholder="Ha pagado solo Huerto 1...", height=90, key="txt_ingresos")
 
