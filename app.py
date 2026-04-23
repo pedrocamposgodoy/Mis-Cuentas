@@ -794,20 +794,27 @@ if menu == "Torre de Control":
     
     # Mostrar tarjeta plegable
     with st.container():
-        col_header, col_toggle = st.columns([5, 1])
-        with col_header:
+        # Header con robot e info
+        col_robot, col_info, col_toggle = st.columns([0.7, 4.3, 1])
+        
+        with col_robot:
+            # Intentar cargar imagen del robot, si falla usar emoji
+            try:
+                st.image("robot_ia.png", width=55)
+            except:
+                st.markdown('<div style="font-size:3rem;line-height:1;margin-top:-8px;">🤖</div>', unsafe_allow_html=True)
+        
+        with col_info:
             st.markdown(f"""
-            <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:8px;padding:0.8rem 1rem;margin-bottom:1rem;">
-                <div style="display:flex;align-items:center;gap:12px;">
-                    <span style="font-size:2.5rem;line-height:1;">🤖</span>
-                    <span style="font-weight:600;color:{TEXT_PRI};font-size:0.95rem;">Resumen IA</span>
-                    <span style="color:{TEXT_SEC};font-size:0.85rem;">│</span>
-                    <span style="font-size:0.85rem;color:{TEXT_PRI};">{estado_corto}</span>
-                </div>
+            <div style="padding-top:8px;">
+                <span style="font-weight:600;color:{TEXT_PRI};font-size:0.95rem;">Resumen IA</span>
+                <span style="color:{TEXT_SEC};font-size:0.85rem;"> │ </span>
+                <span style="font-size:0.85rem;color:{TEXT_PRI};">{estado_corto}</span>
             </div>
             """, unsafe_allow_html=True)
+        
         with col_toggle:
-            if st.button("▼ Expandir" if not st.session_state.chatbot_expandido else "▲ Contraer", key="toggle_chatbot", use_container_width=True):
+            if st.button("▼" if not st.session_state.chatbot_expandido else "▲", key="toggle_chatbot", use_container_width=True):
                 st.session_state.chatbot_expandido = not st.session_state.chatbot_expandido
                 st.rerun()
     
