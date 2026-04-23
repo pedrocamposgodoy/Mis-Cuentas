@@ -48,11 +48,12 @@ st.markdown(f"""
 html,body,[class*="css"]{{font-family:'DM Sans',sans-serif;background-color:{MAIN_BG}!important;color:{TEXT_PRI};}}
 [data-testid="stSidebar"]{{background:{SIDEBAR_BG}!important;border-right:1px solid #1a3a5c;min-width:260px!important;}}
 [data-testid="stSidebar"] .stButton>button{{
-    background:transparent!important;border:none!important;color:#A8C4E0!important;
+    background:transparent!important;border:none!important;color:transparent!important;
     font-family:'DM Sans',sans-serif!important;font-size:0.88rem!important;font-weight:400!important;
-    text-align:left!important;padding:0.65rem 1.4rem!important;border-radius:0 6px 6px 0!important;
-    width:100%!important;margin-bottom:1px!important;box-shadow:none!important;
-    border-left:3px solid transparent!important;
+    text-align:left!important;padding:0!important;border-radius:0!important;
+    width:100%!important;margin-top:-42px!important;height:38px!important;
+    box-shadow:none!important;border-left:none!important;opacity:0!important;
+    position:relative!important;z-index:10!important;
 }}
 [data-testid="stSidebar"] .stButton>button:hover{{background:rgba(96,180,255,0.08)!important;color:#fff!important;border-left:3px solid rgba(96,180,255,0.3)!important;}}
 .nav-active{{border-left:3px solid #60B4FF;background:rgba(96,180,255,0.12);padding:0.65rem 1.4rem;margin-bottom:1px;border-radius:0 6px 6px 0;font-size:0.88rem;font-weight:600;color:#fff;font-family:'DM Sans',sans-serif;}}
@@ -196,32 +197,123 @@ if "ficha_sel" not in st.session_state:  st.session_state.ficha_sel = None
 # El orden aquí es el orden que aparece en el menú lateral
 # ================================================================
 PAGES = [
-    ("📊","Torre de Control"),
-    ("🏠","Fichas (Benchmark)"),
-    ("🤖","Auditoría IA"),
-    ("📝","Diario Contable"),
-    ("⚡","Suministros"),
-    ("💰","Fiscalidad"),
-    ("💎","Macrofinanzas"),
-    ("📂","Datos de la Cartera"),
+    ("📊", "Torre de Control",      "Core"),
+    ("🏠", "Fichas (Benchmark)",    "Core"),
+    ("🤖", "Auditoría IA",          "Core"),
+    ("📝", "Diario Contable",       "Core"),
+    ("⚡", "Suministros",           "Core"),
+    ("💰", "Fiscalidad",            "Core"),
+    ("💎", "Macrofinanzas",         "Core"),
+    ("🧠", "Asesor Patrimonial IA", "IA"),
+    ("📂", "Datos de la Cartera",   "Config"),
 ]
 
 with st.sidebar:
+    # Logo y marca
     st.markdown("""
-<div style='padding:1.4rem 1.4rem 0.8rem;'>
-  <div style='font-family:"DM Serif Display",serif;font-size:1.45rem;color:#60B4FF;line-height:1.2;'>Nolasco Capital</div>
-  <div style='font-size:0.62rem;letter-spacing:0.16em;text-transform:uppercase;color:#5a8aaa;margin-top:5px;'>Granada · Gestión Patrimonial</div>
+<div style='padding:1.4rem 1.4rem 1rem;'>
+  <div style='font-family:"DM Serif Display",serif;font-size:1.5rem;color:#60B4FF;line-height:1.2;letter-spacing:0.01em;'>Nolasco Capital</div>
+  <div style='font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:#3a6a8a;margin-top:4px;'>Granada · Gestión Patrimonial</div>
 </div>
-<hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.4rem 0;'>
+<hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.6rem 0;'>
 """, unsafe_allow_html=True)
-    for icon, page in PAGES:
-        if st.session_state.menu == page:
-            st.markdown(f"<div class='nav-active'>{icon}&nbsp;&nbsp;{page}</div>", unsafe_allow_html=True)
-        else:
-            if st.button(f"{icon}  {page}", key=f"nav_{page}", use_container_width=True):
+
+    # Grupo CORE
+    st.markdown("<div style='font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#2a5070;padding:0.3rem 1.4rem 0.4rem;'>Gestión</div>", unsafe_allow_html=True)
+    for icon, page, grupo in PAGES:
+        if grupo != "Core": continue
+        is_active = st.session_state.menu == page
+        bg     = "rgba(96,180,255,0.13)" if is_active else "transparent"
+        color  = "#FFFFFF" if is_active else "#8ab4d4"
+        weight = "600" if is_active else "400"
+        border = "#60B4FF" if is_active else "transparent"
+        st.markdown(f"""
+        <div onclick="" style='
+            background:{bg};
+            border-left:3px solid {border};
+            padding:0.6rem 1rem 0.6rem 1.1rem;
+            border-radius:0 6px 6px 0;
+            margin-bottom:2px;
+            cursor:pointer;
+            display:flex;
+            align-items:center;
+            gap:10px;
+        '>
+            <span style='font-size:1rem;'>{icon}</span>
+            <span style='font-size:0.88rem;font-weight:{weight};color:{color};font-family:"DM Sans",sans-serif;'>{page}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        if not is_active:
+            # Botón invisible encima para capturar click
+            if st.button(page, key=f"nav_{page}", use_container_width=True):
                 st.session_state.menu = page
                 st.rerun()
-    st.markdown(f"<div style='padding:1rem 1.4rem;font-size:0.7rem;color:#3a6080;margin-top:0.8rem;'>{len(df_inm)} activos · {datetime.now().strftime('%b %Y')}</div>", unsafe_allow_html=True)
+
+    # Separador IA
+    st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.6rem 0;'><div style='font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#2a5070;padding:0.3rem 1.4rem 0.4rem;'>Inteligencia IA</div>", unsafe_allow_html=True)
+    for icon, page, grupo in PAGES:
+        if grupo != "IA": continue
+        is_active = st.session_state.menu == page
+        bg     = "rgba(96,180,255,0.13)" if is_active else "transparent"
+        color  = "#FFFFFF" if is_active else "#8ab4d4"
+        weight = "600" if is_active else "400"
+        border = "#60B4FF" if is_active else "transparent"
+        st.markdown(f"""
+        <div style='
+            background:{bg};
+            border-left:3px solid {border};
+            padding:0.6rem 1rem 0.6rem 1.1rem;
+            border-radius:0 6px 6px 0;
+            margin-bottom:2px;
+            display:flex;
+            align-items:center;
+            gap:10px;
+        '>
+            <span style='font-size:1rem;'>{icon}</span>
+            <span style='font-size:0.88rem;font-weight:{weight};color:{color};font-family:"DM Sans",sans-serif;'>{page}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        if not is_active:
+            if st.button(page, key=f"nav_{page}", use_container_width=True):
+                st.session_state.menu = page
+                st.rerun()
+
+    # Separador Config
+    st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.6rem 0;'><div style='font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#2a5070;padding:0.3rem 1.4rem 0.4rem;'>Configuración</div>", unsafe_allow_html=True)
+    for icon, page, grupo in PAGES:
+        if grupo != "Config": continue
+        is_active = st.session_state.menu == page
+        bg     = "rgba(96,180,255,0.13)" if is_active else "transparent"
+        color  = "#FFFFFF" if is_active else "#8ab4d4"
+        weight = "600" if is_active else "400"
+        border = "#60B4FF" if is_active else "transparent"
+        st.markdown(f"""
+        <div style='
+            background:{bg};
+            border-left:3px solid {border};
+            padding:0.6rem 1rem 0.6rem 1.1rem;
+            border-radius:0 6px 6px 0;
+            margin-bottom:2px;
+            display:flex;
+            align-items:center;
+            gap:10px;
+        '>
+            <span style='font-size:1rem;'>{icon}</span>
+            <span style='font-size:0.88rem;font-weight:{weight};color:{color};font-family:"DM Sans",sans-serif;'>{page}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        if not is_active:
+            if st.button(page, key=f"nav_{page}", use_container_width=True):
+                st.session_state.menu = page
+                st.rerun()
+
+    # Footer
+    st.markdown(f"""
+    <hr style='border:0;border-top:1px solid #1a3a5c;margin:0.8rem 0 0.4rem;'>
+    <div style='padding:0.5rem 1.4rem;font-size:0.68rem;color:#2a5070;'>
+        {len(df_inm)} activos · {datetime.now().strftime('%b %Y')}
+    </div>
+    """, unsafe_allow_html=True)
 
 menu = st.session_state.menu
 
@@ -1732,3 +1824,514 @@ elif menu == "Datos de la Cartera":
         uploaded_inm = st.file_uploader("Subir Inmuebles (CSV)", type=["csv"], key="upload_inm")
         if uploaded_inm:
             st.info("📝 Función de restauración — disponible en Bloque 6")
+
+# ================================================================
+# PANTALLA 9 — ASESOR PATRIMONIAL IA
+# Flujo: Radar → Matriz → Árbol de Decisión → Proyección
+# ================================================================
+elif menu == "Asesor Patrimonial IA":
+    st.markdown('<div class="brand-header">🧠 Asesor Patrimonial IA</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-sub">Análisis estratégico · Decisiones inteligentes · Proyecciones</div>', unsafe_allow_html=True)
+
+    # ── DATOS BASE ──────────────────────────────────────────────
+    año_actual = datetime.now().year
+    ing_total  = df_inm["Renta"].sum()
+    gas_total  = df_inm["Comunidad"].sum() + df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
+    neto_total = ing_total - gas_total
+    margen_pct = (neto_total / ing_total * 100) if ing_total > 0 else 0
+
+    datos_reforma = {
+        "Casa Abarqueros": {"coste": 8000,  "reforma": 2018},
+        "Paseo del Salón": {"coste": 5000,  "reforma": 2020},
+        "Huerto Unidad 1": {"coste": 3000,  "reforma": 2022},
+        "Huerto Unidad 2": {"coste": 3000,  "reforma": 2022},
+        "Huerto Unidad 3": {"coste": 2500,  "reforma": 2021},
+        "Huerto Unidad 4": {"coste": 1500,  "reforma": 2024},
+    }
+    coste_total_reformas = sum(d["coste"] for d in datos_reforma.values())
+    cash_disponible = df_mov[df_mov["Tipo"]=="Ingreso"]["Importe"].sum() - df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
+    cash_disponible = max(cash_disponible, 0)
+
+    # ── PASO 1: RADAR DE RIESGOS ────────────────────────────────
+    st.markdown('<div class="section-title">📡 Paso 1 — Radar de Riesgos</div>', unsafe_allow_html=True)
+    st.caption("La IA analiza tu cartera y detecta problemas antes de que se conviertan en crisis")
+
+    riesgos = []
+    for _, row in df_inm.iterrows():
+        nombre = row["Nombre"]
+        d = datos_reforma.get(nombre, {})
+        años_ref = año_actual - d.get("reforma", año_actual)
+        coste_ref = d.get("coste", 0)
+        renta_act = row["Renta"]
+        renta_mer = tasacion(row)
+        desv_pct  = (renta_act - renta_mer) / renta_mer * 100 if renta_mer > 0 else 0
+
+        if años_ref >= 8:
+            riesgos.append({"nivel": "🔴", "tipo": "Deterioro crítico",
+                "inmueble": nombre,
+                "desc": f"Reforma hace {años_ref} años. Sin intervención la renta puede caer un 15-20%.",
+                "impacto": f"Pérdida potencial: {renta_act*0.18:,.0f}€/mes si no se reforma",
+                "coste_reforma": coste_ref})
+        elif años_ref >= 6:
+            riesgos.append({"nivel": "🟡", "tipo": "Deterioro moderado",
+                "inmueble": nombre,
+                "desc": f"Reforma hace {años_ref} años. Empieza a planificar presupuesto.",
+                "impacto": f"Presupuesto reforma estimado: {coste_ref:,.0f}€",
+                "coste_reforma": coste_ref})
+
+        if desv_pct < -10:
+            riesgos.append({"nivel": "🟡", "tipo": "Renta bajo mercado",
+                "inmueble": nombre,
+                "desc": f"Renta actual {renta_act:,.0f}€ vs mercado {renta_mer:,.0f}€ ({desv_pct:.1f}%)",
+                "impacto": f"Estás dejando de ingresar {(renta_mer-renta_act):,.0f}€/mes",
+                "coste_reforma": 0})
+
+        tipo_v, _ = alerta_vencimiento(row)
+        if tipo_v in ("vencido", "urgente") and años_ref >= 5:
+            riesgos.append({"nivel": "🔴", "tipo": "Contrato vencido + deterioro",
+                "inmueble": nombre,
+                "desc": "Contrato vencido o próximo a vencer con inmueble deteriorado.",
+                "impacto": "Momento crítico: el próximo inquilino exigirá menor precio.",
+                "coste_reforma": coste_ref})
+
+    if cash_disponible < coste_total_reformas * 0.3:
+        riesgos.append({"nivel": "🔴", "tipo": "Cash insuficiente",
+            "inmueble": "Cartera global",
+            "desc": f"Tienes {cash_disponible:,.0f}€ disponibles pero necesitas {coste_total_reformas:,.0f}€ en reformas.",
+            "impacto": f"Solo cubres el {cash_disponible/coste_total_reformas*100:.0f}% del presupuesto de reformas.",
+            "coste_reforma": 0})
+
+    if riesgos:
+        criticos = [r for r in riesgos if r["nivel"] == "🔴"]
+        medios   = [r for r in riesgos if r["nivel"] == "🟡"]
+
+        # Resumen radar
+        col_r1, col_r2, col_r3 = st.columns(3)
+        col_r1.markdown(f"""
+        <div class="kpi-card" style="border-left:4px solid {RED};">
+            <div class="kpi-label">CRÍTICOS</div>
+            <div class="kpi-value" style="color:{RED};font-size:2.5rem;">{len(criticos)}</div>
+            <div class="kpi-sub">Requieren acción inmediata</div>
+        </div>""", unsafe_allow_html=True)
+        col_r2.markdown(f"""
+        <div class="kpi-card" style="border-left:4px solid #D97706;">
+            <div class="kpi-label">PREVENTIVOS</div>
+            <div class="kpi-value" style="color:#D97706;font-size:2.5rem;">{len(medios)}</div>
+            <div class="kpi-sub">Planificar a medio plazo</div>
+        </div>""", unsafe_allow_html=True)
+        col_r3.markdown(f"""
+        <div class="kpi-card" style="border-left:4px solid {GREEN};">
+            <div class="kpi-label">CASH DISPONIBLE</div>
+            <div class="kpi-value" style="color:{GREEN};font-size:2rem;">{cash_disponible:,.0f}€</div>
+            <div class="kpi-sub">vs {coste_total_reformas:,.0f}€ necesarios</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("")
+        for r in riesgos:
+            color_borde = RED if r["nivel"] == "🔴" else "#D97706"
+            st.markdown(f"""
+            <div style="background:{CARD_BG};border:1px solid {BORDER};border-left:4px solid {color_borde};
+                border-radius:6px;padding:0.9rem 1.1rem;margin-bottom:0.6rem;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                    <div>
+                        <span style="font-size:0.78rem;font-weight:600;color:{color_borde};text-transform:uppercase;
+                            letter-spacing:0.05em;">{r["nivel"]} {r["tipo"]}</span>
+                        <span style="font-size:0.78rem;color:{TEXT_SEC};margin-left:10px;">— {r["inmueble"]}</span>
+                        <div style="font-size:0.9rem;color:{TEXT_PRI};margin-top:4px;">{r["desc"]}</div>
+                        <div style="font-size:0.82rem;color:{TEXT_SEC};margin-top:3px;">💥 {r["impacto"]}</div>
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+    else:
+        st.success("✅ **Cartera en buena salud.** No se detectan riesgos críticos. Continúa con tu estrategia actual.")
+
+    st.markdown("---")
+
+    # ── PASO 2: MATRIZ DE ACTIVOS ────────────────────────────────
+    st.markdown('<div class="section-title">📊 Paso 2 — Matriz de Activos</div>', unsafe_allow_html=True)
+    st.caption("Clasifica cada inmueble según rentabilidad y valor estratégico")
+
+    rent_media = df_inm.apply(lambda r: (r["Renta"]*12/r["Valor_Construccion"]*100) if r["Valor_Construccion"]>0 else 0, axis=1).mean()
+
+    conservar, optimizar, liquidar, reformar_list = [], [], [], []
+
+    for _, row in df_inm.iterrows():
+        nombre = row["Nombre"]
+        renta  = row["Renta"]
+        valor  = row["Valor_Construccion"] if row["Valor_Construccion"] > 0 else 1
+        rent   = renta * 12 / valor * 100
+        d      = datos_reforma.get(nombre, {})
+        años_r = año_actual - d.get("reforma", año_actual)
+        renta_mer = tasacion(row)
+        desv   = (renta - renta_mer) / renta_mer * 100 if renta_mer > 0 else 0
+
+        alta_rent  = rent >= rent_media
+        buen_estado = años_r < 7
+        bajo_mercado = desv < -8
+
+        if alta_rent and buen_estado:
+            conservar.append((nombre, f"{rent:.1f}%", "🔵"))
+        elif alta_rent and not buen_estado:
+            reformar_list.append((nombre, f"{rent:.1f}%", "🟠"))
+        elif not alta_rent and buen_estado and not bajo_mercado:
+            optimizar.append((nombre, f"{rent:.1f}%", "🟡"))
+        else:
+            liquidar.append((nombre, f"{rent:.1f}%", "🔴"))
+
+    def render_cuadrante(titulo, color, items, descripcion):
+        items_html = "".join([
+            f'<div style="font-size:0.88rem;padding:4px 0;border-bottom:1px dashed {BORDER};">'
+            f'{emoji} <b>{n}</b> <span style="color:{TEXT_SEC};font-size:0.78rem;">{r}</span></div>'
+            for n, r, emoji in items
+        ]) if items else f'<div style="font-size:0.82rem;color:{TEXT_SEC};padding:4px 0;">Sin activos en este cuadrante</div>'
+        return f"""
+        <div style="background:{CARD_BG};border:1px solid {BORDER};border-top:3px solid {color};
+            border-radius:6px;padding:1rem;height:100%;">
+            <div style="font-weight:700;color:{color};font-size:0.85rem;text-transform:uppercase;
+                letter-spacing:0.05em;margin-bottom:4px;">{titulo}</div>
+            <div style="font-size:0.75rem;color:{TEXT_SEC};margin-bottom:10px;">{descripcion}</div>
+            {items_html}
+        </div>"""
+
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        st.markdown(render_cuadrante("🔵 Conservar", "#185FA5", conservar, "Alta rentabilidad · Buen estado"), unsafe_allow_html=True)
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        st.markdown(render_cuadrante("🔴 Liquidar si urge", RED, liquidar, "Bajo rendimiento · Candidatos a venta estratégica"), unsafe_allow_html=True)
+    with col_m2:
+        st.markdown(render_cuadrante("🟠 Reformar primero", "#D97706", reformar_list, "Alta rentabilidad · Necesita inversión"), unsafe_allow_html=True)
+        st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+        st.markdown(render_cuadrante("🟡 Optimizar renta", "#A16207", optimizar, "Rentabilidad mejorable · Renegociar en próximo contrato"), unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── PASO 3: ÁRBOL DE DECISIONES ─────────────────────────────
+    if riesgos:
+        st.markdown('<div class="section-title">🌳 Paso 3 — Árbol de Decisiones</div>', unsafe_allow_html=True)
+        st.caption("La IA te guía. Tú decides en cada paso.")
+
+        # Inicializar árbol en session_state
+        if "arbol_paso" not in st.session_state:
+            st.session_state.arbol_paso = 0
+        if "arbol_decision" not in st.session_state:
+            st.session_state.arbol_decision = {}
+
+        paso = st.session_state.arbol_paso
+
+        # NODO 0: ¿Cuál es tu problema principal?
+        if paso == 0:
+            st.markdown(f"""
+            <div style="background:{CARD_BG};border:1px solid {ACCENT};border-radius:8px;padding:1.2rem;margin-bottom:1rem;">
+                <div style="font-weight:700;color:{ACCENT};margin-bottom:8px;">🤖 La IA ha detectado {len(riesgos)} riesgo(s) en tu cartera.</div>
+                <div style="font-size:0.92rem;color:{TEXT_PRI};">¿Cuál es tu situación más urgente ahora mismo?</div>
+            </div>
+            """, unsafe_allow_html=True)
+            col_d1, col_d2, col_d3 = st.columns(3)
+            with col_d1:
+                if st.button("💸 Necesito cash urgente", use_container_width=True, key="arbol_cash"):
+                    st.session_state.arbol_decision["problema"] = "cash"
+                    st.session_state.arbol_paso = 1
+                    st.rerun()
+            with col_d2:
+                if st.button("🔧 Tengo reformas pendientes", use_container_width=True, key="arbol_reforma"):
+                    st.session_state.arbol_decision["problema"] = "reforma"
+                    st.session_state.arbol_paso = 1
+                    st.rerun()
+            with col_d3:
+                if st.button("📉 Rentas por debajo del mercado", use_container_width=True, key="arbol_renta"):
+                    st.session_state.arbol_decision["problema"] = "renta"
+                    st.session_state.arbol_paso = 1
+                    st.rerun()
+
+        # NODO 1: Según problema
+        elif paso == 1:
+            problema = st.session_state.arbol_decision.get("problema")
+
+            if problema == "cash":
+                st.markdown(f"""
+                <div style="background:{CARD_BG};border:1px solid {ACCENT};border-radius:8px;padding:1.2rem;margin-bottom:1rem;">
+                    <div style="font-weight:700;color:{ACCENT};margin-bottom:8px;">💸 Necesitas cash urgente</div>
+                    <div style="font-size:0.92rem;color:{TEXT_PRI};">¿Cuánto necesitas aproximadamente?</div>
+                </div>""", unsafe_allow_html=True)
+                col_c1, col_c2, col_c3 = st.columns(3)
+                with col_c1:
+                    if st.button("Menos de 10,000€", use_container_width=True, key="cash_bajo"):
+                        st.session_state.arbol_decision["cantidad"] = "bajo"
+                        st.session_state.arbol_paso = 2
+                        st.rerun()
+                with col_c2:
+                    if st.button("Entre 10,000€ y 30,000€", use_container_width=True, key="cash_medio"):
+                        st.session_state.arbol_decision["cantidad"] = "medio"
+                        st.session_state.arbol_paso = 2
+                        st.rerun()
+                with col_c3:
+                    if st.button("Más de 30,000€", use_container_width=True, key="cash_alto"):
+                        st.session_state.arbol_decision["cantidad"] = "alto"
+                        st.session_state.arbol_paso = 2
+                        st.rerun()
+
+            elif problema == "reforma":
+                st.markdown(f"""
+                <div style="background:{CARD_BG};border:1px solid {ACCENT};border-radius:8px;padding:1.2rem;margin-bottom:1rem;">
+                    <div style="font-weight:700;color:{ACCENT};margin-bottom:8px;">🔧 Tienes reformas pendientes</div>
+                    <div style="font-size:0.92rem;color:{TEXT_PRI};">¿Tienes presupuesto para afrontarlas?</div>
+                </div>""", unsafe_allow_html=True)
+                col_r1, col_r2 = st.columns(2)
+                with col_r1:
+                    if st.button("✅ Sí tengo presupuesto", use_container_width=True, key="ref_si"):
+                        st.session_state.arbol_decision["presupuesto"] = "si"
+                        st.session_state.arbol_paso = 2
+                        st.rerun()
+                with col_r2:
+                    if st.button("❌ No tengo presupuesto", use_container_width=True, key="ref_no"):
+                        st.session_state.arbol_decision["presupuesto"] = "no"
+                        st.session_state.arbol_paso = 2
+                        st.rerun()
+
+            elif problema == "renta":
+                st.markdown(f"""
+                <div style="background:{CARD_BG};border:1px solid {ACCENT};border-radius:8px;padding:1.2rem;margin-bottom:1rem;">
+                    <div style="font-weight:700;color:{ACCENT};margin-bottom:8px;">📉 Rentas bajo mercado</div>
+                    <div style="font-size:0.92rem;color:{TEXT_PRI};">¿El contrato actual está vigente o va a renovarse pronto?</div>
+                </div>""", unsafe_allow_html=True)
+                col_v1, col_v2 = st.columns(2)
+                with col_v1:
+                    if st.button("🔄 Se renueva pronto (< 3 meses)", use_container_width=True, key="renta_pronto"):
+                        st.session_state.arbol_decision["contrato"] = "pronto"
+                        st.session_state.arbol_paso = 2
+                        st.rerun()
+                with col_v2:
+                    if st.button("📋 Contrato vigente (> 3 meses)", use_container_width=True, key="renta_vigente"):
+                        st.session_state.arbol_decision["contrato"] = "vigente"
+                        st.session_state.arbol_paso = 2
+                        st.rerun()
+
+            # Botón volver
+            if st.button("← Volver", key="back_1"):
+                st.session_state.arbol_paso = 0
+                st.session_state.arbol_decision = {}
+                st.rerun()
+
+        # NODO 2: RECOMENDACIÓN FINAL
+        elif paso == 2:
+            problema  = st.session_state.arbol_decision.get("problema")
+            cantidad  = st.session_state.arbol_decision.get("cantidad")
+            presupuesto = st.session_state.arbol_decision.get("presupuesto")
+            contrato  = st.session_state.arbol_decision.get("contrato")
+
+            st.markdown(f"""
+            <div style="background:{CARD_BG};border:1px solid {GREEN};border-left:4px solid {GREEN};
+                border-radius:8px;padding:1.2rem;margin-bottom:1rem;">
+                <div style="font-weight:700;color:{GREEN};font-size:1rem;margin-bottom:10px;">
+                    🤖 Recomendación de la IA
+                </div>
+            """, unsafe_allow_html=True)
+
+            # Calcular activos liquidables (cocheras u otros de bajo yield)
+            activos_liquidables = [(r["Nombre"], r["Renta"]) for _, r in df_inm.iterrows()
+                if r["Renta"] < 200 or r["Nombre"] in liquidar]
+
+            if problema == "cash":
+                if cantidad == "bajo":
+                    st.markdown(f"""
+                    **Situación:** Necesitas menos de 10,000€.
+                    
+                    ✅ **Opción recomendada:** Vende un activo de bajo rendimiento (cochera o plaza).
+                    - Impacto en renta mensual: **-60 a -100€/mes**
+                    - Cash obtenido: **10,000-18,000€**
+                    - Conservas todos tus inmuebles estratégicos
+                    
+                    ⚠️ **No recomendado:** Préstamo personal → intereses innecesarios con activos disponibles.
+                    
+                    🎯 **Acción concreta:** Tasa y vende la cochera de menor rendimiento.""")
+                elif cantidad == "medio":
+                    st.markdown(f"""
+                    **Situación:** Necesitas entre 10,000€ y 30,000€.
+                    
+                    ✅ **Opción A:** Vende 1-2 activos de bajo rendimiento
+                    - Cocheras o plazas → 18,000-36,000€
+                    - Pérdida ingreso: -120 a -200€/mes
+                    
+                    ✅ **Opción B:** Refinancia hipoteca existente
+                    - Ampliación de capital
+                    - Mantiene todos los activos
+                    
+                    ❌ **Evitar:** Vender inmuebles con renta > 500€/mes.""")
+                else:
+                    st.markdown(f"""
+                    **Situación:** Necesitas más de 30,000€.
+                    
+                    ✅ **Opción recomendada:** Venta estratégica de activo de menor valor estratégico.
+                    - Huerto de menor rentabilidad
+                    - Conserva los inmuebles prime
+                    
+                    📊 **Criterio de selección:** Vende el inmueble con menor score:
+                    - Rentabilidad bruta × 0.4
+                    + Valor estratégico × 0.4  
+                    + Potencial revalorización × 0.2""")
+
+            elif problema == "reforma":
+                if presupuesto == "si":
+                    # Encontrar inmueble más urgente
+                    inmueble_urgente = max(datos_reforma.items(),
+                        key=lambda x: año_actual - x[1]["reforma"])
+                    nombre_urg = inmueble_urgente[0]
+                    coste_urg  = inmueble_urgente[1]["coste"]
+                    st.markdown(f"""
+                    **Situación:** Tienes presupuesto. ¡Actúa ahora!
+                    
+                    ✅ **Prioridad 1:** {nombre_urg}
+                    - Coste estimado: **{coste_urg:,.0f}€**
+                    - Es el más antiguo → mayor riesgo de deterioro
+                    
+                    📋 **Orden de actuación:**
+                    1. **{nombre_urg}** — urgente ({año_actual - inmueble_urgente[1]["reforma"]} años)
+                    2. Paseo del Salón — medio plazo
+                    3. Resto — según flujo de caja mensual
+                    
+                    💡 **Consejo:** Reserva el 8% de los ingresos mensuales para mantenimiento futuro.""")
+                else:
+                    st.markdown(f"""
+                    **Situación:** No tienes presupuesto para reformas. Hay que financiarlo.
+                    
+                    ✅ **Opción recomendada — Venta de activo de bajo yield:**
+                    - Vende cochera o plaza parking (~18,000€)
+                    - Pérdida: **-60€/mes**
+                    - Con ese cash reformas el inmueble más urgente
+                    - Resultado: Mantienes renta alta y conservas activo estratégico
+                    
+                    📊 **Comparativa 5 años:**
+                    - Sin reforma: -{(df_inm["Renta"].max()*0.18*12*5):,.0f}€ (renta cae 18%)
+                    - Venta cochera: -{60*12*5:,.0f}€ (pierdes 60€/mes × 5 años)
+                    
+                    ✅ **Ahorras {(df_inm["Renta"].max()*0.18*12*5 - 60*12*5):,.0f}€ en 5 años** vendiendo la cochera.""")
+
+            elif problema == "renta":
+                if contrato == "pronto":
+                    st.markdown(f"""
+                    **Situación:** El contrato se renueva pronto. Momento clave.
+                    
+                    ✅ **Acción recomendada — Renegociación estratégica:**
+                    
+                    1. **Reforma cosmética antes de renovar** (pintura, detalles)
+                       - Inversión: 500-1,500€
+                       - Justifica subida de renta del 10-15%
+                    
+                    2. **Argumenta con datos de mercado:**
+                       - Muéstrale las fichas benchmark al inquilino
+                       - Precio mercado zona vs tu renta actual
+                    
+                    3. **Propón subida escalonada:**
+                       - Año 1: +5%
+                       - Año 2: +5% adicional
+                       - Más fácil de aceptar que subida única
+                    
+                    💰 **Impacto estimado:** +{df_inm["Renta"].mean()*0.10:,.0f}€/mes por inmueble""")
+                else:
+                    st.markdown(f"""
+                    **Situación:** Contrato vigente. No puedes subir ahora.
+                    
+                    ✅ **Plan para la próxima renovación:**
+                    
+                    1. **Documenta ya el estado del inmueble** (fotos, inventario)
+                    2. **Guarda las fichas benchmark** como referencia de mercado
+                    3. **Planifica mejoras** antes de la renovación (baño, cocina, electrodomésticos)
+                    
+                    ⏰ **Fecha a marcar:** Revisión de renta al vencimiento del contrato.
+                    
+                    💡 **Mientras tanto:** Asegúrate de subir IPC anual si el contrato lo permite.""")
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            # Botones de navegación
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                if st.button("← Volver al inicio", key="back_2", use_container_width=True):
+                    st.session_state.arbol_paso = 0
+                    st.session_state.arbol_decision = {}
+                    st.rerun()
+            with col_b2:
+                if st.button("📊 Ver proyección →", key="ver_proyeccion", use_container_width=True, type="primary"):
+                    st.session_state.arbol_paso = 3
+                    st.rerun()
+
+        # NODO 3: PROYECCIÓN FINAL
+        elif paso == 3:
+            problema = st.session_state.arbol_decision.get("problema")
+            cantidad = st.session_state.arbol_decision.get("cantidad")
+
+            st.markdown('<div class="section-title">📈 Paso 4 — Resultado Proyectado</div>', unsafe_allow_html=True)
+            st.caption("Si sigues el plan recomendado, esto es lo que puedes esperar en 6 y 12 meses")
+
+            # Calcular proyecciones según decisión
+            if problema == "cash":
+                perdida_mensual = 60
+                cash_obtenido   = 18000
+                mejora_renta    = 0
+            elif problema == "reforma" and st.session_state.arbol_decision.get("presupuesto") == "no":
+                perdida_mensual = 60
+                cash_obtenido   = 18000
+                mejora_renta    = ing_total * 0.10
+            else:
+                perdida_mensual = 0
+                cash_obtenido   = 0
+                mejora_renta    = ing_total * 0.10
+
+            renta_6m  = ing_total - perdida_mensual + mejora_renta * 0.5
+            renta_12m = ing_total - perdida_mensual + mejora_renta
+            neto_6m   = renta_6m * (margen_pct / 100)
+            neto_12m  = renta_12m * (margen_pct / 100)
+
+            col_p1, col_p2, col_p3 = st.columns(3)
+            col_p1.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-label">SITUACIÓN HOY</div>
+                <div class="kpi-value">{ing_total:,.0f}€</div>
+                <div class="kpi-sub">ingresos/mes · {margen_pct:.1f}% margen</div>
+            </div>""", unsafe_allow_html=True)
+            col_p2.markdown(f"""
+            <div class="kpi-card" style="border-left:3px solid {AMBER};">
+                <div class="kpi-label">EN 6 MESES</div>
+                <div class="kpi-value" style="color:{AMBER};">{renta_6m:,.0f}€</div>
+                <div class="kpi-sub">ingresos/mes estimados</div>
+            </div>""", unsafe_allow_html=True)
+            col_p3.markdown(f"""
+            <div class="kpi-card highlight">
+                <div class="kpi-label">EN 12 MESES</div>
+                <div class="kpi-value">{renta_12m:,.0f}€</div>
+                <div class="kpi-sub">ingresos/mes · objetivo</div>
+            </div>""", unsafe_allow_html=True)
+
+            st.markdown("")
+
+            # Timeline visual
+            st.markdown(f"""
+            <div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:8px;padding:1.2rem;margin-top:0.5rem;">
+                <div style="font-weight:600;color:{TEXT_PRI};margin-bottom:12px;">📅 Hoja de ruta recomendada</div>
+                <div style="display:grid;grid-template-columns:80px 1fr;gap:8px;align-items:start;">
+                    <div style="font-size:0.78rem;color:{TEXT_SEC};font-weight:600;">MES 1-2</div>
+                    <div style="font-size:0.88rem;color:{TEXT_PRI};">{"Vende activo de bajo yield → obtén cash para reformas" if problema in ["cash","reforma"] else "Prepara documentación para negociación de renta"}</div>
+                    <div style="font-size:0.78rem;color:{TEXT_SEC};font-weight:600;">MES 2-4</div>
+                    <div style="font-size:0.88rem;color:{TEXT_PRI};">{"Ejecuta reformas prioritarias → Casa Abarqueros primero" if problema == "reforma" else "Renegocia contratos próximos a vencer"}</div>
+                    <div style="font-size:0.78rem;color:{TEXT_SEC};font-weight:600;">MES 4-6</div>
+                    <div style="font-size:0.88rem;color:{TEXT_PRI};">Consolida subidas de renta · Crea fondo reserva (8% ingresos/mes)</div>
+                    <div style="font-size:0.78rem;color:{TEXT_SEC};font-weight:600;">MES 6-12</div>
+                    <div style="font-size:0.88rem;color:{TEXT_PRI};">Revisa cartera completa · Detecta próxima oportunidad · Ajusta IPC</div>
+                </div>
+                <div style="margin-top:14px;padding-top:12px;border-top:1px dashed {BORDER};
+                    font-size:0.88rem;color:{GREEN};font-weight:600;">
+                    ✅ Resultado esperado: {renta_12m:,.0f}€/mes en 12 meses
+                    {"· Cash liberado: " + f"{cash_obtenido:,.0f}€" if cash_obtenido > 0 else ""}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown("")
+            if st.button("🔄 Nueva consulta", key="reset_arbol", use_container_width=True):
+                st.session_state.arbol_paso = 0
+                st.session_state.arbol_decision = {}
+                st.rerun()
+
+    else:
+        st.markdown('<div class="section-title">🌳 Árbol de Decisiones</div>', unsafe_allow_html=True)
+        st.success("✅ No hay riesgos detectados en este momento. Tu cartera está en buen estado. Vuelve a consultar en el próximo ciclo de renovaciones.")
