@@ -2688,18 +2688,113 @@ elif menu == "Legal":
             else:
                 contrato_texto = generar_contrato_habitacion(contrato_data)
             
+            # Generar PDF
+            try:
+                from reportlab.lib.pagesizes import A4
+                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                from reportlab.lib.units import cm
+                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+                from io import BytesIO
+                
+                # Crear PDF en memoria
+                buffer = BytesIO()
+                doc = SimpleDocTemplate(buffer, pagesize=A4, 
+                                       leftMargin=2*cm, rightMargin=2*cm,
+                                       topMargin=2*cm, bottomMargin=2*cm)
+                
+                # Estilos
+                styles = getSampleStyleSheet()
+                
+                # Estilo título
+                titulo_style = ParagraphStyle(
+                    'TituloLegal',
+                    parent=styles['Heading1'],
+                    fontSize=16,
+                    textColor='#1a3a5c',
+                    alignment=TA_CENTER,
+                    spaceAfter=20
+                )
+                
+                # Estilo cuerpo
+                cuerpo_style = ParagraphStyle(
+                    'CuerpoLegal',
+                    parent=styles['Normal'],
+                    fontSize=10,
+                    alignment=TA_JUSTIFY,
+                    leading=14,
+                    spaceAfter=10
+                )
+                
+                # Estilo cláusula
+                clausula_style = ParagraphStyle(
+                    'ClausulaLegal',
+                    parent=styles['Normal'],
+                    fontSize=10,
+                    fontName='Helvetica-Bold',
+                    spaceAfter=8
+                )
+                
+                # Construir documento
+                story = []
+                
+                # Parsear el texto y crear párrafos
+                lineas = contrato_texto.strip().split('\n')
+                for linea in lineas:
+                    linea = linea.strip()
+                    if not linea:
+                        story.append(Spacer(1, 0.3*cm))
+                    elif '═' in linea:
+                        story.append(Spacer(1, 0.5*cm))
+                    elif linea.isupper() and len(linea) < 80:
+                        # Título
+                        story.append(Paragraph(linea, titulo_style))
+                    elif linea.endswith('.-'):
+                        # Cláusula
+                        story.append(Paragraph(linea, clausula_style))
+                    else:
+                        # Cuerpo normal
+                        story.append(Paragraph(linea, cuerpo_style))
+                
+                # Generar PDF
+                doc.build(story)
+                pdf_bytes = buffer.getvalue()
+                buffer.close()
+                
+                pdf_disponible = True
+                
+            except ImportError:
+                pdf_disponible = False
+                pdf_bytes = None
+            
             # Mostrar preview
             with st.expander("📄 PREVIEW DEL CONTRATO", expanded=True):
-                st.markdown(f"```\n{contrato_texto}\n```")
+                st.text(contrato_texto)
             
-            # Botón descarga
-            st.download_button(
-                label="📥 Descargar contrato (.txt)",
-                data=contrato_texto,
-                file_name=f"contrato_{tipo}_{inmueble_seleccionado.replace(' ', '_')}.txt",
-                mime="text/plain",
-                use_container_width=True
-            )
+            # Botones de descarga
+            col_down1, col_down2 = st.columns(2)
+            
+            with col_down1:
+                if pdf_disponible:
+                    st.download_button(
+                        label="📥 Descargar PDF (recomendado)",
+                        data=pdf_bytes,
+                        file_name=f"contrato_{tipo}_{inmueble_seleccionado.replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                        type="primary"
+                    )
+                else:
+                    st.warning("⚠️ Instala `reportlab` para generar PDFs")
+            
+            with col_down2:
+                st.download_button(
+                    label="📥 Descargar TXT (alternativo)",
+                    data=contrato_texto,
+                    file_name=f"contrato_{tipo}_{inmueble_seleccionado.replace(' ', '_')}.txt",
+                    mime="text/plain",
+                    use_container_width=True
+                )
     
     # Disclaimer legal
     st.markdown("""
