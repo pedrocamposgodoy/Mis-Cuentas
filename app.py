@@ -806,10 +806,31 @@ if menu == "Torre de Control":
         col_robot, col_info, col_toggle = st.columns([1.2, 3.8, 1])
         
         with col_robot:
-            try:
-                st.image("robot_ia.png", width=120)
-            except:
-                st.markdown('<div style="font-size:3.5rem;line-height:1;">🤖</div>', unsafe_allow_html=True)
+            # Robot científico animado en Canvas
+            robot_html = """
+            <div style="width:120px;height:130px;margin:0 auto;">
+            <canvas id="robotCanvas" style="display:block;width:100%;height:auto;border-radius:12px;"></canvas>
+            <script>
+            (function(){
+            const cv=document.getElementById('robotCanvas');
+            if(!cv||cv.dataset.init)return;
+            cv.dataset.init='1';
+            const cx=cv.getContext('2d');
+            cv.width=240;cv.height=260;
+            let T=0;
+            function rr(x,y,w,h,r){cx.beginPath();cx.moveTo(x+r,y);cx.lineTo(x+w-r,y);cx.quadraticCurveTo(x+w,y,x+w,y+r);cx.lineTo(x+w,y+h-r);cx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);cx.lineTo(x+r,y+h);cx.quadraticCurveTo(x,y+h,x,y+h-r);cx.lineTo(x,y+r);cx.quadraticCurveTo(x,y,x+r,y);cx.closePath();}
+            function drawBg(){const g=cx.createRadialGradient(120,100,20,120,130,160);g.addColorStop(0,'#e8f6ff');g.addColorStop(1,'#bcd8f0');cx.fillStyle=g;cx.fillRect(0,0,240,260);}
+            function drawBody(bx,by){cx.save();cx.translate(bx,by);const bg=cx.createLinearGradient(0,-30,0,30);bg.addColorStop(0,'#90c8f0');bg.addColorStop(0.5,'#4080c0');bg.addColorStop(1,'#2060a0');cx.fillStyle=bg;rr(-25,-30,50,60,12);cx.fill();cx.strokeStyle='rgba(255,255,255,0.2)';cx.lineWidth=1;cx.stroke();cx.restore();}
+            function drawHead(hx,hy){cx.save();cx.translate(hx,hy);const hg=cx.createRadialGradient(-10,-15,5,0,0,50);hg.addColorStop(0,'#b8e0ff');hg.addColorStop(0.6,'#5090c8');hg.addColorStop(1,'#2060a0');cx.fillStyle=hg;cx.beginPath();cx.arc(0,0,45,0,Math.PI*2);cx.fill();cx.strokeStyle='rgba(255,255,255,0.25)';cx.lineWidth=2;cx.stroke();const blink=Math.abs(Math.sin(T*0.0008));const lookX=Math.sin(T*0.002)*3;function eye(ex,ey){const eg=cx.createRadialGradient(ex,ey,1,ex,ey,12);eg.addColorStop(0,'rgba(80,210,255,0.6)');eg.addColorStop(1,'rgba(80,210,255,0)');cx.fillStyle=eg;cx.beginPath();cx.ellipse(ex,ey,12,12*blink,0,0,Math.PI*2);cx.fill();const ig=cx.createRadialGradient(ex-2+lookX,ey-2,0.5,ex+lookX,ey,8);ig.addColorStop(0,'#b8f0ff');ig.addColorStop(0.4,'#30b8f0');ig.addColorStop(1,'#03284a');cx.fillStyle=ig;cx.beginPath();cx.ellipse(ex,ey,8,8*blink,0,0,Math.PI*2);cx.fill();cx.fillStyle='#020c18';cx.beginPath();cx.ellipse(ex+lookX*0.5,ey,4,4*blink,0,0,Math.PI*2);cx.fill();if(blink>0.4){cx.fillStyle='rgba(255,255,255,0.85)';cx.beginPath();cx.ellipse(ex-3,ey-3,2,1.5,-0.4,0,Math.PI*2);cx.fill();}}
+            eye(-14,-8);eye(14,-8);const smile=Math.sin(T*0.002)*2;cx.strokeStyle='rgba(80,210,255,0.7)';cx.lineWidth=2;cx.lineCap='round';cx.beginPath();cx.moveTo(-12,12+smile);cx.quadraticCurveTo(0,20+smile,12,12+smile);cx.stroke();cx.restore();}
+            function drawAntenna(ax,ay){cx.save();cx.translate(ax,ay);const wb=Math.sin(T*0.004)*6;cx.strokeStyle='#5090c8';cx.lineWidth=2;cx.lineCap='round';cx.beginPath();cx.moveTo(0,0);cx.quadraticCurveTo(wb*0.5,-15,wb,-30);cx.stroke();const p=5+Math.sin(T*0.008)*2;const pg=cx.createRadialGradient(wb,-35,0.5,wb,-35,p+5);pg.addColorStop(0,'rgba(80,210,255,0.7)');pg.addColorStop(1,'rgba(80,210,255,0)');cx.fillStyle=pg;cx.beginPath();cx.arc(wb,-35,p+5,0,Math.PI*2);cx.fill();const bg=cx.createRadialGradient(wb-2,-37,0.5,wb,-35,p);bg.addColorStop(0,'#ffffff');bg.addColorStop(0.3,'#90e0ff');bg.addColorStop(1,'#1890e0');cx.fillStyle=bg;cx.beginPath();cx.arc(wb,-35,p,0,Math.PI*2);cx.fill();cx.restore();}
+            function frame(){drawBg();const bob=Math.sin(T*0.004)*3;drawBody(120,150+bob);drawHead(120,100+bob);drawAntenna(120,70+bob);T+=16;requestAnimationFrame(frame);}
+            frame();
+            })();
+            </script>
+            </div>
+            """
+            st.components.v1.html(robot_html, height=135)
         
         with col_info:
             st.markdown(f"""
