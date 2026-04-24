@@ -249,6 +249,8 @@ with st.sidebar:
     st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
     nav_group("Inteligencia IA", "IA")
     st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
+    nav_group("Herramientas", "Tools")
+    st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
     nav_group("Configuración", "Config")
 
     st.markdown(f"""
