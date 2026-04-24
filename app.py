@@ -2277,78 +2277,79 @@ elif menu == "Asesor Patrimonial IA":
                         ✅ Venta estratégica activo menor valor
                         📊 Criterio: menor rentabilidad y estado""", unsafe_allow_html=True)
 
-            elif problema == "reforma":
-                if presupuesto == "si":
-                    # Encontrar inmueble más urgente
-                    inmueble_urgente = max(datos_reforma.items(),
-                        key=lambda x: año_actual - x[1]["reforma"])
-                    nombre_urg = inmueble_urgente[0]
-                    coste_urg  = inmueble_urgente[1]["coste"]
-                    st.markdown(f"""
-                    **Situación:** Tienes presupuesto. ¡Actúa ahora!
-                    
-                    ✅ **Prioridad 1:** {nombre_urg}
-                    - Coste estimado: **{coste_urg:,.0f}€**
-                    - Es el más antiguo → mayor riesgo de deterioro
-                    
-                    📋 **Orden de actuación:**
-                    1. **{nombre_urg}** — urgente ({año_actual - inmueble_urgente[1]["reforma"]} años)
-                    2. Paseo del Salón — medio plazo
-                    3. Resto — según flujo de caja mensual
-                    
-                    💡 **Consejo:** Reserva el 8% de los ingresos mensuales para mantenimiento futuro.""")
-                else:
-                    st.markdown(f"""
-                    **Situación:** No tienes presupuesto para reformas. Hay que financiarlo.
-                    
-                    ✅ **Opción recomendada — Venta de activo de bajo yield:**
-                    - Vende cochera o plaza parking (~18,000€)
-                    - Pérdida: **-60€/mes**
-                    - Con ese cash reformas el inmueble más urgente
-                    - Resultado: Mantienes renta alta y conservas activo estratégico
-                    
-                    📊 **Comparativa 5 años:**
-                    - Sin reforma: -{(df_inm["Renta"].max()*0.18*12*5):,.0f}€ (renta cae 18%)
-                    - Venta cochera: -{60*12*5:,.0f}€ (pierdes 60€/mes × 5 años)
-                    
-                    ✅ **Ahorras {(df_inm["Renta"].max()*0.18*12*5 - 60*12*5):,.0f}€ en 5 años** vendiendo la cochera.""")
+                elif problema == "reforma":
+                    if presupuesto == "si":
+                        # Encontrar inmueble más urgente
+                        inmueble_urgente = max(datos_reforma.items(),
+                            key=lambda x: año_actual - x[1]["reforma"])
+                        nombre_urg = inmueble_urgente[0]
+                        coste_urg  = inmueble_urgente[1]["coste"]
+                        st.markdown(f"""
+                        **Situación:** Tienes presupuesto. ¡Actúa ahora!
+                        
+                        ✅ **Prioridad 1:** {nombre_urg}
+                        - Coste estimado: **{coste_urg:,.0f}€**
+                        - Es el más antiguo → mayor riesgo de deterioro
+                        
+                        📋 **Orden de actuación:**
+                        1. **{nombre_urg}** — urgente ({año_actual - inmueble_urgente[1]["reforma"]} años)
+                        2. Paseo del Salón — medio plazo
+                        3. Resto — según flujo de caja mensual
+                        
+                        💡 **Consejo:** Reserva el 8% de los ingresos mensuales para mantenimiento futuro.""")
+                    else:
+                        st.markdown(f"""
+                        **Situación:** No tienes presupuesto para reformas. Hay que financiarlo.
+                        
+                        ✅ **Opción recomendada — Venta de activo de bajo yield:**
+                        - Vende cochera o plaza parking (~18,000€)
+                        - Pérdida: **-60€/mes**
+                        - Con ese cash reformas el inmueble más urgente
+                        - Resultado: Mantienes renta alta y conservas activo estratégico
+                        
+                        📊 **Comparativa 5 años:**
+                        - Sin reforma: -{(df_inm["Renta"].max()*0.18*12*5):,.0f}€ (renta cae 18%)
+                        - Venta cochera: -{60*12*5:,.0f}€ (pierdes 60€/mes × 5 años)
+                        
+                        ✅ **Ahorras {(df_inm["Renta"].max()*0.18*12*5 - 60*12*5):,.0f}€ en 5 años** vendiendo la cochera.""")
 
-            elif problema == "renta":
-                if contrato == "pronto":
-                    st.markdown(f"""
-                    **Situación:** El contrato se renueva pronto. Momento clave.
-                    
-                    ✅ **Acción recomendada — Renegociación estratégica:**
-                    
-                    1. **Reforma cosmética antes de renovar** (pintura, detalles)
-                       - Inversión: 500-1,500€
-                       - Justifica subida de renta del 10-15%
-                    
-                    2. **Argumenta con datos de mercado:**
-                       - Muéstrale las fichas benchmark al inquilino
-                       - Precio mercado zona vs tu renta actual
-                    
-                    3. **Propón subida escalonada:**
-                       - Año 1: +5%
-                       - Año 2: +5% adicional
-                       - Más fácil de aceptar que subida única
-                    
-                    💰 **Impacto estimado:** +{df_inm["Renta"].mean()*0.10:,.0f}€/mes por inmueble""")
-                else:
-                    st.markdown(f"""
-                    **Situación:** Contrato vigente. No puedes subir ahora.
-                    
-                    ✅ **Plan para la próxima renovación:**
-                    
-                    1. **Documenta ya el estado del inmueble** (fotos, inventario)
-                    2. **Guarda las fichas benchmark** como referencia de mercado
-                    3. **Planifica mejoras** antes de la renovación (baño, cocina, electrodomésticos)
-                    
-                    ⏰ **Fecha a marcar:** Revisión de renta al vencimiento del contrato.
-                    
-                    💡 **Mientras tanto:** Asegúrate de subir IPC anual si el contrato lo permite.""")
+                elif problema == "renta":
+                    if contrato == "pronto":
+                        st.markdown(f"""
+                        **Situación:** El contrato se renueva pronto. Momento clave.
+                        **Situación:** El contrato se renueva pronto. Momento clave.
+                        
+                        ✅ **Acción recomendada — Renegociación estratégica:**
+                        
+                        1. **Reforma cosmética antes de renovar** (pintura, detalles)
+                           - Inversión: 500-1,500€
+                           - Justifica subida de renta del 10-15%
+                        
+                        2. **Argumenta con datos de mercado:**
+                           - Muéstrale las fichas benchmark al inquilino
+                           - Precio mercado zona vs tu renta actual
+                        
+                        3. **Propón subida escalonada:**
+                           - Año 1: +5%
+                           - Año 2: +5% adicional
+                           - Más fácil de aceptar que subida única
+                        
+                        💰 **Impacto estimado:** +{df_inm["Renta"].mean()*0.10:,.0f}€/mes por inmueble""")
+                    else:
+                        st.markdown(f"""
+                        **Situación:** Contrato vigente. No puedes subir ahora.
+                        
+                        ✅ **Plan para la próxima renovación:**
+                        
+                        1. **Documenta ya el estado del inmueble** (fotos, inventario)
+                        2. **Guarda las fichas benchmark** como referencia de mercado
+                        3. **Planifica mejoras** antes de la renovación (baño, cocina, electrodomésticos)
+                        
+                        ⏰ **Fecha a marcar:** Revisión de renta al vencimiento del contrato.
+                        
+                        💡 **Mientras tanto:** Asegúrate de subir IPC anual si el contrato lo permite.""")
 
-            st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
 
             # Botones de navegación
             col_b1, col_b2 = st.columns(2)
