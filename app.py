@@ -213,6 +213,7 @@ PAGES = [
     ("💰", "Fiscalidad",            "Core"),
     ("💎", "Macrofinanzas",         "Core"),
     ("🧠", "Asesor Patrimonial IA", "IA"),
+    ("⚖️", "Legal",                 "Tools"),
     ("📂", "Datos de la Cartera",   "Config"),
 ]
 
@@ -2423,3 +2424,609 @@ elif menu == "Asesor Patrimonial IA":
     else:
         st.markdown('<div class="section-title">🌳 Árbol de Decisiones</div>', unsafe_allow_html=True)
         st.success("✅ No hay riesgos detectados en este momento. Tu cartera está en buen estado. Vuelve a consultar en el próximo ciclo de renovaciones.")
+
+# ================================================================
+# LEGAL — GENERADOR DE CONTRATOS
+# ================================================================
+elif menu == "Legal":
+    st.markdown('<div class="brand-header">⚖️ HERRAMIENTAS LEGALES</div>', unsafe_allow_html=True)
+    
+    # Estilo CSS específico para Legal
+    st.markdown("""
+    <style>
+    .legal-card {
+        background: linear-gradient(135deg, #1a3a5c 0%, #2d5a8c 100%);
+        border: 2px solid #c9a85c;
+        border-radius: 12px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 12px rgba(26, 58, 92, 0.15);
+    }
+    .legal-title {
+        color: #c9a85c;
+        font-size: 1.3rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .legal-subtitle {
+        color: #e8f2ff;
+        font-size: 0.95rem;
+        margin-bottom: 1.5rem;
+    }
+    .contract-card {
+        background: white;
+        border: 2px solid #e0e7ef;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .contract-card:hover {
+        border-color: #c9a85c;
+        box-shadow: 0 4px 12px rgba(201, 168, 92, 0.2);
+        transform: translateY(-2px);
+    }
+    .contract-card.selected {
+        border-color: #c9a85c;
+        background: #fffbf0;
+        border-width: 3px;
+    }
+    .contract-icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .contract-name {
+        color: #1a3a5c;
+        font-weight: 700;
+        font-size: 1.1rem;
+        margin-bottom: 0.3rem;
+    }
+    .contract-desc {
+        color: #4a5568;
+        font-size: 0.85rem;
+        line-height: 1.4;
+    }
+    .legal-section {
+        background: #f8fafb;
+        border-left: 4px solid #1a3a5c;
+        padding: 1.2rem;
+        border-radius: 8px;
+        margin: 1.5rem 0;
+    }
+    .legal-label {
+        color: #1a3a5c;
+        font-weight: 600;
+        font-size: 0.95rem;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    .disclaimer {
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        border-left: 4px solid #ff9800;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-top: 2rem;
+        color: #856404;
+        font-size: 0.85rem;
+        line-height: 1.5;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Header principal
+    st.markdown("""
+    <div class="legal-card">
+        <div class="legal-title">📋 GENERADOR DE CONTRATOS DE ARRENDAMIENTO</div>
+        <div class="legal-subtitle">Genera contratos conformes a LAU 29/1994 con tus datos precargados</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Inicializar estado
+    if "tipo_contrato_seleccionado" not in st.session_state:
+        st.session_state.tipo_contrato_seleccionado = None
+    
+    # PASO 1: Selección de tipo de contrato
+    st.markdown('<div class="legal-section">', unsafe_allow_html=True)
+    st.markdown('<div class="legal-label">🏛️ SELECCIONA EL TIPO DE CONTRATO</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("📜\n\n**LARGA DURACIÓN**\n\nVivienda habitual\nLAU Art. 9", 
+                     key="btn_larga", use_container_width=True,
+                     type="primary" if st.session_state.tipo_contrato_seleccionado == "larga" else "secondary"):
+            st.session_state.tipo_contrato_seleccionado = "larga"
+            st.rerun()
+    
+    with col2:
+        if st.button("⏰\n\n**TEMPORADA**\n\nTurístico o estudios\n≤12 meses", 
+                     key="btn_temp", use_container_width=True,
+                     type="primary" if st.session_state.tipo_contrato_seleccionado == "temporada" else "secondary"):
+            st.session_state.tipo_contrato_seleccionado = "temporada"
+            st.rerun()
+    
+    with col3:
+        if st.button("🛏️\n\n**HABITACIÓN**\n\nSubarrienda habitación\nLAU parcial", 
+                     key="btn_hab", use_container_width=True,
+                     type="primary" if st.session_state.tipo_contrato_seleccionado == "habitacion" else "secondary"):
+            st.session_state.tipo_contrato_seleccionado = "habitacion"
+            st.rerun()
+    
+    # Mostrar formulario solo si hay tipo seleccionado
+    if st.session_state.tipo_contrato_seleccionado:
+        tipo = st.session_state.tipo_contrato_seleccionado
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # PASO 2: Seleccionar inmueble
+        st.markdown('<div class="legal-section">', unsafe_allow_html=True)
+        st.markdown('<div class="legal-label">📍 INMUEBLE</div>', unsafe_allow_html=True)
+        inmueble_seleccionado = st.selectbox(
+            "Selecciona el inmueble",
+            options=df_inm["Nombre"].tolist(),
+            key="inmueble_legal",
+            label_visibility="collapsed"
+        )
+        
+        # Obtener datos del inmueble
+        inm_data = df_inm[df_inm["Nombre"] == inmueble_seleccionado].iloc[0]
+        st.caption(f"📍 Ref. Catastral: {inm_data.get('Ref_Catastral', 'N/A')} | {inm_data.get('M2_Construidos', 0)}m²")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # PASO 3: Duración
+        st.markdown('<div class="legal-section">', unsafe_allow_html=True)
+        st.markdown('<div class="legal-label">⏳ DURACIÓN</div>', unsafe_allow_html=True)
+        
+        col_dur1, col_dur2 = st.columns(2)
+        with col_dur1:
+            if tipo == "larga":
+                duracion_anos = st.selectbox("Años", options=[1, 2, 3, 4, 5], index=2, key="dur_anos")
+                duracion_meses = 0
+            else:
+                duracion_meses = st.selectbox("Meses", options=list(range(1, 13)), index=5, key="dur_meses")
+                duracion_anos = 0
+        
+        with col_dur2:
+            st.caption("✓ Larga duración: 1-5 años" if tipo == "larga" else "✓ Temporada: máximo 12 meses")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # PASO 4: Condiciones económicas
+        st.markdown('<div class="legal-section">', unsafe_allow_html=True)
+        st.markdown('<div class="legal-label">💰 CONDICIONES ECONÓMICAS</div>', unsafe_allow_html=True)
+        
+        renta = inm_data.get("Renta", 0)
+        st.write(f"**Renta mensual:** {renta:,.0f}€ _(precargado desde tu cartera)_")
+        
+        tipo_fianza = st.radio(
+            "Fianza",
+            options=["1 mes", "2 meses", "Sin fianza"],
+            index=1 if tipo == "larga" else 0,
+            horizontal=True,
+            key="fianza_tipo"
+        )
+        
+        if "Sin fianza" in tipo_fianza:
+            importe_fianza = 0
+        elif "1 mes" in tipo_fianza:
+            importe_fianza = renta
+        else:
+            importe_fianza = renta * 2
+        
+        st.caption(f"💵 Importe fianza: {importe_fianza:,.0f}€")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # PASO 5: Suministros
+        st.markdown('<div class="legal-section">', unsafe_allow_html=True)
+        st.markdown('<div class="legal-label">⚡ SUMINISTROS</div>', unsafe_allow_html=True)
+        
+        col_sum1, col_sum2 = st.columns(2)
+        with col_sum1:
+            incluye_luz = st.checkbox("⚡ Incluye electricidad", key="sum_luz")
+            incluye_gas = st.checkbox("🔥 Incluye gas", key="sum_gas")
+        with col_sum2:
+            incluye_internet = st.checkbox("📡 Incluye internet", key="sum_int")
+            incluye_agua = st.checkbox("💧 Incluye agua _(no recomendado)_", key="sum_agua")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # PASO 6: Opciones adicionales
+        st.markdown('<div class="legal-section">', unsafe_allow_html=True)
+        st.markdown('<div class="legal-label">📊 ACTUALIZACIÓN Y OPCIONES</div>', unsafe_allow_html=True)
+        
+        ipc_anual = st.checkbox("✓ Actualización anual según IPC", value=True, key="ipc")
+        
+        mascotas = st.radio(
+            "🐕 Mascotas",
+            options=["Permitidas", "No permitidas", "A consultar"],
+            index=1,
+            horizontal=True,
+            key="mascotas"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # GENERAR CONTRATO
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("⚖️ GENERAR CONTRATO", type="primary", use_container_width=True, key="generar_contrato"):
+            # Aquí generaremos el contrato
+            st.success("✅ Contrato generado correctamente")
+            
+            # Preparar datos para el template
+            contrato_data = {
+                "tipo": tipo,
+                "inmueble": inmueble_seleccionado,
+                "direccion": "Calle ejemplo, 1",  # TODO: añadir campo dirección en CSV
+                "ref_catastral": inm_data.get('Ref_Catastral', 'N/A'),
+                "m2": inm_data.get('M2_Construidos', 0),
+                "renta": renta,
+                "duracion_anos": duracion_anos,
+                "duracion_meses": duracion_meses,
+                "fianza_meses": 0 if "Sin" in tipo_fianza else (1 if "1 mes" in tipo_fianza else 2),
+                "importe_fianza": importe_fianza,
+                "incluye_luz": incluye_luz,
+                "incluye_gas": incluye_gas,
+                "incluye_internet": incluye_internet,
+                "incluye_agua": incluye_agua,
+                "ipc": ipc_anual,
+                "mascotas": mascotas
+            }
+            
+            # Generar contrato según tipo
+            if tipo == "larga":
+                contrato_texto = generar_contrato_larga_duracion(contrato_data)
+            elif tipo == "temporada":
+                contrato_texto = generar_contrato_temporada(contrato_data)
+            else:
+                contrato_texto = generar_contrato_habitacion(contrato_data)
+            
+            # Mostrar preview
+            with st.expander("📄 PREVIEW DEL CONTRATO", expanded=True):
+                st.markdown(f"```\n{contrato_texto}\n```")
+            
+            # Botón descarga
+            st.download_button(
+                label="📥 Descargar contrato (.txt)",
+                data=contrato_texto,
+                file_name=f"contrato_{tipo}_{inmueble_seleccionado.replace(' ', '_')}.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+    
+    # Disclaimer legal
+    st.markdown("""
+    <div class="disclaimer">
+        <strong>⚠️ AVISO LEGAL</strong><br>
+        Este generador crea contratos orientativos basados en la Ley de Arrendamientos Urbanos (LAU 29/1994).<br>
+        <strong>NO sustituye asesoramiento legal profesional.</strong> Consulte con un abogado antes de firmar.<br>
+        El contenido generado es informativo y no vinculante.
+    </div>
+    """, unsafe_allow_html=True)
+
+# ================================================================
+# FUNCIONES GENERADORAS DE CONTRATOS
+# ================================================================
+def generar_contrato_larga_duracion(data):
+    suministros_incluidos = []
+    if data["incluye_luz"]: suministros_incluidos.append("electricidad")
+    if data["incluye_gas"]: suministros_incluidos.append("gas")
+    if data["incluye_agua"]: suministros_incluidos.append("agua")
+    if data["incluye_internet"]: suministros_incluidos.append("internet")
+    
+    suministros_texto = ", ".join(suministros_incluidos) if suministros_incluidos else "ninguno"
+    
+    ipc_clausula = """ACTUALIZACIÓN DE RENTA: La renta se actualizará anualmente según la variación del Índice de Precios al Consumo (IPC) conforme al artículo 18 de la LAU.""" if data["ipc"] else """ACTUALIZACIÓN DE RENTA: La renta permanecerá fija durante toda la duración del contrato."""
+    
+    mascotas_clausula = f"""MASCOTAS: {data["mascotas"]}."""
+    
+    return f"""
+══════════════════════════════════════════════════════════════
+CONTRATO DE ARRENDAMIENTO DE VIVIENDA
+Ley 29/1994 de Arrendamientos Urbanos (LAU)
+══════════════════════════════════════════════════════════════
+
+REUNIDOS
+
+De una parte, ________________________, con DNI ______________, 
+en calidad de ARRENDADOR.
+
+De otra parte, ________________________, con DNI ______________, 
+en calidad de ARRENDATARIO.
+
+EXPONEN
+
+PRIMERO.- Que el ARRENDADOR es propietario del inmueble sito en 
+{data["direccion"]}, con referencia catastral {data["ref_catastral"]}, 
+de {data["m2"]} m² construidos.
+
+SEGUNDO.- Que ambas partes convienen formalizar el presente contrato 
+de arrendamiento de vivienda conforme a las siguientes:
+
+══════════════════════════════════════════════════════════════
+CLÁUSULAS
+══════════════════════════════════════════════════════════════
+
+PRIMERA.- OBJETO DEL CONTRATO
+El arrendador cede al arrendatario el uso y disfrute de la vivienda 
+descrita, destinada a satisfacer la necesidad permanente de vivienda 
+del arrendatario, conforme al artículo 2 de la LAU.
+
+SEGUNDA.- DURACIÓN
+El presente contrato tendrá una duración de {data["duracion_anos"]} años, 
+comenzando el día ___/___/______ y finalizando el día ___/___/______.
+
+Conforme al artículo 9 de la LAU, si a la finalización del plazo pactado 
+el arrendatario permanece en el uso de la vivienda por un plazo de al menos 
+quince días con conocimiento y sin oposición del arrendador, el contrato se 
+entenderá prorrogado por plazos anuales hasta un máximo de tres años más, 
+salvo que el arrendatario manifieste su voluntad de no renovar con treinta 
+días de antelación.
+
+TERCERA.- RENTA
+La renta mensual pactada es de {data["renta"]:,.2f} EUROS ({data["renta"]:,.2f}€), 
+que el arrendatario abonará mediante transferencia bancaria antes del día 5 
+de cada mes en la cuenta facilitada por el arrendador.
+
+{ipc_clausula}
+
+CUARTA.- FIANZA
+El arrendatario deposita en este acto la cantidad de {data["importe_fianza"]:,.2f} 
+EUROS ({data["importe_fianza"]:,.2f}€), equivalente a {data["fianza_meses"]} {"mes" if data["fianza_meses"] == 1 else "meses"} 
+de renta, en concepto de fianza, conforme al artículo 36 de la LAU.
+
+Esta fianza será depositada por el arrendador en el organismo competente de 
+la Comunidad Autónoma y le será devuelta al arrendatario al término del 
+contrato, previa deducción de los gastos que procedan por deterioros 
+imputables al arrendatario o por rentas pendientes.
+
+QUINTA.- SUMINISTROS Y SERVICIOS
+Los suministros incluidos en la renta son: {suministros_texto}.
+
+Los demás suministros y servicios (agua, gas, electricidad, internet, 
+comunidad de propietarios, etc.) que no estén incluidos serán de cuenta 
+del arrendatario, quien deberá contratar directamente con las compañías 
+suministradoras y abonar puntualmente los recibos correspondientes.
+
+SEXTA.- GASTOS DE COMUNIDAD E IBI
+Los gastos de comunidad de propietarios, IBI y demás impuestos que graven 
+directamente la vivienda serán de cuenta del arrendador, salvo pacto expreso 
+en contrario.
+
+SÉPTIMA.- OBRAS Y REPARACIONES
+Serán de cuenta del arrendador las reparaciones necesarias para conservar 
+la vivienda en las condiciones de habitabilidad, salvo cuando el deterioro 
+sea imputable al arrendatario (artículo 21 LAU).
+
+El arrendatario no podrá realizar obras sin consentimiento escrito del 
+arrendador.
+
+OCTAVA.- CESIÓN Y SUBARRIENDO
+El arrendatario no podrá subarrendar ni ceder el contrato sin consentimiento 
+escrito del arrendador (artículo 8 LAU).
+
+NOVENA.- {mascotas_clausula}
+
+DÉCIMA.- RESOLUCIÓN DEL CONTRATO
+El contrato podrá resolverse por las causas previstas en el artículo 27 de la LAU:
+- Falta de pago de la renta
+- Falta de pago de la fianza
+- Subarriendo o cesión no autorizados
+- Daños causados dolosamente en la finca
+- Realización de actividades molestas, insalubres, nocivas o peligrosas
+
+DECIMOPRIMERA.- DESISTIMIENTO DEL ARRENDATARIO
+Transcurridos al menos seis meses de contrato, el arrendatario podrá desistir 
+del contrato notificándolo al arrendador con al menos treinta días de antelación 
+(artículo 11 LAU). Si el arrendatario desiste antes de transcurridos cinco años, 
+deberá indemnizar al arrendador con una cantidad equivalente a una mensualidad 
+por cada año que reste hasta completar cinco años, prorrateándose por meses los 
+períodos inferiores al año.
+
+DECIMOSEGUNDA.- NOTIFICACIONES
+Las notificaciones se realizarán en los domicilios indicados por las partes, 
+salvo que se comunique por escrito un cambio de domicilio.
+
+DECIMOTERCERA.- LEGISLACIÓN APLICABLE Y JURISDICCIÓN
+El presente contrato se rige por la Ley 29/1994 de Arrendamientos Urbanos y 
+disposiciones complementarias. Para cuantas cuestiones pudieran derivarse del 
+presente contrato, las partes se someten a los Juzgados y Tribunales de la 
+ciudad de Granada.
+
+══════════════════════════════════════════════════════════════
+
+Y en prueba de conformidad, firman el presente contrato por duplicado 
+ejemplar en el lugar y fecha indicados.
+
+Granada, a ___ de ______________ de 20__
+
+
+EL ARRENDADOR                           EL ARRENDATARIO
+
+
+_____________________                   _____________________
+Fdo.: [Nombre]                          Fdo.: [Nombre]
+DNI: [DNI]                              DNI: [DNI]
+
+══════════════════════════════════════════════════════════════
+Contrato generado con Nolasco Capital - Herramientas Legales
+Documento orientativo LAU 29/1994 - Consulte con abogado
+══════════════════════════════════════════════════════════════
+"""
+
+def generar_contrato_temporada(data):
+    suministros_incluidos = []
+    if data["incluye_luz"]: suministros_incluidos.append("electricidad")
+    if data["incluye_gas"]: suministros_incluidos.append("gas")
+    if data["incluye_agua"]: suministros_incluidos.append("agua")
+    if data["incluye_internet"]: suministros_incluidos.append("internet")
+    
+    suministros_texto = ", ".join(suministros_incluidos) if suministros_incluidos else "ninguno"
+    
+    return f"""
+══════════════════════════════════════════════════════════════
+CONTRATO DE ARRENDAMIENTO DE TEMPORADA
+Ley 29/1994 de Arrendamientos Urbanos (LAU) - Art. 3
+══════════════════════════════════════════════════════════════
+
+REUNIDOS
+
+De una parte, ________________________, con DNI ______________, 
+en calidad de ARRENDADOR.
+
+De otra parte, ________________________, con DNI ______________, 
+en calidad de ARRENDATARIO.
+
+EXPONEN
+
+PRIMERO.- Que el ARRENDADOR es propietario del inmueble sito en 
+{data["direccion"]}, con referencia catastral {data["ref_catastral"]}, 
+de {data["m2"]} m² construidos.
+
+SEGUNDO.- Que el ARRENDATARIO precisa el uso temporal de la vivienda 
+por motivos de [estudios/trabajo temporal/turismo/otros], NO siendo 
+esta su vivienda habitual permanente.
+
+TERCERO.- Que ambas partes convienen formalizar el presente contrato 
+de arrendamiento de temporada conforme a las siguientes:
+
+══════════════════════════════════════════════════════════════
+CLÁUSULAS
+══════════════════════════════════════════════════════════════
+
+PRIMERA.- NATURALEZA DEL CONTRATO
+El presente es un contrato de arrendamiento para uso distinto del de 
+vivienda habitual, regulado por el artículo 3 de la LAU y el Código Civil.
+
+SEGUNDA.- DURACIÓN
+El contrato tendrá una duración de {data["duracion_meses"]} {"mes" if data["duracion_meses"] == 1 else "meses"}, 
+comenzando el día ___/___/______ y finalizando el día ___/___/______.
+
+A la finalización del plazo, el contrato se extinguirá automáticamente 
+SIN PRÓRROGA OBLIGATORIA, debiendo el arrendatario desalojar la vivienda.
+
+TERCERA.- RENTA
+La renta mensual pactada es de {data["renta"]:,.2f} EUROS ({data["renta"]:,.2f}€), 
+que el arrendatario abonará mediante transferencia bancaria antes del día 5 
+de cada mes.
+
+La renta permanecerá fija durante toda la duración del contrato.
+
+CUARTA.- FIANZA
+El arrendatario deposita en este acto la cantidad de {data["importe_fianza"]:,.2f} 
+EUROS ({data["importe_fianza"]:,.2f}€) en concepto de fianza.
+
+Esta fianza le será devuelta al arrendatario al término del contrato, previa 
+deducción de los gastos que procedan por deterioros o rentas pendientes.
+
+QUINTA.- SUMINISTROS Y SERVICIOS
+Los suministros incluidos en la renta son: {suministros_texto}.
+
+Los demás suministros serán de cuenta del arrendatario.
+
+SEXTA.- FINALIZACIÓN
+A la finalización del plazo, el arrendatario se compromete a entregar la 
+vivienda en las mismas condiciones en que la recibió, salvo el desgaste 
+por uso normal.
+
+SÉPTIMA.- LEGISLACIÓN APLICABLE
+El presente contrato se rige por el artículo 3 de la LAU 29/1994 y 
+el Código Civil.
+
+══════════════════════════════════════════════════════════════
+
+Y en prueba de conformidad, firman el presente contrato en el lugar 
+y fecha indicados.
+
+Granada, a ___ de ______________ de 20__
+
+
+EL ARRENDADOR                           EL ARRENDATARIO
+
+
+_____________________                   _____________________
+Fdo.: [Nombre]                          Fdo.: [Nombre]
+DNI: [DNI]                              DNI: [DNI]
+
+══════════════════════════════════════════════════════════════
+Contrato generado con Nolasco Capital - Herramientas Legales
+Documento orientativo LAU 29/1994 - Consulte con abogado
+══════════════════════════════════════════════════════════════
+"""
+
+def generar_contrato_habitacion(data):
+    return f"""
+══════════════════════════════════════════════════════════════
+CONTRATO DE ARRENDAMIENTO DE HABITACIÓN
+Ley 29/1994 de Arrendamientos Urbanos (LAU)
+══════════════════════════════════════════════════════════════
+
+REUNIDOS
+
+De una parte, ________________________, con DNI ______________, 
+en calidad de ARRENDADOR.
+
+De otra parte, ________________________, con DNI ______________, 
+en calidad de ARRENDATARIO.
+
+EXPONEN
+
+PRIMERO.- Que el ARRENDADOR es titular del derecho de uso de la vivienda 
+sita en {data["direccion"]}, referencia catastral {data["ref_catastral"]}.
+
+SEGUNDO.- Que el ARRENDADOR cede en arrendamiento una HABITACIÓN de la 
+vivienda, manteniendo el uso compartido de las zonas comunes (cocina, 
+baño, salón).
+
+TERCERO.- Que ambas partes convienen formalizar el presente contrato 
+conforme a las siguientes:
+
+══════════════════════════════════════════════════════════════
+CLÁUSULAS
+══════════════════════════════════════════════════════════════
+
+PRIMERA.- OBJETO
+El arrendador cede al arrendatario el uso de UNA HABITACIÓN de aproximadamente 
+_____ m², con derecho a uso compartido de zonas comunes (cocina, baño, salón).
+
+SEGUNDA.- DURACIÓN
+El contrato tendrá una duración de {data["duracion_meses"]} {"mes" if data["duracion_meses"] == 1 else "meses"}, 
+comenzando el día ___/___/______ y finalizando el día ___/___/______.
+
+TERCERA.- RENTA
+La renta mensual es de {data["renta"]:,.2f} EUROS ({data["renta"]:,.2f}€), 
+que incluye el uso de la habitación y zonas comunes.
+
+Los suministros (agua, luz, gas, internet) están INCLUIDOS en la renta.
+
+CUARTA.- FIANZA
+Fianza: {data["importe_fianza"]:,.2f} EUROS.
+
+QUINTA.- NORMAS DE CONVIVENCIA
+- Respetar los horarios de descanso (silencio de 23:00 a 8:00h)
+- Mantener las zonas comunes limpias y ordenadas
+- No realizar fiestas o ruidos molestos
+- Avisar con antelación de visitas que pernocten
+
+SEXTA.- DESISTIMIENTO
+Cualquiera de las partes podrá desistir del contrato con 30 días de preaviso.
+
+══════════════════════════════════════════════════════════════
+
+Granada, a ___ de ______________ de 20__
+
+
+EL ARRENDADOR                           EL ARRENDATARIO
+
+
+_____________________                   _____________________
+
+══════════════════════════════════════════════════════════════
+Contrato generado con Nolasco Capital - Herramientas Legales
+══════════════════════════════════════════════════════════════
+"""
