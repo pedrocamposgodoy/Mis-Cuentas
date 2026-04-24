@@ -736,6 +736,324 @@ def generar_pdf_modelo100(inmueble_data, modelo):
 # PANTALLA 1 — TORRE DE CONTROL
 # KPIs generales, rentabilidad por activo, lucro cesante, alertas
 # ================================================================
+def generar_contrato_larga_duracion(data):
+    suministros_incluidos = []
+    if data["incluye_luz"]: suministros_incluidos.append("electricidad")
+    if data["incluye_gas"]: suministros_incluidos.append("gas")
+    if data["incluye_agua"]: suministros_incluidos.append("agua")
+    if data["incluye_internet"]: suministros_incluidos.append("internet")
+    
+    suministros_texto = ", ".join(suministros_incluidos) if suministros_incluidos else "ninguno"
+    
+    ipc_clausula = """ACTUALIZACIÓN DE RENTA: La renta se actualizará anualmente según la variación del Índice de Precios al Consumo (IPC) conforme al artículo 18 de la LAU.""" if data["ipc"] else """ACTUALIZACIÓN DE RENTA: La renta permanecerá fija durante toda la duración del contrato."""
+    
+    mascotas_clausula = f"""MASCOTAS: {data["mascotas"]}."""
+    
+    return f"""
+══════════════════════════════════════════════════════════════
+CONTRATO DE ARRENDAMIENTO DE VIVIENDA
+Ley 29/1994 de Arrendamientos Urbanos (LAU)
+══════════════════════════════════════════════════════════════
+
+REUNIDOS
+
+De una parte, ________________________, con DNI ______________, 
+en calidad de ARRENDADOR.
+
+De otra parte, ________________________, con DNI ______________, 
+en calidad de ARRENDATARIO.
+
+EXPONEN
+
+PRIMERO.- Que el ARRENDADOR es propietario del inmueble sito en 
+{data["direccion"]}, con referencia catastral {data["ref_catastral"]}, 
+de {data["m2"]} m² construidos.
+
+SEGUNDO.- Que ambas partes convienen formalizar el presente contrato 
+de arrendamiento de vivienda conforme a las siguientes:
+
+══════════════════════════════════════════════════════════════
+CLÁUSULAS
+══════════════════════════════════════════════════════════════
+
+PRIMERA.- OBJETO DEL CONTRATO
+El arrendador cede al arrendatario el uso y disfrute de la vivienda 
+descrita, destinada a satisfacer la necesidad permanente de vivienda 
+del arrendatario, conforme al artículo 2 de la LAU.
+
+SEGUNDA.- DURACIÓN
+El presente contrato tendrá una duración de {data["duracion_anos"]} años, 
+comenzando el día ___/___/______ y finalizando el día ___/___/______.
+
+Conforme al artículo 9 de la LAU, si a la finalización del plazo pactado 
+el arrendatario permanece en el uso de la vivienda por un plazo de al menos 
+quince días con conocimiento y sin oposición del arrendador, el contrato se 
+entenderá prorrogado por plazos anuales hasta un máximo de tres años más, 
+salvo que el arrendatario manifieste su voluntad de no renovar con treinta 
+días de antelación.
+
+TERCERA.- RENTA
+La renta mensual pactada es de {data["renta"]:,.2f} EUROS ({data["renta"]:,.2f}€), 
+que el arrendatario abonará mediante transferencia bancaria antes del día 5 
+de cada mes en la cuenta facilitada por el arrendador.
+
+{ipc_clausula}
+
+CUARTA.- FIANZA
+El arrendatario deposita en este acto la cantidad de {data["importe_fianza"]:,.2f} 
+EUROS ({data["importe_fianza"]:,.2f}€), equivalente a {data["fianza_meses"]} {"mes" if data["fianza_meses"] == 1 else "meses"} 
+de renta, en concepto de fianza, conforme al artículo 36 de la LAU.
+
+Esta fianza será depositada por el arrendador en el organismo competente de 
+la Comunidad Autónoma y le será devuelta al arrendatario al término del 
+contrato, previa deducción de los gastos que procedan por deterioros 
+imputables al arrendatario o por rentas pendientes.
+
+QUINTA.- SUMINISTROS Y SERVICIOS
+Los suministros incluidos en la renta son: {suministros_texto}.
+
+Los demás suministros y servicios (agua, gas, electricidad, internet, 
+comunidad de propietarios, etc.) que no estén incluidos serán de cuenta 
+del arrendatario, quien deberá contratar directamente con las compañías 
+suministradoras y abonar puntualmente los recibos correspondientes.
+
+SEXTA.- GASTOS DE COMUNIDAD E IBI
+Los gastos de comunidad de propietarios, IBI y demás impuestos que graven 
+directamente la vivienda serán de cuenta del arrendador, salvo pacto expreso 
+en contrario.
+
+SÉPTIMA.- OBRAS Y REPARACIONES
+Serán de cuenta del arrendador las reparaciones necesarias para conservar 
+la vivienda en las condiciones de habitabilidad, salvo cuando el deterioro 
+sea imputable al arrendatario (artículo 21 LAU).
+
+El arrendatario no podrá realizar obras sin consentimiento escrito del 
+arrendador.
+
+OCTAVA.- CESIÓN Y SUBARRIENDO
+El arrendatario no podrá subarrendar ni ceder el contrato sin consentimiento 
+escrito del arrendador (artículo 8 LAU).
+
+NOVENA.- {mascotas_clausula}
+
+DÉCIMA.- RESOLUCIÓN DEL CONTRATO
+El contrato podrá resolverse por las causas previstas en el artículo 27 de la LAU:
+- Falta de pago de la renta
+- Falta de pago de la fianza
+- Subarriendo o cesión no autorizados
+- Daños causados dolosamente en la finca
+- Realización de actividades molestas, insalubres, nocivas o peligrosas
+
+DECIMOPRIMERA.- DESISTIMIENTO DEL ARRENDATARIO
+Transcurridos al menos seis meses de contrato, el arrendatario podrá desistir 
+del contrato notificándolo al arrendador con al menos treinta días de antelación 
+(artículo 11 LAU). Si el arrendatario desiste antes de transcurridos cinco años, 
+deberá indemnizar al arrendador con una cantidad equivalente a una mensualidad 
+por cada año que reste hasta completar cinco años, prorrateándose por meses los 
+períodos inferiores al año.
+
+DECIMOSEGUNDA.- NOTIFICACIONES
+Las notificaciones se realizarán en los domicilios indicados por las partes, 
+salvo que se comunique por escrito un cambio de domicilio.
+
+DECIMOTERCERA.- LEGISLACIÓN APLICABLE Y JURISDICCIÓN
+El presente contrato se rige por la Ley 29/1994 de Arrendamientos Urbanos y 
+disposiciones complementarias. Para cuantas cuestiones pudieran derivarse del 
+presente contrato, las partes se someten a los Juzgados y Tribunales de la 
+ciudad de Granada.
+
+══════════════════════════════════════════════════════════════
+
+Y en prueba de conformidad, firman el presente contrato por duplicado 
+ejemplar en el lugar y fecha indicados.
+
+Granada, a ___ de ______________ de 20__
+
+
+EL ARRENDADOR                           EL ARRENDATARIO
+
+
+_____________________                   _____________________
+Fdo.: [Nombre]                          Fdo.: [Nombre]
+DNI: [DNI]                              DNI: [DNI]
+
+══════════════════════════════════════════════════════════════
+Contrato generado con Nolasco Capital - Herramientas Legales
+Documento orientativo LAU 29/1994 - Consulte con abogado
+══════════════════════════════════════════════════════════════
+"""
+
+def generar_contrato_temporada(data):
+    suministros_incluidos = []
+    if data["incluye_luz"]: suministros_incluidos.append("electricidad")
+    if data["incluye_gas"]: suministros_incluidos.append("gas")
+    if data["incluye_agua"]: suministros_incluidos.append("agua")
+    if data["incluye_internet"]: suministros_incluidos.append("internet")
+    
+    suministros_texto = ", ".join(suministros_incluidos) if suministros_incluidos else "ninguno"
+    
+    return f"""
+══════════════════════════════════════════════════════════════
+CONTRATO DE ARRENDAMIENTO DE TEMPORADA
+Ley 29/1994 de Arrendamientos Urbanos (LAU) - Art. 3
+══════════════════════════════════════════════════════════════
+
+REUNIDOS
+
+De una parte, ________________________, con DNI ______________, 
+en calidad de ARRENDADOR.
+
+De otra parte, ________________________, con DNI ______________, 
+en calidad de ARRENDATARIO.
+
+EXPONEN
+
+PRIMERO.- Que el ARRENDADOR es propietario del inmueble sito en 
+{data["direccion"]}, con referencia catastral {data["ref_catastral"]}, 
+de {data["m2"]} m² construidos.
+
+SEGUNDO.- Que el ARRENDATARIO precisa el uso temporal de la vivienda 
+por motivos de [estudios/trabajo temporal/turismo/otros], NO siendo 
+esta su vivienda habitual permanente.
+
+TERCERO.- Que ambas partes convienen formalizar el presente contrato 
+de arrendamiento de temporada conforme a las siguientes:
+
+══════════════════════════════════════════════════════════════
+CLÁUSULAS
+══════════════════════════════════════════════════════════════
+
+PRIMERA.- NATURALEZA DEL CONTRATO
+El presente es un contrato de arrendamiento para uso distinto del de 
+vivienda habitual, regulado por el artículo 3 de la LAU y el Código Civil.
+
+SEGUNDA.- DURACIÓN
+El contrato tendrá una duración de {data["duracion_meses"]} {"mes" if data["duracion_meses"] == 1 else "meses"}, 
+comenzando el día ___/___/______ y finalizando el día ___/___/______.
+
+A la finalización del plazo, el contrato se extinguirá automáticamente 
+SIN PRÓRROGA OBLIGATORIA, debiendo el arrendatario desalojar la vivienda.
+
+TERCERA.- RENTA
+La renta mensual pactada es de {data["renta"]:,.2f} EUROS ({data["renta"]:,.2f}€), 
+que el arrendatario abonará mediante transferencia bancaria antes del día 5 
+de cada mes.
+
+La renta permanecerá fija durante toda la duración del contrato.
+
+CUARTA.- FIANZA
+El arrendatario deposita en este acto la cantidad de {data["importe_fianza"]:,.2f} 
+EUROS ({data["importe_fianza"]:,.2f}€) en concepto de fianza.
+
+Esta fianza le será devuelta al arrendatario al término del contrato, previa 
+deducción de los gastos que procedan por deterioros o rentas pendientes.
+
+QUINTA.- SUMINISTROS Y SERVICIOS
+Los suministros incluidos en la renta son: {suministros_texto}.
+
+Los demás suministros serán de cuenta del arrendatario.
+
+SEXTA.- FINALIZACIÓN
+A la finalización del plazo, el arrendatario se compromete a entregar la 
+vivienda en las mismas condiciones en que la recibió, salvo el desgaste 
+por uso normal.
+
+SÉPTIMA.- LEGISLACIÓN APLICABLE
+El presente contrato se rige por el artículo 3 de la LAU 29/1994 y 
+el Código Civil.
+
+══════════════════════════════════════════════════════════════
+
+Y en prueba de conformidad, firman el presente contrato en el lugar 
+y fecha indicados.
+
+Granada, a ___ de ______________ de 20__
+
+
+EL ARRENDADOR                           EL ARRENDATARIO
+
+
+_____________________                   _____________________
+Fdo.: [Nombre]                          Fdo.: [Nombre]
+DNI: [DNI]                              DNI: [DNI]
+
+══════════════════════════════════════════════════════════════
+Contrato generado con Nolasco Capital - Herramientas Legales
+Documento orientativo LAU 29/1994 - Consulte con abogado
+══════════════════════════════════════════════════════════════
+"""
+
+def generar_contrato_habitacion(data):
+    return f"""
+══════════════════════════════════════════════════════════════
+CONTRATO DE ARRENDAMIENTO DE HABITACIÓN
+Ley 29/1994 de Arrendamientos Urbanos (LAU)
+══════════════════════════════════════════════════════════════
+
+REUNIDOS
+
+De una parte, ________________________, con DNI ______________, 
+en calidad de ARRENDADOR.
+
+De otra parte, ________________________, con DNI ______________, 
+en calidad de ARRENDATARIO.
+
+EXPONEN
+
+PRIMERO.- Que el ARRENDADOR es titular del derecho de uso de la vivienda 
+sita en {data["direccion"]}, referencia catastral {data["ref_catastral"]}.
+
+SEGUNDO.- Que el ARRENDADOR cede en arrendamiento una HABITACIÓN de la 
+vivienda, manteniendo el uso compartido de las zonas comunes (cocina, 
+baño, salón).
+
+TERCERO.- Que ambas partes convienen formalizar el presente contrato 
+conforme a las siguientes:
+
+══════════════════════════════════════════════════════════════
+CLÁUSULAS
+══════════════════════════════════════════════════════════════
+
+PRIMERA.- OBJETO
+El arrendador cede al arrendatario el uso de UNA HABITACIÓN de aproximadamente 
+_____ m², con derecho a uso compartido de zonas comunes (cocina, baño, salón).
+
+SEGUNDA.- DURACIÓN
+El contrato tendrá una duración de {data["duracion_meses"]} {"mes" if data["duracion_meses"] == 1 else "meses"}, 
+comenzando el día ___/___/______ y finalizando el día ___/___/______.
+
+TERCERA.- RENTA
+La renta mensual es de {data["renta"]:,.2f} EUROS ({data["renta"]:,.2f}€), 
+que incluye el uso de la habitación y zonas comunes.
+
+Los suministros (agua, luz, gas, internet) están INCLUIDOS en la renta.
+
+CUARTA.- FIANZA
+Fianza: {data["importe_fianza"]:,.2f} EUROS.
+
+QUINTA.- NORMAS DE CONVIVENCIA
+- Respetar los horarios de descanso (silencio de 23:00 a 8:00h)
+- Mantener las zonas comunes limpias y ordenadas
+- No realizar fiestas o ruidos molestos
+- Avisar con antelación de visitas que pernocten
+
+SEXTA.- DESISTIMIENTO
+Cualquiera de las partes podrá desistir del contrato con 30 días de preaviso.
+
+══════════════════════════════════════════════════════════════
+
+Granada, a ___ de ______________ de 20__
+
+
+EL ARRENDADOR                           EL ARRENDATARIO
+
+
+_____________________                   _____________________
+
+══════════════════════════════════════════════════════════════
+Contrato generado con Nolasco Capital - Herramientas Legales
+══════════════════════════════════════════════════════════════
+"""
 if menu == "Torre de Control":
     st.markdown('<div class="brand-header">Torre de Control</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
@@ -2428,6 +2746,10 @@ elif menu == "Asesor Patrimonial IA":
         st.success("✅ No hay riesgos detectados en este momento. Tu cartera está en buen estado. Vuelve a consultar en el próximo ciclo de renovaciones.")
 
 # ================================================================
+# FUNCIONES GENERADORAS DE CONTRATOS (antes de la sección Legal)
+# ================================================================
+
+# ================================================================
 # LEGAL — GENERADOR DE CONTRATOS
 # ================================================================
 elif menu == "Legal":
@@ -2805,325 +3127,3 @@ elif menu == "Legal":
         El contenido generado es informativo y no vinculante.
     </div>
     """, unsafe_allow_html=True)
-
-# ================================================================
-# FUNCIONES GENERADORAS DE CONTRATOS
-# ================================================================
-def generar_contrato_larga_duracion(data):
-    suministros_incluidos = []
-    if data["incluye_luz"]: suministros_incluidos.append("electricidad")
-    if data["incluye_gas"]: suministros_incluidos.append("gas")
-    if data["incluye_agua"]: suministros_incluidos.append("agua")
-    if data["incluye_internet"]: suministros_incluidos.append("internet")
-    
-    suministros_texto = ", ".join(suministros_incluidos) if suministros_incluidos else "ninguno"
-    
-    ipc_clausula = """ACTUALIZACIÓN DE RENTA: La renta se actualizará anualmente según la variación del Índice de Precios al Consumo (IPC) conforme al artículo 18 de la LAU.""" if data["ipc"] else """ACTUALIZACIÓN DE RENTA: La renta permanecerá fija durante toda la duración del contrato."""
-    
-    mascotas_clausula = f"""MASCOTAS: {data["mascotas"]}."""
-    
-    return f"""
-══════════════════════════════════════════════════════════════
-CONTRATO DE ARRENDAMIENTO DE VIVIENDA
-Ley 29/1994 de Arrendamientos Urbanos (LAU)
-══════════════════════════════════════════════════════════════
-
-REUNIDOS
-
-De una parte, ________________________, con DNI ______________, 
-en calidad de ARRENDADOR.
-
-De otra parte, ________________________, con DNI ______________, 
-en calidad de ARRENDATARIO.
-
-EXPONEN
-
-PRIMERO.- Que el ARRENDADOR es propietario del inmueble sito en 
-{data["direccion"]}, con referencia catastral {data["ref_catastral"]}, 
-de {data["m2"]} m² construidos.
-
-SEGUNDO.- Que ambas partes convienen formalizar el presente contrato 
-de arrendamiento de vivienda conforme a las siguientes:
-
-══════════════════════════════════════════════════════════════
-CLÁUSULAS
-══════════════════════════════════════════════════════════════
-
-PRIMERA.- OBJETO DEL CONTRATO
-El arrendador cede al arrendatario el uso y disfrute de la vivienda 
-descrita, destinada a satisfacer la necesidad permanente de vivienda 
-del arrendatario, conforme al artículo 2 de la LAU.
-
-SEGUNDA.- DURACIÓN
-El presente contrato tendrá una duración de {data["duracion_anos"]} años, 
-comenzando el día ___/___/______ y finalizando el día ___/___/______.
-
-Conforme al artículo 9 de la LAU, si a la finalización del plazo pactado 
-el arrendatario permanece en el uso de la vivienda por un plazo de al menos 
-quince días con conocimiento y sin oposición del arrendador, el contrato se 
-entenderá prorrogado por plazos anuales hasta un máximo de tres años más, 
-salvo que el arrendatario manifieste su voluntad de no renovar con treinta 
-días de antelación.
-
-TERCERA.- RENTA
-La renta mensual pactada es de {data["renta"]:,.2f} EUROS ({data["renta"]:,.2f}€), 
-que el arrendatario abonará mediante transferencia bancaria antes del día 5 
-de cada mes en la cuenta facilitada por el arrendador.
-
-{ipc_clausula}
-
-CUARTA.- FIANZA
-El arrendatario deposita en este acto la cantidad de {data["importe_fianza"]:,.2f} 
-EUROS ({data["importe_fianza"]:,.2f}€), equivalente a {data["fianza_meses"]} {"mes" if data["fianza_meses"] == 1 else "meses"} 
-de renta, en concepto de fianza, conforme al artículo 36 de la LAU.
-
-Esta fianza será depositada por el arrendador en el organismo competente de 
-la Comunidad Autónoma y le será devuelta al arrendatario al término del 
-contrato, previa deducción de los gastos que procedan por deterioros 
-imputables al arrendatario o por rentas pendientes.
-
-QUINTA.- SUMINISTROS Y SERVICIOS
-Los suministros incluidos en la renta son: {suministros_texto}.
-
-Los demás suministros y servicios (agua, gas, electricidad, internet, 
-comunidad de propietarios, etc.) que no estén incluidos serán de cuenta 
-del arrendatario, quien deberá contratar directamente con las compañías 
-suministradoras y abonar puntualmente los recibos correspondientes.
-
-SEXTA.- GASTOS DE COMUNIDAD E IBI
-Los gastos de comunidad de propietarios, IBI y demás impuestos que graven 
-directamente la vivienda serán de cuenta del arrendador, salvo pacto expreso 
-en contrario.
-
-SÉPTIMA.- OBRAS Y REPARACIONES
-Serán de cuenta del arrendador las reparaciones necesarias para conservar 
-la vivienda en las condiciones de habitabilidad, salvo cuando el deterioro 
-sea imputable al arrendatario (artículo 21 LAU).
-
-El arrendatario no podrá realizar obras sin consentimiento escrito del 
-arrendador.
-
-OCTAVA.- CESIÓN Y SUBARRIENDO
-El arrendatario no podrá subarrendar ni ceder el contrato sin consentimiento 
-escrito del arrendador (artículo 8 LAU).
-
-NOVENA.- {mascotas_clausula}
-
-DÉCIMA.- RESOLUCIÓN DEL CONTRATO
-El contrato podrá resolverse por las causas previstas en el artículo 27 de la LAU:
-- Falta de pago de la renta
-- Falta de pago de la fianza
-- Subarriendo o cesión no autorizados
-- Daños causados dolosamente en la finca
-- Realización de actividades molestas, insalubres, nocivas o peligrosas
-
-DECIMOPRIMERA.- DESISTIMIENTO DEL ARRENDATARIO
-Transcurridos al menos seis meses de contrato, el arrendatario podrá desistir 
-del contrato notificándolo al arrendador con al menos treinta días de antelación 
-(artículo 11 LAU). Si el arrendatario desiste antes de transcurridos cinco años, 
-deberá indemnizar al arrendador con una cantidad equivalente a una mensualidad 
-por cada año que reste hasta completar cinco años, prorrateándose por meses los 
-períodos inferiores al año.
-
-DECIMOSEGUNDA.- NOTIFICACIONES
-Las notificaciones se realizarán en los domicilios indicados por las partes, 
-salvo que se comunique por escrito un cambio de domicilio.
-
-DECIMOTERCERA.- LEGISLACIÓN APLICABLE Y JURISDICCIÓN
-El presente contrato se rige por la Ley 29/1994 de Arrendamientos Urbanos y 
-disposiciones complementarias. Para cuantas cuestiones pudieran derivarse del 
-presente contrato, las partes se someten a los Juzgados y Tribunales de la 
-ciudad de Granada.
-
-══════════════════════════════════════════════════════════════
-
-Y en prueba de conformidad, firman el presente contrato por duplicado 
-ejemplar en el lugar y fecha indicados.
-
-Granada, a ___ de ______________ de 20__
-
-
-EL ARRENDADOR                           EL ARRENDATARIO
-
-
-_____________________                   _____________________
-Fdo.: [Nombre]                          Fdo.: [Nombre]
-DNI: [DNI]                              DNI: [DNI]
-
-══════════════════════════════════════════════════════════════
-Contrato generado con Nolasco Capital - Herramientas Legales
-Documento orientativo LAU 29/1994 - Consulte con abogado
-══════════════════════════════════════════════════════════════
-"""
-
-def generar_contrato_temporada(data):
-    suministros_incluidos = []
-    if data["incluye_luz"]: suministros_incluidos.append("electricidad")
-    if data["incluye_gas"]: suministros_incluidos.append("gas")
-    if data["incluye_agua"]: suministros_incluidos.append("agua")
-    if data["incluye_internet"]: suministros_incluidos.append("internet")
-    
-    suministros_texto = ", ".join(suministros_incluidos) if suministros_incluidos else "ninguno"
-    
-    return f"""
-══════════════════════════════════════════════════════════════
-CONTRATO DE ARRENDAMIENTO DE TEMPORADA
-Ley 29/1994 de Arrendamientos Urbanos (LAU) - Art. 3
-══════════════════════════════════════════════════════════════
-
-REUNIDOS
-
-De una parte, ________________________, con DNI ______________, 
-en calidad de ARRENDADOR.
-
-De otra parte, ________________________, con DNI ______________, 
-en calidad de ARRENDATARIO.
-
-EXPONEN
-
-PRIMERO.- Que el ARRENDADOR es propietario del inmueble sito en 
-{data["direccion"]}, con referencia catastral {data["ref_catastral"]}, 
-de {data["m2"]} m² construidos.
-
-SEGUNDO.- Que el ARRENDATARIO precisa el uso temporal de la vivienda 
-por motivos de [estudios/trabajo temporal/turismo/otros], NO siendo 
-esta su vivienda habitual permanente.
-
-TERCERO.- Que ambas partes convienen formalizar el presente contrato 
-de arrendamiento de temporada conforme a las siguientes:
-
-══════════════════════════════════════════════════════════════
-CLÁUSULAS
-══════════════════════════════════════════════════════════════
-
-PRIMERA.- NATURALEZA DEL CONTRATO
-El presente es un contrato de arrendamiento para uso distinto del de 
-vivienda habitual, regulado por el artículo 3 de la LAU y el Código Civil.
-
-SEGUNDA.- DURACIÓN
-El contrato tendrá una duración de {data["duracion_meses"]} {"mes" if data["duracion_meses"] == 1 else "meses"}, 
-comenzando el día ___/___/______ y finalizando el día ___/___/______.
-
-A la finalización del plazo, el contrato se extinguirá automáticamente 
-SIN PRÓRROGA OBLIGATORIA, debiendo el arrendatario desalojar la vivienda.
-
-TERCERA.- RENTA
-La renta mensual pactada es de {data["renta"]:,.2f} EUROS ({data["renta"]:,.2f}€), 
-que el arrendatario abonará mediante transferencia bancaria antes del día 5 
-de cada mes.
-
-La renta permanecerá fija durante toda la duración del contrato.
-
-CUARTA.- FIANZA
-El arrendatario deposita en este acto la cantidad de {data["importe_fianza"]:,.2f} 
-EUROS ({data["importe_fianza"]:,.2f}€) en concepto de fianza.
-
-Esta fianza le será devuelta al arrendatario al término del contrato, previa 
-deducción de los gastos que procedan por deterioros o rentas pendientes.
-
-QUINTA.- SUMINISTROS Y SERVICIOS
-Los suministros incluidos en la renta son: {suministros_texto}.
-
-Los demás suministros serán de cuenta del arrendatario.
-
-SEXTA.- FINALIZACIÓN
-A la finalización del plazo, el arrendatario se compromete a entregar la 
-vivienda en las mismas condiciones en que la recibió, salvo el desgaste 
-por uso normal.
-
-SÉPTIMA.- LEGISLACIÓN APLICABLE
-El presente contrato se rige por el artículo 3 de la LAU 29/1994 y 
-el Código Civil.
-
-══════════════════════════════════════════════════════════════
-
-Y en prueba de conformidad, firman el presente contrato en el lugar 
-y fecha indicados.
-
-Granada, a ___ de ______________ de 20__
-
-
-EL ARRENDADOR                           EL ARRENDATARIO
-
-
-_____________________                   _____________________
-Fdo.: [Nombre]                          Fdo.: [Nombre]
-DNI: [DNI]                              DNI: [DNI]
-
-══════════════════════════════════════════════════════════════
-Contrato generado con Nolasco Capital - Herramientas Legales
-Documento orientativo LAU 29/1994 - Consulte con abogado
-══════════════════════════════════════════════════════════════
-"""
-
-def generar_contrato_habitacion(data):
-    return f"""
-══════════════════════════════════════════════════════════════
-CONTRATO DE ARRENDAMIENTO DE HABITACIÓN
-Ley 29/1994 de Arrendamientos Urbanos (LAU)
-══════════════════════════════════════════════════════════════
-
-REUNIDOS
-
-De una parte, ________________________, con DNI ______________, 
-en calidad de ARRENDADOR.
-
-De otra parte, ________________________, con DNI ______________, 
-en calidad de ARRENDATARIO.
-
-EXPONEN
-
-PRIMERO.- Que el ARRENDADOR es titular del derecho de uso de la vivienda 
-sita en {data["direccion"]}, referencia catastral {data["ref_catastral"]}.
-
-SEGUNDO.- Que el ARRENDADOR cede en arrendamiento una HABITACIÓN de la 
-vivienda, manteniendo el uso compartido de las zonas comunes (cocina, 
-baño, salón).
-
-TERCERO.- Que ambas partes convienen formalizar el presente contrato 
-conforme a las siguientes:
-
-══════════════════════════════════════════════════════════════
-CLÁUSULAS
-══════════════════════════════════════════════════════════════
-
-PRIMERA.- OBJETO
-El arrendador cede al arrendatario el uso de UNA HABITACIÓN de aproximadamente 
-_____ m², con derecho a uso compartido de zonas comunes (cocina, baño, salón).
-
-SEGUNDA.- DURACIÓN
-El contrato tendrá una duración de {data["duracion_meses"]} {"mes" if data["duracion_meses"] == 1 else "meses"}, 
-comenzando el día ___/___/______ y finalizando el día ___/___/______.
-
-TERCERA.- RENTA
-La renta mensual es de {data["renta"]:,.2f} EUROS ({data["renta"]:,.2f}€), 
-que incluye el uso de la habitación y zonas comunes.
-
-Los suministros (agua, luz, gas, internet) están INCLUIDOS en la renta.
-
-CUARTA.- FIANZA
-Fianza: {data["importe_fianza"]:,.2f} EUROS.
-
-QUINTA.- NORMAS DE CONVIVENCIA
-- Respetar los horarios de descanso (silencio de 23:00 a 8:00h)
-- Mantener las zonas comunes limpias y ordenadas
-- No realizar fiestas o ruidos molestos
-- Avisar con antelación de visitas que pernocten
-
-SEXTA.- DESISTIMIENTO
-Cualquiera de las partes podrá desistir del contrato con 30 días de preaviso.
-
-══════════════════════════════════════════════════════════════
-
-Granada, a ___ de ______________ de 20__
-
-
-EL ARRENDADOR                           EL ARRENDATARIO
-
-
-_____________________                   _____________________
-
-══════════════════════════════════════════════════════════════
-Contrato generado con Nolasco Capital - Herramientas Legales
-══════════════════════════════════════════════════════════════
-"""
