@@ -2192,12 +2192,16 @@ elif menu == "Datos de la Cartera":
                         df_nuevo = pd.concat([st.session_state.df_inm_persistent, pd.DataFrame([nuevo_inmueble])], ignore_index=True)
                         st.session_state.df_inm_persistent = df_nuevo
                         guardar_inmuebles(df_nuevo)
+                        st.toast(f"✅ '{nombre}' guardado en Supabase", icon="✅")
                         st.success(f"✅ Inmueble '{nombre}' añadido correctamente")
+                        import time; time.sleep(1.5)
                     else:
                         for col, val in nuevo_inmueble.items():
                             st.session_state.df_inm_persistent.at[st.session_state.inmueble_editando, col] = val
                         guardar_inmuebles(st.session_state.df_inm_persistent)
+                        st.toast(f"✅ '{nombre}' actualizado en Supabase", icon="✅")
                         st.success(f"✅ Inmueble '{nombre}' actualizado correctamente")
+                        import time; time.sleep(1.5)
                     
                     st.session_state.modo_cartera = "lista"
                     st.rerun()
