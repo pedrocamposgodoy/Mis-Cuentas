@@ -122,7 +122,7 @@ def leer_movimientos():
 # ─── FUNCIONES DE ESCRITURA ──────────────────────────────────────
 
 def guardar_inmuebles(df):
-    """Guarda DataFrame de inmuebles en Supabase."""
+    """Guarda DataFrame de inmuebles en Supabase (delete + reinsert)."""
     rename_map = {
         'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
         'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
@@ -153,35 +153,18 @@ def guardar_inmuebles(df):
         df_sb = df_sb.where(pd.notna(df_sb), None)
         records = df_sb.to_dict(orient='records')
 
-        # Obtener todos los nombres existentes en Supabase
-        r_all = requests.get(
-            f"{SUPABASE_URL}/rest/v1/inmuebles?select=id,nombre",
-            headers=HEADERS
+        # Borrar todos y reinsertar (igual que movimientos)
+        requests.delete(
+            f"{SUPABASE_URL}/rest/v1/inmuebles?id=gt.0",
+            headers={**HEADERS, 'Prefer': 'return=minimal'}
         )
-        existentes = {}
-        if r_all.status_code == 200:
-            for item in r_all.json():
-                existentes[item['nombre']] = item['id']
 
-        headers_patch = {**HEADERS, 'Prefer': 'return=minimal'}
-
-        for record in records:
-            nombre = record.get('nombre', '')
-            if nombre in existentes:
-                # Actualizar por ID
-                inm_id = existentes[nombre]
-                requests.patch(
-                    f"{SUPABASE_URL}/rest/v1/inmuebles?id=eq.{inm_id}",
-                    headers=headers_patch,
-                    json=record
-                )
-            else:
-                # Insertar nuevo
-                r_insert = requests.post(
-                    f"{SUPABASE_URL}/rest/v1/inmuebles",
-                    headers=HEADERS,
-                    json=record
-                )
+        if records:
+            requests.post(
+                f"{SUPABASE_URL}/rest/v1/inmuebles",
+                headers=HEADERS,
+                json=records
+            )
         return True
     except Exception as e:
         st.error(f"Error guardando inmuebles: {e}")
