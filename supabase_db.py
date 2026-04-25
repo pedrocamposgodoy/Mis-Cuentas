@@ -181,10 +181,10 @@ def guardar_inmuebles(df):
                 )
         return True
     except Exception as e:
-        st.error(f"Error guardando inmuebles: {e}")
-        return False
-
-
+    st.error(f"Error guardando inmuebles: {e}")
+    st.write(f"DEBUG: {str(e)}")
+    return False
+ 
 def guardar_movimientos_completo(df):
     """Guarda DataFrame de movimientos COMPLETO en Supabase (borra y reinserta)."""
     try:
