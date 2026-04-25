@@ -124,9 +124,6 @@ def leer_movimientos():
 def guardar_inmuebles(df):
     """Temporalmente desactivado - solo guarda en session_state, no en Supabase."""
     return True
-    except Exception as e:
-        st.error(f"Error guardando inmuebles: {e}")
-        return False
 
 
 def guardar_movimientos_completo(df):
