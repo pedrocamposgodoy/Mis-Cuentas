@@ -122,7 +122,7 @@ def leer_movimientos():
 # ─── FUNCIONES DE ESCRITURA ──────────────────────────────────────
 
 def guardar_inmuebles(df):
-    """Guarda DataFrame de inmuebles en Supabase usando upsert por nombre."""
+    """Guarda DataFrame de inmuebles en Supabase."""
     rename_map = {
         'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
         'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
@@ -153,38 +153,41 @@ def guardar_inmuebles(df):
         df_sb = df_sb.where(pd.notna(df_sb), None)
         records = df_sb.to_dict(orient='records')
 
-        headers_upsert = {**HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal'}
+        # Obtener todos los nombres existentes en Supabase
+        r_all = requests.get(
+            f"{SUPABASE_URL}/rest/v1/inmuebles?select=id,nombre",
+            headers=HEADERS
+        )
+        existentes = {}
+        if r_all.status_code == 200:
+            for item in r_all.json():
+                existentes[item['nombre']] = item['id']
+
+        headers_patch = {**HEADERS, 'Prefer': 'return=minimal'}
 
         for record in records:
             nombre = record.get('nombre', '')
-            # Buscar si ya existe por nombre
-            r_check = requests.get(
-                f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{requests.utils.quote(nombre)}&select=id",
-                headers=HEADERS
-            )
-            existing = r_check.json() if r_check.status_code == 200 else []
-
-            if existing:
-                # Actualizar
-                inm_id = existing[0]['id']
+            if nombre in existentes:
+                # Actualizar por ID
+                inm_id = existentes[nombre]
                 requests.patch(
                     f"{SUPABASE_URL}/rest/v1/inmuebles?id=eq.{inm_id}",
-                    headers=headers_upsert,
+                    headers=headers_patch,
                     json=record
                 )
             else:
                 # Insertar nuevo
-                requests.post(
+                r_insert = requests.post(
                     f"{SUPABASE_URL}/rest/v1/inmuebles",
                     headers=HEADERS,
                     json=record
                 )
         return True
     except Exception as e:
-    st.error(f"Error guardando inmuebles: {e}")
-    st.write(f"DEBUG: {str(e)}")
-    return False
- 
+        st.error(f"Error guardando inmuebles: {e}")
+        return False
+
+
 def guardar_movimientos_completo(df):
     """Guarda DataFrame de movimientos COMPLETO en Supabase (borra y reinserta)."""
     try:
