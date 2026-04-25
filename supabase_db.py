@@ -9,8 +9,8 @@ import streamlit as st
 
 # ─── CREDENCIALES ───────────────────────────────────────────────
 # IMPORTANTE: Reemplaza con tus credenciales reales de Supabase
-SUPABASE_URL = "https://odxixtgqcyddfqaapqgi.supabase.co"       # ← CAMBIA ESTO
-SUPABASE_KEY = "sb_publishable_Obgti7yMfXw8wCUL2FbTtA_EWeyHuM9"           # ← CAMBIA ESTO
+SUPABASE_URL = "https://TUURL.supabase.co"       # ← CAMBIA ESTO
+SUPABASE_KEY = "sb_publishable_TUCLAVE"           # ← CAMBIA ESTO
 
 HEADERS = {
     'apikey': SUPABASE_KEY,
@@ -125,9 +125,10 @@ def guardar_inmuebles(df):
     """Guarda DataFrame de inmuebles COMPLETO en Supabase (borra y reinserta)."""
     try:
         # Borrar todos los registros actuales
+        headers_delete = {**HEADERS, 'Prefer': 'return=minimal'}
         requests.delete(
-            f"{SUPABASE_URL}/rest/v1/inmuebles?id=gt.0",
-            headers=HEADERS
+            f"{SUPABASE_URL}/rest/v1/inmuebles?id=gte.1",
+            headers=headers_delete
         )
         # Renombrar columnas de app a Supabase
         rename_map = {
