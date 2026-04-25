@@ -102,12 +102,13 @@ div[data-testid="column"] .stButton>button:hover{{background:#F0F6FF!important;}
 """, unsafe_allow_html=True)
 
 # ================================================================
-# SECCIÓN 3 — ARCHIVOS DE DATOS (CSVs)
-# Aquí se definen los nombres de los ficheros de datos
-# Si cambias el nombre del CSV, cámbialo también aquí
+# SECCIÓN 3 — BASE DE DATOS SUPABASE (Bloque 6)
 # ================================================================
-DB_INM = "nolasco_inmuebles_v12.csv"
-DB_MOV = "nolasco_movimientos_v12.csv"
+from supabase_db import (
+    leer_inmuebles, leer_movimientos,
+    guardar_inmuebles, guardar_movimientos_completo,
+    agregar_movimientos, generar_csv_backup
+)
 
 COLS_INM = [
     "Nombre","Inquilino","Renta","Renta_Mercado","Comunidad","Valor_Construccion",
@@ -129,49 +130,13 @@ DEFAULTS_FISCAL = {
 }
 
 # ================================================================
-# SECCIÓN 4 — INICIALIZACIÓN DE DATOS
-# Crea los CSV si no existen con datos de ejemplo
-# Para cambiar los inmuebles de ejemplo, edita los "rows" de aquí
+# SECCIÓN 4 — CARGA DE DATOS DESDE SUPABASE
 # ================================================================
-def inicializar_bd():
-    if not os.path.exists(DB_INM):
-        rows = [
-            {"Nombre":"Casa Abarqueros","Inquilino":"Victor Aguiluz","Renta":2200.0,"Renta_Mercado":2600.0,"Comunidad":193.76,"Valor_Construccion":150000.0,"Año_Reforma":2018,"Año_Construccion":1975,"Mobiliario":"S","Tipo":"Casa","Ref_Catastral":"00XX0001","Titular":"Pedro Nolasco","M2_Construidos":180,"Habitaciones":5,"CP":"18001","Planta":0,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01","NIF_Inquilino":"12345678A","Intereses_Hipoteca":0,"IBI_Anual":800,"Seguro_Anual":250,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-            {"Nombre":"Paseo del Salón","Inquilino":"Pool Despachos","Renta":1591.8,"Renta_Mercado":1650.0,"Comunidad":175.18,"Valor_Construccion":120000.0,"Año_Reforma":2020,"Año_Construccion":1990,"Mobiliario":"N","Tipo":"Piso","Ref_Catastral":"00XX0002","Titular":"Pedro Nolasco","M2_Construidos":130,"Habitaciones":4,"CP":"18005","Planta":3,"Parking":"S","Estado":"Bueno","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"S","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2021-06-01","Fecha_Vencimiento_Contrato":"2026-06-01","NIF_Inquilino":"B87654321","Intereses_Hipoteca":0,"IBI_Anual":600,"Seguro_Anual":200,"Gastos_Juridicos":0,"Retenciones_IRPF":286.0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-            {"Nombre":"Huerto Unidad 1","Inquilino":"Alain","Renta":660.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2022,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"00XX0003","Titular":"Pedro Nolasco","M2_Construidos":60,"Habitaciones":2,"CP":"18008","Planta":1,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"S","Fecha_Inicio_Contrato":"2023-03-01","Fecha_Vencimiento_Contrato":"2028-03-01","NIF_Inquilino":"87654321B","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-            {"Nombre":"Huerto Unidad 2","Inquilino":"Laura/Alex","Renta":800.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2022,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"00XX0004","Titular":"Pedro Nolasco","M2_Construidos":65,"Habitaciones":2,"CP":"18008","Planta":2,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Temporada","Cochera_Vinculada":"N","Zona_Tensionada":"S","Fecha_Inicio_Contrato":"2024-09-01","Fecha_Vencimiento_Contrato":"2025-08-31","NIF_Inquilino":"23456789C","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-            {"Nombre":"Huerto Unidad 3","Inquilino":"Jose Manuel","Renta":850.0,"Renta_Mercado":800.0,"Comunidad":74.63,"Valor_Construccion":45000.0,"Año_Reforma":2021,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"00XX0005","Titular":"Pedro Nolasco","M2_Construidos":68,"Habitaciones":3,"CP":"18008","Planta":3,"Parking":"N","Estado":"Bueno","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-11-01","Fecha_Vencimiento_Contrato":"2027-11-01","NIF_Inquilino":"34567890D","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-            {"Nombre":"Huerto Unidad 4","Inquilino":"Pendiente","Renta":600.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2024,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"00XX0006","Titular":"Pedro Nolasco","M2_Construidos":62,"Habitaciones":2,"CP":"18008","Planta":4,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Vacacional","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2025-01-01","Fecha_Vencimiento_Contrato":"2026-12-31","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-        ]
-        pd.DataFrame(rows).to_csv(DB_INM, index=False)
-    else:
-        df = pd.read_csv(DB_INM)
-        changed = False
-        for c_name in COLS_INM:
-            if c_name not in df.columns:
-                df[c_name] = DEFAULTS_FISCAL.get(c_name, "")
-                changed = True
-        if changed:
-            df.to_csv(DB_INM, index=False)
-
-    if not os.path.exists(DB_MOV):
-        pd.DataFrame([
-            {"Fecha":"2026-04-01","Apartamento":"Casa Abarqueros","Concepto":"Renta Mensual","Categoría":"Ingresos","Tipo":"Ingreso","Importe":2200.00,"Deducible":"N"},
-            {"Fecha":"2026-04-01","Apartamento":"Casa Abarqueros","Concepto":"Comunidad","Categoría":"Comunidad","Tipo":"Gasto","Importe":193.76,"Deducible":"S"},
-        ]).to_csv(DB_MOV, index=False)
-
-inicializar_bd()
-
-# Usar session_state para persistir datos durante la sesión
-# IMPORTANTE: Recargar SIEMPRE desde CSV después de cualquier cambio
 if "df_inm_persistent" not in st.session_state:
-    st.session_state.df_inm_persistent = pd.read_csv(DB_INM)
+    st.session_state.df_inm_persistent = leer_inmuebles()
 if "df_mov_persistent" not in st.session_state:
-    st.session_state.df_mov_persistent = pd.read_csv(DB_MOV)
+    st.session_state.df_mov_persistent = leer_movimientos()
 
-# CRÍTICO: NO crear variables locales - usar DIRECTAMENTE session_state
-# Esto asegura que SIEMPRE leemos los datos más recientes
-# Crear alias para compatibilidad con código existente
 df_inm = st.session_state.df_inm_persistent
 df_mov = st.session_state.df_mov_persistent
 
@@ -303,12 +268,10 @@ def alerta_vencimiento(row):
     return "ok", f"✅ Vence en {round(dias/30)} meses"
 
 def guardar_movimientos(nuevos):
+    agregar_movimientos(nuevos)
     df_nuevos = pd.DataFrame(nuevos)
     df_final = pd.concat([st.session_state.df_mov_persistent, df_nuevos], ignore_index=True)
     st.session_state.df_mov_persistent = df_final
-    df_final.to_csv(DB_MOV, index=False)
-    # CRÍTICO: Forzar recarga desde CSV
-    st.session_state.df_mov_persistent = pd.read_csv(DB_MOV)
 
 def parsear_ingresos(texto, df_inm_local):
     rentas  = dict(zip(df_inm_local["Nombre"], df_inm_local["Renta"]))
@@ -1591,12 +1554,8 @@ elif menu == "Diario Contable":
                 df_final = df_ed
             
             st.session_state.df_mov_persistent = df_final
-            df_final.to_csv(DB_MOV, index=False)
+            guardar_movimientos_completo(df_final)
             
-            # CRÍTICO: Forzar recarga desde CSV para asegurar persistencia
-            st.session_state.df_mov_persistent = pd.read_csv(DB_MOV)
-            
-            # Debug: verificar que se guardó correctamente
             total_movs = len(st.session_state.df_mov_persistent)
             total_ingresos = st.session_state.df_mov_persistent[st.session_state.df_mov_persistent["Tipo"]=="Ingreso"]["Importe"].sum()
             
@@ -1643,21 +1602,8 @@ elif menu == "Diario Contable":
                 # Volver a convertir a string para guardar en CSV
                 df_completo["Fecha"] = df_completo["Fecha"].dt.strftime("%Y-%m-%d")
                 
-                # DEBUG: Ver qué estamos guardando
-                st.write(f"🔍 DEBUG: Antes de guardar")
-                st.write(f"- Total operaciones: {len(df_completo)}")
-                st.write(f"- Total ingresos: {df_completo[df_completo['Tipo']=='Ingreso']['Importe'].sum():,.0f}€")
-                
                 st.session_state.df_mov_persistent = df_completo
-                df_completo.to_csv(DB_MOV, index=False)
-                
-                # CRÍTICO: Forzar recarga desde CSV para asegurar persistencia
-                st.session_state.df_mov_persistent = pd.read_csv(DB_MOV)
-                
-                # DEBUG: Ver qué se recargó
-                st.write(f"🔍 DEBUG: Después de recargar")
-                st.write(f"- Total operaciones: {len(st.session_state.df_mov_persistent)}")
-                st.write(f"- Total ingresos: {st.session_state.df_mov_persistent[st.session_state.df_mov_persistent['Tipo']=='Ingreso']['Importe'].sum():,.0f}€")
+                guardar_movimientos_completo(df_completo)
                 
                 total_registrado = df_nuevos["Importe"].sum()
                 st.success(f"✓ Registradas {len(nuevos_ingresos)} rentas por {total_registrado:,.0f}€")
@@ -2093,8 +2039,7 @@ elif menu == "Datos de la Cartera":
                             # Eliminar de session_state
                             df_nuevo = st.session_state.df_inm_persistent.drop(idx).reset_index(drop=True)
                             st.session_state.df_inm_persistent = df_nuevo
-                            # También guardar en CSV
-                            df_nuevo.to_csv(DB_INM, index=False)
+                            guardar_inmuebles(df_nuevo)
                             st.success(f"✓ {row['Nombre']} eliminado")
                             st.rerun()
                         else:
@@ -2244,18 +2189,14 @@ elif menu == "Datos de la Cartera":
                     }
 
                     if es_nuevo:
-                        # Añadir a session_state
                         df_nuevo = pd.concat([st.session_state.df_inm_persistent, pd.DataFrame([nuevo_inmueble])], ignore_index=True)
                         st.session_state.df_inm_persistent = df_nuevo
-                        # También guardar en CSV (aunque se pierda al redeploy)
-                        df_nuevo.to_csv(DB_INM, index=False)
+                        guardar_inmuebles(df_nuevo)
                         st.success(f"✅ Inmueble '{nombre}' añadido correctamente")
                     else:
-                        # Actualizar en session_state
                         for col, val in nuevo_inmueble.items():
                             st.session_state.df_inm_persistent.at[st.session_state.inmueble_editando, col] = val
-                        # También guardar en CSV
-                        st.session_state.df_inm_persistent.to_csv(DB_INM, index=False)
+                        guardar_inmuebles(st.session_state.df_inm_persistent)
                         st.success(f"✅ Inmueble '{nombre}' actualizado correctamente")
                     
                     st.session_state.modo_cartera = "lista"
@@ -2286,7 +2227,7 @@ elif menu == "Datos de la Cartera":
         df_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True, hide_index=True, column_config=col_cfg)
         if st.button("✅ Guardar Cambios de Tabla", type="primary"):
             st.session_state.df_inm_persistent = df_ed
-            df_ed.to_csv(DB_INM, index=False)
+            guardar_inmuebles(df_ed)
             st.success("✓ Datos actualizados.")
             st.rerun()
 
@@ -2299,11 +2240,9 @@ elif menu == "Datos de la Cartera":
         
         col_b1, col_b2 = st.columns(2)
         with col_b1:
-            with open(DB_INM, "rb") as fi:
-                st.download_button("📥 Descargar Inmuebles (CSV)", fi, "nolasco_inmuebles_backup.csv", "text/csv", use_container_width=True)
+            st.download_button("📥 Descargar Inmuebles (CSV)", generar_csv_backup(st.session_state.df_inm_persistent, "inmuebles"), "nolasco_inmuebles_backup.csv", "text/csv", use_container_width=True)
         with col_b2:
-            with open(DB_MOV, "rb") as fm:
-                st.download_button("📥 Descargar Movimientos (CSV)", fm, "nolasco_movimientos_backup.csv", "text/csv", use_container_width=True)
+            st.download_button("📥 Descargar Movimientos (CSV)", generar_csv_backup(st.session_state.df_mov_persistent, "movimientos"), "nolasco_movimientos_backup.csv", "text/csv", use_container_width=True)
 
         st.markdown("---")
         st.markdown("### 📤 Restaurar desde Backup")
