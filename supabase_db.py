@@ -122,8 +122,70 @@ def leer_movimientos():
 # ─── FUNCIONES DE ESCRITURA ──────────────────────────────────────
 
 def guardar_inmuebles(df):
-    """Temporalmente desactivado - solo guarda en session_state, no en Supabase."""
-    return True
+    """Guarda inmuebles en Supabase uno a uno."""
+    rename_map = {
+        'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
+        'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
+        'Valor_Construccion': 'valor_construccion', 'Año_Reforma': 'ano_reforma',
+        'Año_Construccion': 'ano_construccion', 'Mobiliario': 'mobiliario',
+        'Tipo': 'tipo', 'Ref_Catastral': 'ref_catastral', 'Titular': 'titular',
+        'M2_Construidos': 'm2_construidos', 'Habitaciones': 'habitaciones',
+        'CP': 'cp', 'Planta': 'planta', 'Parking': 'parking', 'Estado': 'estado',
+        'Tipo_Arrendamiento': 'tipo_arrendamiento',
+        'Cochera_Vinculada': 'cochera_vinculada',
+        'Zona_Tensionada': 'zona_tensionada',
+        'Fecha_Inicio_Contrato': 'fecha_inicio_contrato',
+        'Fecha_Vencimiento_Contrato': 'fecha_vencimiento_contrato',
+        'NIF_Inquilino': 'nif_inquilino',
+        'Intereses_Hipoteca': 'intereses_hipoteca',
+        'IBI_Anual': 'ibi_anual', 'Seguro_Anual': 'seguro_anual',
+        'Gastos_Juridicos': 'gastos_juridicos',
+        'Retenciones_IRPF': 'retenciones_irpf',
+        'Gastos_Formalizacion': 'gastos_formalizacion',
+        'Gastos_Pendientes_Años_Ant': 'gastos_pendientes_anos_ant',
+        'Servicios_Suministros': 'servicios_suministros',
+    }
+    try:
+        df_sb = df.rename(columns={k:v for k,v in rename_map.items() if k in df.columns})
+        cols_validas = [c for c in df_sb.columns if c in rename_map.values()]
+        df_sb = df_sb[cols_validas]
+        df_sb = df_sb.where(pd.notna(df_sb), None)
+        records = df_sb.to_dict(orient='records')
+
+        # Obtener IDs existentes por nombre
+        r_all = requests.get(
+            f"{SUPABASE_URL}/rest/v1/inmuebles?select=id,nombre",
+            headers=HEADERS
+        )
+        existentes = {}
+        if r_all.status_code == 200:
+            for item in r_all.json():
+                if item.get('nombre'):
+                    existentes[item['nombre']] = item['id']
+
+        h_patch = {**HEADERS, 'Prefer': 'return=minimal'}
+        h_insert = {**HEADERS, 'Prefer': 'return=minimal'}
+
+        for record in records:
+            nombre = record.get('nombre', '')
+            if not nombre:
+                continue
+            if nombre in existentes:
+                requests.patch(
+                    f"{SUPABASE_URL}/rest/v1/inmuebles?id=eq.{existentes[nombre]}",
+                    headers=h_patch,
+                    json=record
+                )
+            else:
+                requests.post(
+                    f"{SUPABASE_URL}/rest/v1/inmuebles",
+                    headers=h_insert,
+                    json=record
+                )
+        return True
+    except Exception as e:
+        st.error(f"Error guardando inmueble: {e}")
+        return False
 
 
 def guardar_movimientos_completo(df):
