@@ -122,53 +122,63 @@ def leer_movimientos():
 # ─── FUNCIONES DE ESCRITURA ──────────────────────────────────────
 
 def guardar_inmuebles(df):
-    """Guarda DataFrame de inmuebles COMPLETO en Supabase (borra y reinserta)."""
+    """Guarda DataFrame de inmuebles en Supabase usando upsert por nombre."""
+    rename_map = {
+        'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
+        'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
+        'Valor_Construccion': 'valor_construccion', 'Año_Reforma': 'ano_reforma',
+        'Año_Construccion': 'ano_construccion', 'Mobiliario': 'mobiliario',
+        'Tipo': 'tipo', 'Ref_Catastral': 'ref_catastral', 'Titular': 'titular',
+        'M2_Construidos': 'm2_construidos', 'Habitaciones': 'habitaciones',
+        'CP': 'cp', 'Planta': 'planta', 'Parking': 'parking', 'Estado': 'estado',
+        'Tipo_Arrendamiento': 'tipo_arrendamiento',
+        'Cochera_Vinculada': 'cochera_vinculada',
+        'Zona_Tensionada': 'zona_tensionada',
+        'Fecha_Inicio_Contrato': 'fecha_inicio_contrato',
+        'Fecha_Vencimiento_Contrato': 'fecha_vencimiento_contrato',
+        'NIF_Inquilino': 'nif_inquilino',
+        'Intereses_Hipoteca': 'intereses_hipoteca',
+        'IBI_Anual': 'ibi_anual', 'Seguro_Anual': 'seguro_anual',
+        'Gastos_Juridicos': 'gastos_juridicos',
+        'Retenciones_IRPF': 'retenciones_irpf',
+        'Gastos_Formalizacion': 'gastos_formalizacion',
+        'Gastos_Pendientes_Años_Ant': 'gastos_pendientes_anos_ant',
+        'Servicios_Suministros': 'servicios_suministros',
+        'Direccion': 'direccion'
+    }
     try:
-        # Borrar todos los registros actuales
-        headers_delete = {**HEADERS, 'Prefer': 'return=minimal'}
-        requests.delete(
-            f"{SUPABASE_URL}/rest/v1/inmuebles?id=gte.1",
-            headers=headers_delete
-        )
-        # Renombrar columnas de app a Supabase
-        rename_map = {
-            'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
-            'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
-            'Valor_Construccion': 'valor_construccion', 'Año_Reforma': 'ano_reforma',
-            'Año_Construccion': 'ano_construccion', 'Mobiliario': 'mobiliario',
-            'Tipo': 'tipo', 'Ref_Catastral': 'ref_catastral', 'Titular': 'titular',
-            'M2_Construidos': 'm2_construidos', 'Habitaciones': 'habitaciones',
-            'CP': 'cp', 'Planta': 'planta', 'Parking': 'parking', 'Estado': 'estado',
-            'Tipo_Arrendamiento': 'tipo_arrendamiento',
-            'Cochera_Vinculada': 'cochera_vinculada',
-            'Zona_Tensionada': 'zona_tensionada',
-            'Fecha_Inicio_Contrato': 'fecha_inicio_contrato',
-            'Fecha_Vencimiento_Contrato': 'fecha_vencimiento_contrato',
-            'NIF_Inquilino': 'nif_inquilino',
-            'Intereses_Hipoteca': 'intereses_hipoteca',
-            'IBI_Anual': 'ibi_anual', 'Seguro_Anual': 'seguro_anual',
-            'Gastos_Juridicos': 'gastos_juridicos',
-            'Retenciones_IRPF': 'retenciones_irpf',
-            'Gastos_Formalizacion': 'gastos_formalizacion',
-            'Gastos_Pendientes_Años_Ant': 'gastos_pendientes_anos_ant',
-            'Servicios_Suministros': 'servicios_suministros',
-            'Direccion': 'direccion'
-        }
         df_sb = df.rename(columns={k:v for k,v in rename_map.items() if k in df.columns})
-        # Eliminar columnas que no existen en Supabase
         cols_validas = [c for c in df_sb.columns if c in rename_map.values()]
         df_sb = df_sb[cols_validas]
-        # Convertir NaN a None para JSON
         df_sb = df_sb.where(pd.notna(df_sb), None)
-        # Insertar todos los registros
         records = df_sb.to_dict(orient='records')
-        if records:
-            r = requests.post(
-                f"{SUPABASE_URL}/rest/v1/inmuebles",
-                headers=HEADERS,
-                json=records
+
+        headers_upsert = {**HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal'}
+
+        for record in records:
+            nombre = record.get('nombre', '')
+            # Buscar si ya existe por nombre
+            r_check = requests.get(
+                f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{requests.utils.quote(nombre)}&select=id",
+                headers=HEADERS
             )
-            return r.status_code in [200, 201]
+            existing = r_check.json() if r_check.status_code == 200 else []
+
+            if existing:
+                # Actualizar
+                inm_id = existing[0]['id']
+                requests.patch(
+                    f"{SUPABASE_URL}/rest/v1/inmuebles?id=eq.{inm_id}",
+                    headers=headers_upsert,
+                    json=record
+                )
+            else:
+                # Insertar nuevo
+                requests.post(
+                    f"{SUPABASE_URL}/rest/v1/inmuebles",
+                    headers=HEADERS,
+                    json=record
+                )
         return True
     except Exception as e:
         st.error(f"Error guardando inmuebles: {e}")
