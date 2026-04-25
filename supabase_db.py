@@ -9,8 +9,8 @@ import streamlit as st
 
 # ─── CREDENCIALES ───────────────────────────────────────────────
 # IMPORTANTE: Reemplaza con tus credenciales reales de Supabase
-SUPABASE_URL = "https://TUURL.supabase.co"       # ← CAMBIA ESTO
-SUPABASE_KEY = "sb_publishable_TUCLAVE"           # ← CAMBIA ESTO
+SUPABASE_URL = "https://odxixtgqcyddfqaapqgi.supabase.co"         # ← CAMBIA ESTO
+SUPABASE_KEY = "sb_publishable_Obgti7yMfXw8wCUL2FbTtA_EWeyHuM9"   # ← CAMBIA ESTO
 
 HEADERS = {
     'apikey': SUPABASE_KEY,
