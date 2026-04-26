@@ -329,9 +329,18 @@ PRECIOS_CP = {"18001":12.5,"18002":11.8,"18003":10.2,"18004":10.8,"18005":11.2,
               "18006":10.0,"18007":9.5,"18008":10.4,"18009":8.2,"18010":9.8,
               "18011":10.1,"18012":9.6,"18013":9.0,"18014":9.3,"18015":8.8}
 
+def safe_float(value, default=0):
+    """Convierte valor a float de forma segura, devuelve default si es None/NaN."""
+    try:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return float(default)
+        return float(value)
+    except:
+        return float(default)
+
 def tasacion(row):
     p  = PRECIOS_CP.get(str(row.get("CP","18005")),10.0)
-    m2 = float(row.get("M2_Construidos",80))
+    m2 = safe_float(row.get("M2_Construidos",80))
     am = 1.05 if row.get("Mobiliario")=="S" else 1.0
     ap = 1.04 if row.get("Parking")=="S" else 1.0
     ae = {"Reformado":1.08,"Bueno":1.0,"Regular":0.92}.get(row.get("Estado","Bueno"),1.0)
@@ -427,30 +436,30 @@ def calcular_dias_arrendado(row, año_fiscal=None):
 
 def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
     dias_arrendado = calcular_dias_arrendado(row, año_fiscal=año_fiscal)
-    renta_mensual = float(row.get("Renta", 0))
+    renta_mensual = safe_safe_float(row.get("Renta", 0))
     ingresos_integros = renta_mensual * 12
-    intereses = float(row.get("Intereses_Hipoteca", 0))
+    intereses = safe_safe_float(row.get("Intereses_Hipoteca", 0))
     gastos_reparacion = df_mov_local[
         (df_mov_local["Apartamento"] == row["Nombre"]) &
         (df_mov_local["Tipo"] == "Gasto") &
         (df_mov_local["Categoría"].isin(["Mantenimiento", "Reparación"]))
     ]["Importe"].sum()
-    ibi_anual = float(row.get("IBI_Anual", 0))
-    comunidad_anual = float(row.get("Comunidad", 0)) * 12
-    seguro_anual = float(row.get("Seguro_Anual", 0))
-    formalizacion = float(row.get("Gastos_Formalizacion", 0))
+    ibi_anual = safe_safe_float(row.get("IBI_Anual", 0))
+    comunidad_anual = safe_safe_float(row.get("Comunidad", 0)) * 12
+    seguro_anual = safe_safe_float(row.get("Seguro_Anual", 0))
+    formalizacion = safe_safe_float(row.get("Gastos_Formalizacion", 0))
     casilla_0110 = comunidad_anual + seguro_anual + formalizacion
-    servicios = float(row.get("Servicios_Suministros", 0))
-    gastos_juridicos = float(row.get("Gastos_Juridicos", 0))
-    valor_construccion = float(row.get("Valor_Construccion", 0))
+    servicios = safe_safe_float(row.get("Servicios_Suministros", 0))
+    gastos_juridicos = safe_safe_float(row.get("Gastos_Juridicos", 0))
+    valor_construccion = safe_safe_float(row.get("Valor_Construccion", 0))
     amortizacion = valor_construccion * 0.03
-    gastos_años_ant = float(row.get("Gastos_Pendientes_Años_Ant", 0))
+    gastos_años_ant = safe_safe_float(row.get("Gastos_Pendientes_Años_Ant", 0))
     total_gastos = intereses + gastos_reparacion + ibi_anual + casilla_0110 + servicios + gastos_juridicos + amortizacion + gastos_años_ant
     rendimiento_neto = ingresos_integros - total_gastos
     tipo_arrendamiento = str(row.get("Tipo_Arrendamiento", "Larga Duración"))
     reduccion_pct = 0.60 if tipo_arrendamiento == "Larga Duración" else 0.00
     reduccion_importe = rendimiento_neto * reduccion_pct
-    retenciones = float(row.get("Retenciones_IRPF", 0))
+    retenciones = safe_safe_float(row.get("Retenciones_IRPF", 0))
     rendimiento_final = rendimiento_neto - reduccion_importe
     return {
         "0062_0075": f"Ref: {row.get('Ref_Catastral', 'N/A')}",
