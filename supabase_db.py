@@ -132,7 +132,8 @@ def leer_inmuebles(user_id=None):
                         df[col] = DEFAULTS_FISCAL.get(col, "")
                 return df
             else:
-                return _crear_inmuebles_iniciales()
+                # Si no hay inmuebles para este usuario, devolver DataFrame vacío
+                return pd.DataFrame(columns=COLS_INM)
         else:
             st.error(f"Error Supabase inmuebles: {r.status_code}")
             return pd.DataFrame(columns=COLS_INM)
