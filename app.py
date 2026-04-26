@@ -1114,6 +1114,8 @@ if menu == "Torre de Control":
             st.session_state.menu = "Cartera"
             st.rerun()
         st.stop()
+    else:
+        pass
     st.markdown('<div class="brand-header">Torre de Control</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
     
@@ -1267,7 +1269,8 @@ if menu == "Torre de Control":
         cols = st.columns(len(df_inm))
         for i, row in df_inm.iterrows():
             g_esp    = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
-            gastos_u = row["Comunidad"]+g_esp
+            comunidad = row["Comunidad"] if pd.notna(row.get("Comunidad", 0)) else 0
+            gastos_u = comunidad + g_esp
             neto_u   = row["Renta"]-gastos_u
             rm       = tasacion(row)
             desv     = (row["Renta"]-rm)/rm*100
