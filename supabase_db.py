@@ -41,6 +41,51 @@ DEFAULTS_FISCAL = {
     "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
 }
 
+# ─── FUNCIONES DE AUTENTICACIÓN ──────────────────────────────
+
+def login_usuario(email, password):
+    """Autentica usuario con email y contraseña."""
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
+            headers={'apikey': SUPABASE_KEY, 'Content-Type': 'application/json'},
+            json={'email': email, 'password': password}
+        )
+        if r.status_code == 200:
+            data = r.json()
+            return {
+                'success': True,
+                'user_id': data['user']['id'],
+                'email': data['user']['email'],
+                'access_token': data['access_token']
+            }
+        else:
+            return {'success': False, 'error': 'Email o contraseña incorrectos'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def registrar_usuario(email, password):
+    """Registra nuevo usuario."""
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/auth/v1/signup",
+            headers={'apikey': SUPABASE_KEY, 'Content-Type': 'application/json'},
+            json={'email': email, 'password': password}
+        )
+        if r.status_code == 200:
+            data = r.json()
+            return {
+                'success': True,
+                'user_id': data['user']['id'],
+                'email': data['user']['email']
+            }
+        else:
+            return {'success': False, 'error': 'Error al registrar usuario'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
 # ─── FUNCIONES DE LECTURA ────────────────────────────────────────
 
 def leer_inmuebles():
