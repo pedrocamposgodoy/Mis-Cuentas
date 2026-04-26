@@ -365,7 +365,7 @@ def alerta_vencimiento(row):
     return "ok", f"✅ Vence en {round(dias/30)} meses"
 
 def guardar_movimientos(nuevos):
-    agregar_movimientos(nuevos)
+    agregar_movimientos(nuevos, user_id=st.session_state.user_id)
     df_nuevos = pd.DataFrame(nuevos)
     df_final = pd.concat([st.session_state.df_mov_persistent, df_nuevos], ignore_index=True)
     st.session_state.df_mov_persistent = df_final
@@ -1662,7 +1662,7 @@ elif menu == "Diario Contable":
                 df_final = df_ed
             
             st.session_state.df_mov_persistent = df_final
-            guardar_movimientos_completo(df_final)
+            guardar_movimientos_completo(df_final, user_id=st.session_state.user_id)
             
             total_movs = len(st.session_state.df_mov_persistent)
             total_ingresos = st.session_state.df_mov_persistent[st.session_state.df_mov_persistent["Tipo"]=="Ingreso"]["Importe"].sum()
@@ -1711,7 +1711,7 @@ elif menu == "Diario Contable":
                 df_completo["Fecha"] = df_completo["Fecha"].dt.strftime("%Y-%m-%d")
                 
                 st.session_state.df_mov_persistent = df_completo
-                guardar_movimientos_completo(df_completo)
+                guardar_movimientos_completo(df_completo, user_id=st.session_state.user_id)
                 
                 total_registrado = df_nuevos["Importe"].sum()
                 st.success(f"✓ Registradas {len(nuevos_ingresos)} rentas por {total_registrado:,.0f}€")
