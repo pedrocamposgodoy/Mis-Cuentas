@@ -160,6 +160,11 @@ if not st.session_state.user_logged_in:
                     st.session_state.user_logged_in = True
                     st.session_state.user_id = result['user_id']
                     st.session_state.user_email = result['email']
+                    # Limpiar datos del usuario anterior
+                    if "df_inm_persistent" in st.session_state:
+                        del st.session_state.df_inm_persistent
+                    if "df_mov_persistent" in st.session_state:
+                        del st.session_state.df_mov_persistent
                     st.success(f"✅ Bienvenido {result['email']}")
                     st.rerun()
                 else:
@@ -266,6 +271,11 @@ with st.sidebar:
         st.session_state.user_logged_in = False
         st.session_state.user_id = None
         st.session_state.user_email = None
+        # Limpiar datos
+        if "df_inm_persistent" in st.session_state:
+            del st.session_state.df_inm_persistent
+        if "df_mov_persistent" in st.session_state:
+            del st.session_state.df_mov_persistent
         st.rerun()
     
     st.markdown("<br>", unsafe_allow_html=True)
