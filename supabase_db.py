@@ -188,6 +188,30 @@ def guardar_inmuebles(df):
         return False
 
 
+def eliminar_inmueble(nombre):
+    """Elimina un inmueble de Supabase por nombre."""
+    try:
+        # Buscar el inmueble por nombre
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre}&select=id",
+            headers=HEADERS
+        )
+        if r.status_code == 200:
+            results = r.json()
+            if results:
+                inm_id = results[0]['id']
+                # Eliminar por ID
+                requests.delete(
+                    f"{SUPABASE_URL}/rest/v1/inmuebles?id=eq.{inm_id}",
+                    headers={**HEADERS, 'Prefer': 'return=minimal'}
+                )
+                return True
+        return False
+    except Exception as e:
+        st.error(f"Error eliminando inmueble: {e}")
+        return False
+
+
 def guardar_movimientos_completo(df):
     """Guarda DataFrame de movimientos COMPLETO en Supabase (borra y reinserta)."""
     try:
