@@ -1,23 +1,14 @@
 """
 supabase_db.py — Módulo de Base de Datos Supabase para Nolasco Capital
-VERSIÓN CORREGIDA - Con filtrado correcto por user_id en todas las operaciones
+VERSIÓN FINAL - Usa access_token del usuario para pasar correctamente el RLS
 """
 import requests
 import pandas as pd
-import json
 import streamlit as st
 
 # ─── CREDENCIALES ───────────────────────────────────────────────
-# Credenciales de Supabase - Nolasco Capital
 SUPABASE_URL = "https://odxixtgqcyddfqaapqgi.supabase.co"
 SUPABASE_KEY = "sb_publishable_Obgti7yMfXw8wCUL2FbTtA_EWeyHuM9"
-
-HEADERS = {
-    'apikey': SUPABASE_KEY,
-    'Authorization': f'Bearer {SUPABASE_KEY}',
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation'
-}
 
 # ─── COLUMNAS ESPERADAS ─────────────────────────────────────────
 COLS_INM = [
@@ -41,10 +32,25 @@ DEFAULTS_FISCAL = {
     "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
 }
 
-# ─── FUNCIONES DE AUTENTICACIÓN ──────────────────────────────
+# ─── HELPER: CABECERAS CON TOKEN DE USUARIO ──────────────────────
+def _headers(access_token=None):
+    """
+    Devuelve cabeceras correctas.
+    - Si hay access_token del usuario → lo usa (pasa RLS correctamente)
+    - Si no → usa la anon key (solo lectura pública)
+    """
+    token = access_token or st.session_state.get("access_token") or SUPABASE_KEY
+    return {
+        'apikey': SUPABASE_KEY,
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
+    }
+
+# ─── FUNCIONES DE AUTENTICACIÓN ──────────────────────────────────
 
 def login_usuario(email, password):
-    """Autentica usuario con email y contraseña."""
+    """Autentica usuario y guarda access_token en session_state."""
     try:
         r = requests.post(
             f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
@@ -53,14 +59,19 @@ def login_usuario(email, password):
         )
         if r.status_code == 200:
             data = r.json()
+            access_token = data.get('access_token', '')
+            # Guardar el token en session_state para usarlo en todas las peticiones
+            st.session_state['access_token'] = access_token
             return {
                 'success': True,
                 'user_id': data['user']['id'],
                 'email': data['user']['email'],
-                'access_token': data['access_token']
+                'access_token': access_token
             }
         else:
-            return {'success': False, 'error': 'Email o contraseña incorrectos'}
+            err = r.json()
+            msg = err.get('error_description') or err.get('msg') or 'Email o contraseña incorrectos'
+            return {'success': False, 'error': msg}
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
@@ -73,174 +84,207 @@ def registrar_usuario(email, password):
             headers={'apikey': SUPABASE_KEY, 'Content-Type': 'application/json'},
             json={'email': email, 'password': password}
         )
-        if r.status_code == 200:
-            data = r.json()
+        data = r.json()
+        if r.status_code in [200, 201] and data.get('user'):
             return {
                 'success': True,
                 'user_id': data['user']['id'],
                 'email': data['user']['email']
             }
         else:
-            return {'success': False, 'error': 'Error al registrar usuario'}
+            msg = data.get('error_description') or data.get('msg') or 'Error al registrar usuario'
+            return {'success': False, 'error': msg}
     except Exception as e:
         return {'success': False, 'error': str(e)}
+
+
+# ─── RENAME MAPS ─────────────────────────────────────────────────
+
+RENAME_INM_TO_APP = {
+    'nombre': 'Nombre', 'inquilino': 'Inquilino', 'renta': 'Renta',
+    'renta_mercado': 'Renta_Mercado', 'comunidad': 'Comunidad',
+    'valor_construccion': 'Valor_Construccion', 'ano_reforma': 'Año_Reforma',
+    'ano_construccion': 'Año_Construccion', 'mobiliario': 'Mobiliario',
+    'tipo': 'Tipo', 'ref_catastral': 'Ref_Catastral', 'titular': 'Titular',
+    'm2_construidos': 'M2_Construidos', 'habitaciones': 'Habitaciones',
+    'cp': 'CP', 'planta': 'Planta', 'parking': 'Parking', 'estado': 'Estado',
+    'tipo_arrendamiento': 'Tipo_Arrendamiento', 'cochera_vinculada': 'Cochera_Vinculada',
+    'zona_tensionada': 'Zona_Tensionada', 'fecha_inicio_contrato': 'Fecha_Inicio_Contrato',
+    'fecha_vencimiento_contrato': 'Fecha_Vencimiento_Contrato', 'nif_inquilino': 'NIF_Inquilino',
+    'intereses_hipoteca': 'Intereses_Hipoteca', 'ibi_anual': 'IBI_Anual',
+    'seguro_anual': 'Seguro_Anual', 'gastos_juridicos': 'Gastos_Juridicos',
+    'retenciones_irpf': 'Retenciones_IRPF', 'gastos_formalizacion': 'Gastos_Formalizacion',
+    'gastos_pendientes_anos_ant': 'Gastos_Pendientes_Años_Ant',
+    'servicios_suministros': 'Servicios_Suministros', 'direccion': 'Direccion'
+}
+
+RENAME_INM_TO_DB = {v: k for k, v in RENAME_INM_TO_APP.items()}
+
+RENAME_MOV_TO_APP = {
+    'fecha': 'Fecha', 'apartamento': 'Apartamento', 'concepto': 'Concepto',
+    'categoria': 'Categoría', 'tipo': 'Tipo', 'importe': 'Importe', 'deducible': 'Deducible'
+}
+RENAME_MOV_TO_DB = {v: k for k, v in RENAME_MOV_TO_APP.items()}
 
 
 # ─── FUNCIONES DE LECTURA ────────────────────────────────────────
 
 def leer_inmuebles(user_id=None):
-    """Lee todos los inmuebles de Supabase y devuelve DataFrame."""
+    """Lee inmuebles del usuario desde Supabase."""
     try:
-        # Filtrar por user_id si se proporciona
-        url = f"{SUPABASE_URL}/rest/v1/inmuebles?select=*"
+        url = f"{SUPABASE_URL}/rest/v1/inmuebles?select=*&order=id.asc"
         if user_id:
             url += f"&user_id=eq.{user_id}"
-        
-        r = requests.get(url, headers=HEADERS)
+
+        r = requests.get(url, headers=_headers())
         if r.status_code == 200:
             data = r.json()
             if data:
                 df = pd.DataFrame(data)
-                # Renombrar columnas de Supabase a las que usa la app
-                rename_map = {
-                    'nombre': 'Nombre', 'inquilino': 'Inquilino', 'renta': 'Renta',
-                    'renta_mercado': 'Renta_Mercado', 'comunidad': 'Comunidad',
-                    'valor_construccion': 'Valor_Construccion', 'ano_reforma': 'Año_Reforma',
-                    'ano_construccion': 'Año_Construccion', 'mobiliario': 'Mobiliario',
-                    'tipo': 'Tipo', 'ref_catastral': 'Ref_Catastral', 'titular': 'Titular',
-                    'm2_construidos': 'M2_Construidos', 'habitaciones': 'Habitaciones',
-                    'cp': 'CP', 'planta': 'Planta', 'parking': 'Parking', 'estado': 'Estado',
-                    'tipo_arrendamiento': 'Tipo_Arrendamiento',
-                    'cochera_vinculada': 'Cochera_Vinculada',
-                    'zona_tensionada': 'Zona_Tensionada',
-                    'fecha_inicio_contrato': 'Fecha_Inicio_Contrato',
-                    'fecha_vencimiento_contrato': 'Fecha_Vencimiento_Contrato',
-                    'nif_inquilino': 'NIF_Inquilino',
-                    'intereses_hipoteca': 'Intereses_Hipoteca',
-                    'ibi_anual': 'IBI_Anual', 'seguro_anual': 'Seguro_Anual',
-                    'gastos_juridicos': 'Gastos_Juridicos',
-                    'retenciones_irpf': 'Retenciones_IRPF',
-                    'gastos_formalizacion': 'Gastos_Formalizacion',
-                    'gastos_pendientes_anos_ant': 'Gastos_Pendientes_Años_Ant',
-                    'servicios_suministros': 'Servicios_Suministros',
-                    'direccion': 'Direccion'
-                }
-                df = df.rename(columns={k:v for k,v in rename_map.items() if k in df.columns})
-                # Asegurar que todas las columnas esperadas existan
+                df = df.rename(columns={k: v for k, v in RENAME_INM_TO_APP.items() if k in df.columns})
                 for col in COLS_INM:
                     if col not in df.columns:
                         df[col] = DEFAULTS_FISCAL.get(col, "")
-                # Limpiar campos numéricos — nunca None
-                cols_numericas = [
-                    "Renta","Renta_Mercado","Comunidad","Valor_Construccion",
-                    "Año_Reforma","Año_Construccion","M2_Construidos","Habitaciones",
-                    "Planta","Intereses_Hipoteca","IBI_Anual","Seguro_Anual",
-                    "Gastos_Juridicos","Retenciones_IRPF","Gastos_Formalizacion",
-                    "Gastos_Pendientes_Años_Ant","Servicios_Suministros"
-                ]
-                for col in cols_numericas:
-                    if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                _limpiar_numericos_inm(df)
                 return df
             else:
-                # No hay datos → crear inmuebles iniciales
-                return _crear_inmuebles_iniciales(user_id)
+                return _inmuebles_iniciales_df(user_id)
         else:
-            return _crear_inmuebles_iniciales(user_id)
+            return _inmuebles_iniciales_df(user_id)
     except Exception as e:
         st.error(f"Error leyendo inmuebles: {e}")
-        return _crear_inmuebles_iniciales(user_id)
+        return _inmuebles_iniciales_df(user_id)
 
 
 def leer_movimientos(user_id=None):
-    """Lee todos los movimientos de Supabase y devuelve DataFrame."""
+    """Lee movimientos del usuario desde Supabase."""
     try:
-        url = f"{SUPABASE_URL}/rest/v1/movimientos?select=*"
+        url = f"{SUPABASE_URL}/rest/v1/movimientos?select=*&order=fecha.desc"
         if user_id:
             url += f"&user_id=eq.{user_id}"
-        
-        r = requests.get(url, headers=HEADERS)
+
+        r = requests.get(url, headers=_headers())
         if r.status_code == 200:
             data = r.json()
             if data:
                 df = pd.DataFrame(data)
-                rename_map = {
-                    'fecha': 'Fecha', 'apartamento': 'Apartamento',
-                    'concepto': 'Concepto', 'categoria': 'Categoría',
-                    'tipo': 'Tipo', 'importe': 'Importe', 'deducible': 'Deducible'
-                }
-                df = df.rename(columns={k:v for k,v in rename_map.items() if k in df.columns})
-                # Asegurar columnas
+                df = df.rename(columns={k: v for k, v in RENAME_MOV_TO_APP.items() if k in df.columns})
                 for col in COLS_MOV:
                     if col not in df.columns:
                         df[col] = ""
-                # Limpiar Importe
                 if "Importe" in df.columns:
                     df["Importe"] = pd.to_numeric(df["Importe"], errors='coerce').fillna(0)
                 return df
             else:
-                return _crear_movimientos_iniciales(user_id)
+                return pd.DataFrame(columns=COLS_MOV)
         else:
-            return _crear_movimientos_iniciales(user_id)
+            return pd.DataFrame(columns=COLS_MOV)
     except Exception as e:
         st.error(f"Error leyendo movimientos: {e}")
-        return _crear_movimientos_iniciales(user_id)
+        return pd.DataFrame(columns=COLS_MOV)
 
 
 # ─── FUNCIONES DE ESCRITURA ──────────────────────────────────────
 
-def guardar_inmuebles(df, user_id):
-    """Guarda DataFrame de inmuebles COMPLETO en Supabase (borra los del usuario y reinserta)."""
+def guardar_movimientos_completo(df, user_id):
+    """
+    Borra todos los movimientos del usuario y los reinserta.
+    Usa el access_token del usuario para pasar RLS.
+    """
     try:
-        # 1. Borrar solo los inmuebles del usuario actual
+        h = _headers()
+
+        # 1. Borrar movimientos del usuario
+        del_r = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/movimientos?user_id=eq.{user_id}",
+            headers=h
+        )
+        if del_r.status_code not in [200, 204]:
+            st.warning(f"⚠️ Delete status: {del_r.status_code} — {del_r.text[:200]}")
+
+        if df is None or len(df) == 0:
+            return True
+
+        # 2. Preparar registros
+        records = _df_mov_to_records(df, user_id)
+        if not records:
+            return True
+
+        # 3. Insertar
+        ins_r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/movimientos",
+            headers=h,
+            json=records
+        )
+        if ins_r.status_code not in [200, 201]:
+            st.error(f"❌ Error insertando movimientos: {ins_r.status_code} — {ins_r.text[:300]}")
+            return False
+        return True
+
+    except Exception as e:
+        st.error(f"Error guardando movimientos: {e}")
+        return False
+
+
+def agregar_movimientos(nuevos, user_id):
+    """Agrega nuevos movimientos sin borrar los existentes."""
+    try:
+        if not nuevos:
+            return True
+
+        records = []
+        for mov in nuevos:
+            record = {}
+            for k, v in mov.items():
+                db_key = RENAME_MOV_TO_DB.get(k, k.lower())
+                record[db_key] = v
+            record['user_id'] = user_id
+            # Eliminar campos que no existen en la tabla
+            record.pop('estado', None)
+            records.append(record)
+
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/movimientos",
+            headers=_headers(),
+            json=records
+        )
+        if r.status_code not in [200, 201]:
+            st.error(f"❌ Error agregando movimientos: {r.status_code} — {r.text[:300]}")
+            return False
+        return True
+    except Exception as e:
+        st.error(f"Error agregando movimientos: {e}")
+        return False
+
+
+def guardar_inmuebles(df, user_id):
+    """Borra inmuebles del usuario y los reinserta."""
+    try:
+        h = _headers()
+
+        # 1. Borrar
         requests.delete(
             f"{SUPABASE_URL}/rest/v1/inmuebles?user_id=eq.{user_id}",
-            headers=HEADERS
+            headers=h
         )
-        
-        # 2. Preparar datos para insertar
-        rename_map = {
-            'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
-            'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
-            'Valor_Construccion': 'valor_construccion', 'Año_Reforma': 'ano_reforma',
-            'Año_Construccion': 'ano_construccion', 'Mobiliario': 'mobiliario',
-            'Tipo': 'tipo', 'Ref_Catastral': 'ref_catastral', 'Titular': 'titular',
-            'M2_Construidos': 'm2_construidos', 'Habitaciones': 'habitaciones',
-            'CP': 'cp', 'Planta': 'planta', 'Parking': 'parking', 'Estado': 'estado',
-            'Tipo_Arrendamiento': 'tipo_arrendamiento',
-            'Cochera_Vinculada': 'cochera_vinculada',
-            'Zona_Tensionada': 'zona_tensionada',
-            'Fecha_Inicio_Contrato': 'fecha_inicio_contrato',
-            'Fecha_Vencimiento_Contrato': 'fecha_vencimiento_contrato',
-            'NIF_Inquilino': 'nif_inquilino',
-            'Intereses_Hipoteca': 'intereses_hipoteca',
-            'IBI_Anual': 'ibi_anual', 'Seguro_Anual': 'seguro_anual',
-            'Gastos_Juridicos': 'gastos_juridicos',
-            'Retenciones_IRPF': 'retenciones_irpf',
-            'Gastos_Formalizacion': 'gastos_formalizacion',
-            'Gastos_Pendientes_Años_Ant': 'gastos_pendientes_anos_ant',
-            'Servicios_Suministros': 'servicios_suministros',
-            'Direccion': 'direccion'
-        }
-        
-        df_sb = df.rename(columns={k:v for k,v in rename_map.items() if k in df.columns})
-        cols_validas = [c for c in df_sb.columns if c in rename_map.values()]
-        df_sb = df_sb[cols_validas]
-        df_sb = df_sb.where(pd.notna(df_sb), None)
-        
-        # 3. Añadir user_id a cada registro
-        records = df_sb.to_dict(orient='records')
-        for record in records:
-            record['user_id'] = user_id
-        
-        # 4. Insertar
-        if records:
-            r = requests.post(
-                f"{SUPABASE_URL}/rest/v1/inmuebles",
-                headers=HEADERS,
-                json=records
-            )
-            return r.status_code in [200, 201]
+
+        if df is None or len(df) == 0:
+            return True
+
+        # 2. Preparar registros
+        records = _df_inm_to_records(df, user_id)
+        if not records:
+            return True
+
+        # 3. Insertar
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/inmuebles",
+            headers=h,
+            json=records
+        )
+        if r.status_code not in [200, 201]:
+            st.error(f"❌ Error insertando inmuebles: {r.status_code} — {r.text[:300]}")
+            return False
         return True
     except Exception as e:
         st.error(f"Error guardando inmuebles: {e}")
@@ -248,11 +292,11 @@ def guardar_inmuebles(df, user_id):
 
 
 def eliminar_inmueble(nombre, user_id):
-    """Elimina un inmueble por nombre del usuario."""
+    """Elimina un inmueble por nombre."""
     try:
         r = requests.delete(
             f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre}&user_id=eq.{user_id}",
-            headers=HEADERS
+            headers=_headers()
         )
         return r.status_code in [200, 204]
     except Exception as e:
@@ -260,151 +304,69 @@ def eliminar_inmueble(nombre, user_id):
         return False
 
 
-def guardar_movimientos_completo(df, user_id):
-    """Guarda DataFrame de movimientos COMPLETO en Supabase (borra los del usuario y reinserta)."""
-    try:
-        # 1. Borrar solo los movimientos del usuario actual
-        requests.delete(
-            f"{SUPABASE_URL}/rest/v1/movimientos?user_id=eq.{user_id}",
-            headers=HEADERS
-        )
-        
-        # 2. Preparar datos
-        rename_map = {
-            'Fecha': 'fecha', 'Apartamento': 'apartamento',
-            'Concepto': 'concepto', 'Categoría': 'categoria',
-            'Tipo': 'tipo', 'Importe': 'importe', 'Deducible': 'deducible'
-        }
-        df_sb = df.rename(columns={k:v for k,v in rename_map.items() if k in df.columns})
-        cols_validas = [c for c in df_sb.columns if c in rename_map.values()]
-        df_sb = df_sb[cols_validas]
-        df_sb = df_sb.where(pd.notna(df_sb), None)
-        
-        # 3. Añadir user_id a cada registro
-        records = df_sb.to_dict(orient='records')
-        for record in records:
-            record['user_id'] = user_id
-        
-        # 4. Insertar
-        if records:
-            r = requests.post(
-                f"{SUPABASE_URL}/rest/v1/movimientos",
-                headers=HEADERS,
-                json=records
-            )
-            return r.status_code in [200, 201]
-        return True
-    except Exception as e:
-        st.error(f"Error guardando movimientos: {e}")
-        return False
+# ─── HELPERS INTERNOS ────────────────────────────────────────────
+
+def _df_mov_to_records(df, user_id):
+    """Convierte DataFrame de movimientos a lista de dicts para Supabase."""
+    df2 = df.copy()
+    df2 = df2.rename(columns={k: v for k, v in RENAME_MOV_TO_DB.items() if k in df2.columns})
+    # Solo columnas válidas de la tabla
+    cols_db = ['fecha', 'apartamento', 'concepto', 'categoria', 'tipo', 'importe', 'deducible']
+    cols_presentes = [c for c in cols_db if c in df2.columns]
+    df2 = df2[cols_presentes]
+    df2 = df2.where(pd.notna(df2), None)
+    # Convertir fechas a string
+    if 'fecha' in df2.columns:
+        df2['fecha'] = pd.to_datetime(df2['fecha'], errors='coerce').dt.strftime('%Y-%m-%d')
+    records = df2.to_dict(orient='records')
+    for r in records:
+        r['user_id'] = user_id
+    return records
 
 
-def agregar_movimientos(nuevos, user_id):
-    """Agrega nuevos movimientos (lista de dicts) sin borrar los existentes."""
-    try:
-        rename_map = {
-            'Fecha': 'fecha', 'Apartamento': 'apartamento',
-            'Concepto': 'concepto', 'Categoría': 'categoria',
-            'Tipo': 'tipo', 'Importe': 'importe', 'Deducible': 'deducible'
-        }
-        records = []
-        for mov in nuevos:
-            record = {}
-            for k, v in mov.items():
-                key = rename_map.get(k, k.lower())
-                record[key] = v
-            # Añadir user_id
-            record['user_id'] = user_id
-            records.append(record)
-        
-        if records:
-            r = requests.post(
-                f"{SUPABASE_URL}/rest/v1/movimientos",
-                headers=HEADERS,
-                json=records
-            )
-            return r.status_code in [200, 201]
-        return True
-    except Exception as e:
-        st.error(f"Error agregando movimientos: {e}")
-        return False
+def _df_inm_to_records(df, user_id):
+    """Convierte DataFrame de inmuebles a lista de dicts para Supabase."""
+    df2 = df.copy()
+    df2 = df2.rename(columns={k: v for k, v in RENAME_INM_TO_DB.items() if k in df2.columns})
+    cols_db = [v for v in RENAME_INM_TO_DB.values()]
+    cols_presentes = [c for c in cols_db if c in df2.columns]
+    df2 = df2[cols_presentes]
+    df2 = df2.where(pd.notna(df2), None)
+    records = df2.to_dict(orient='records')
+    for r in records:
+        r['user_id'] = user_id
+    return records
 
 
-# ─── DATOS INICIALES ─────────────────────────────────────────────
-
-def _crear_inmuebles_iniciales(user_id):
-    """Crea los 6 inmuebles de Pedro si la tabla está vacía."""
-    rows = [
-        {"user_id":user_id,"nombre":"Casa Abarqueros","inquilino":"Victor Aguiluz","renta":2200.0,"renta_mercado":2600.0,"comunidad":193.76,"valor_construccion":150000.0,"ano_reforma":2018,"ano_construccion":1975,"mobiliario":"S","tipo":"Casa","ref_catastral":"00XX0001","titular":"Pedro Nolasco","m2_construidos":180,"habitaciones":5,"cp":"18001","planta":0,"parking":"N","estado":"Reformado","tipo_arrendamiento":"Larga Duración","cochera_vinculada":"N","zona_tensionada":"N","fecha_inicio_contrato":"2022-01-01","fecha_vencimiento_contrato":"2027-01-01","nif_inquilino":"12345678A","intereses_hipoteca":0,"ibi_anual":800,"seguro_anual":250,"gastos_juridicos":0,"retenciones_irpf":0,"gastos_formalizacion":0,"gastos_pendientes_anos_ant":0,"servicios_suministros":0},
-        {"user_id":user_id,"nombre":"Paseo del Salón","inquilino":"Pool Despachos","renta":1591.8,"renta_mercado":1650.0,"comunidad":175.18,"valor_construccion":120000.0,"ano_reforma":2020,"ano_construccion":1990,"mobiliario":"N","tipo":"Piso","ref_catastral":"00XX0002","titular":"Pedro Nolasco","m2_construidos":130,"habitaciones":4,"cp":"18005","planta":3,"parking":"S","estado":"Bueno","tipo_arrendamiento":"Larga Duración","cochera_vinculada":"S","zona_tensionada":"N","fecha_inicio_contrato":"2021-06-01","fecha_vencimiento_contrato":"2026-06-01","nif_inquilino":"B87654321","intereses_hipoteca":0,"ibi_anual":600,"seguro_anual":200,"gastos_juridicos":0,"retenciones_irpf":286.0,"gastos_formalizacion":0,"gastos_pendientes_anos_ant":0,"servicios_suministros":0},
-        {"user_id":user_id,"nombre":"Huerto Unidad 1","inquilino":"Alain","renta":660.0,"renta_mercado":800.0,"comunidad":74.62,"valor_construccion":45000.0,"ano_reforma":2022,"ano_construccion":2005,"mobiliario":"S","tipo":"Piso","ref_catastral":"00XX0003","titular":"Pedro Nolasco","m2_construidos":60,"habitaciones":2,"cp":"18008","planta":1,"parking":"N","estado":"Reformado","tipo_arrendamiento":"Larga Duración","cochera_vinculada":"N","zona_tensionada":"S","fecha_inicio_contrato":"2023-03-01","fecha_vencimiento_contrato":"2028-03-01","nif_inquilino":"87654321B","intereses_hipoteca":0,"ibi_anual":300,"seguro_anual":150,"gastos_juridicos":0,"retenciones_irpf":0,"gastos_formalizacion":0,"gastos_pendientes_anos_ant":0,"servicios_suministros":0},
-        {"user_id":user_id,"nombre":"Huerto Unidad 2","inquilino":"Laura/Alex","renta":800.0,"renta_mercado":800.0,"comunidad":74.62,"valor_construccion":45000.0,"ano_reforma":2022,"ano_construccion":2005,"mobiliario":"S","tipo":"Piso","ref_catastral":"00XX0004","titular":"Pedro Nolasco","m2_construidos":65,"habitaciones":2,"cp":"18008","planta":2,"parking":"N","estado":"Reformado","tipo_arrendamiento":"Temporada","cochera_vinculada":"N","zona_tensionada":"S","fecha_inicio_contrato":"2024-09-01","fecha_vencimiento_contrato":"2025-08-31","nif_inquilino":"23456789C","intereses_hipoteca":0,"ibi_anual":300,"seguro_anual":150,"gastos_juridicos":0,"retenciones_irpf":0,"gastos_formalizacion":0,"gastos_pendientes_anos_ant":0,"servicios_suministros":0},
-        {"user_id":user_id,"nombre":"Huerto Unidad 3","inquilino":"Jose Manuel","renta":850.0,"renta_mercado":800.0,"comunidad":74.63,"valor_construccion":45000.0,"ano_reforma":2021,"ano_construccion":2005,"mobiliario":"S","tipo":"Piso","ref_catastral":"00XX0005","titular":"Pedro Nolasco","m2_construidos":68,"habitaciones":3,"cp":"18008","planta":3,"parking":"N","estado":"Bueno","tipo_arrendamiento":"Larga Duración","cochera_vinculada":"N","zona_tensionada":"N","fecha_inicio_contrato":"2022-11-01","fecha_vencimiento_contrato":"2027-11-01","nif_inquilino":"34567890D","intereses_hipoteca":0,"ibi_anual":300,"seguro_anual":150,"gastos_juridicos":0,"retenciones_irpf":0,"gastos_formalizacion":0,"gastos_pendientes_anos_ant":0,"servicios_suministros":0},
-        {"user_id":user_id,"nombre":"Huerto Unidad 4","inquilino":"Pendiente","renta":600.0,"renta_mercado":800.0,"comunidad":74.62,"valor_construccion":45000.0,"ano_reforma":2024,"ano_construccion":2005,"mobiliario":"S","tipo":"Piso","ref_catastral":"00XX0006","titular":"Pedro Nolasco","m2_construidos":62,"habitaciones":2,"cp":"18008","planta":4,"parking":"N","estado":"Reformado","tipo_arrendamiento":"Vacacional","cochera_vinculada":"N","zona_tensionada":"N","fecha_inicio_contrato":"2025-01-01","fecha_vencimiento_contrato":"2026-12-31","nif_inquilino":"","intereses_hipoteca":0,"ibi_anual":300,"seguro_anual":150,"gastos_juridicos":0,"retenciones_irpf":0,"gastos_formalizacion":0,"gastos_pendientes_anos_ant":0,"servicios_suministros":0},
+def _limpiar_numericos_inm(df):
+    """Limpia columnas numéricas de inmuebles in-place."""
+    cols_num = [
+        "Renta", "Renta_Mercado", "Comunidad", "Valor_Construccion",
+        "Año_Reforma", "Año_Construccion", "M2_Construidos", "Habitaciones",
+        "Planta", "Intereses_Hipoteca", "IBI_Anual", "Seguro_Anual",
+        "Gastos_Juridicos", "Retenciones_IRPF", "Gastos_Formalizacion",
+        "Gastos_Pendientes_Años_Ant", "Servicios_Suministros"
     ]
-    # Insertar en Supabase
-    try:
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/inmuebles",
-            headers=HEADERS,
-            json=rows
-        )
-    except:
-        pass
-    # Devolver como DataFrame con nombres de columna de la app
-    df = pd.DataFrame(rows)
-    rename_map = {
-        'nombre': 'Nombre', 'inquilino': 'Inquilino', 'renta': 'Renta',
-        'renta_mercado': 'Renta_Mercado', 'comunidad': 'Comunidad',
-        'valor_construccion': 'Valor_Construccion', 'ano_reforma': 'Año_Reforma',
-        'ano_construccion': 'Año_Construccion', 'mobiliario': 'Mobiliario',
-        'tipo': 'Tipo', 'ref_catastral': 'Ref_Catastral', 'titular': 'Titular',
-        'm2_construidos': 'M2_Construidos', 'habitaciones': 'Habitaciones',
-        'cp': 'CP', 'planta': 'Planta', 'parking': 'Parking', 'estado': 'Estado',
-        'tipo_arrendamiento': 'Tipo_Arrendamiento',
-        'cochera_vinculada': 'Cochera_Vinculada',
-        'zona_tensionada': 'Zona_Tensionada',
-        'fecha_inicio_contrato': 'Fecha_Inicio_Contrato',
-        'fecha_vencimiento_contrato': 'Fecha_Vencimiento_Contrato',
-        'nif_inquilino': 'NIF_Inquilino',
-        'intereses_hipoteca': 'Intereses_Hipoteca',
-        'ibi_anual': 'IBI_Anual', 'seguro_anual': 'Seguro_Anual',
-        'gastos_juridicos': 'Gastos_Juridicos',
-        'retenciones_irpf': 'Retenciones_IRPF',
-        'gastos_formalizacion': 'Gastos_Formalizacion',
-        'gastos_pendientes_anos_ant': 'Gastos_Pendientes_Años_Ant',
-        'servicios_suministros': 'Servicios_Suministros'
-    }
-    df = df.rename(columns={k:v for k,v in rename_map.items() if k in df.columns})
-    return df
+    for col in cols_num:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
 
-def _crear_movimientos_iniciales(user_id):
-    """Crea movimientos de ejemplo si la tabla está vacía."""
+def _inmuebles_iniciales_df(user_id):
+    """DataFrame con inmuebles de ejemplo (sin insertar en BD)."""
     rows = [
-        {"user_id":user_id,"fecha":"2026-04-01","apartamento":"Casa Abarqueros","concepto":"Renta Mensual","categoria":"Ingresos","tipo":"Ingreso","importe":2200.00,"deducible":"N"},
-        {"user_id":user_id,"fecha":"2026-04-01","apartamento":"Casa Abarqueros","concepto":"Comunidad","categoria":"Comunidad","tipo":"Gasto","importe":193.76,"deducible":"S"},
+        {"Nombre":"Casa Abarqueros","Inquilino":"Victor Aguiluz","Renta":2200.0,"Renta_Mercado":2600.0,"Comunidad":193.76,"Valor_Construccion":150000.0,"Año_Reforma":2018,"Año_Construccion":1975,"Mobiliario":"S","Tipo":"Casa","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":180,"Habitaciones":5,"CP":"18001","Planta":0,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":800,"Seguro_Anual":250,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
+        {"Nombre":"Paseo del Salón","Inquilino":"Pool Despachos","Renta":1591.8,"Renta_Mercado":1650.0,"Comunidad":175.18,"Valor_Construccion":120000.0,"Año_Reforma":2020,"Año_Construccion":1990,"Mobiliario":"N","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":130,"Habitaciones":4,"CP":"18005","Planta":3,"Parking":"S","Estado":"Bueno","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"S","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2021-06-01","Fecha_Vencimiento_Contrato":"2026-06-01","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":600,"Seguro_Anual":200,"Gastos_Juridicos":0,"Retenciones_IRPF":286.0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
+        {"Nombre":"Huerto Unidad 1","Inquilino":"Alain","Renta":660.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2022,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":60,"Habitaciones":2,"CP":"18008","Planta":1,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"S","Fecha_Inicio_Contrato":"2023-03-01","Fecha_Vencimiento_Contrato":"2028-03-01","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
+        {"Nombre":"Huerto Unidad 2","Inquilino":"Laura/Alex","Renta":800.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2022,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":65,"Habitaciones":2,"CP":"18008","Planta":2,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Temporada","Cochera_Vinculada":"N","Zona_Tensionada":"S","Fecha_Inicio_Contrato":"2024-09-01","Fecha_Vencimiento_Contrato":"2025-08-31","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
+        {"Nombre":"Huerto Unidad 3","Inquilino":"Jose Manuel","Renta":850.0,"Renta_Mercado":800.0,"Comunidad":74.63,"Valor_Construccion":45000.0,"Año_Reforma":2021,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":68,"Habitaciones":3,"CP":"18008","Planta":3,"Parking":"N","Estado":"Bueno","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-11-01","Fecha_Vencimiento_Contrato":"2027-11-01","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
+        {"Nombre":"Huerto Unidad 4","Inquilino":"Pendiente","Renta":600.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2024,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":62,"Habitaciones":2,"CP":"18008","Planta":4,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Vacacional","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2025-01-01","Fecha_Vencimiento_Contrato":"2026-12-31","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
     ]
-    try:
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/movimientos",
-            headers=HEADERS,
-            json=rows
-        )
-    except:
-        pass
-    df = pd.DataFrame(rows)
-    rename_map = {
-        'fecha': 'Fecha', 'apartamento': 'Apartamento',
-        'concepto': 'Concepto', 'categoria': 'Categoría',
-        'tipo': 'Tipo', 'importe': 'Importe', 'deducible': 'Deducible'
-    }
-    df = df.rename(columns={k:v for k,v in rename_map.items() if k in df.columns})
-    return df
+    return pd.DataFrame(rows)
 
 
-# ─── FUNCIÓN DE BACKUP (CSV DESCARGABLE) ────────────────────────
+# ─── BACKUP CSV ──────────────────────────────────────────────────
 
 def generar_csv_backup(df, nombre_archivo):
-    """Genera un CSV en memoria para descarga (backup)."""
+    """Genera CSV en memoria para descarga."""
     return df.to_csv(index=False).encode('utf-8')
