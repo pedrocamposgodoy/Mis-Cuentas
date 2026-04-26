@@ -107,7 +107,8 @@ div[data-testid="column"] .stButton>button:hover{{background:#F0F6FF!important;}
 from supabase_db import (
     leer_inmuebles, leer_movimientos,
     guardar_inmuebles, eliminar_inmueble, guardar_movimientos_completo,
-    agregar_movimientos, generar_csv_backup
+    agregar_movimientos, generar_csv_backup,
+    login_usuario, registrar_usuario
 )
 
 COLS_INM = [
@@ -130,7 +131,68 @@ DEFAULTS_FISCAL = {
 }
 
 # ================================================================
-# SECCIÓN 4 — CARGA DE DATOS DESDE SUPABASE
+# SECCIÓN 4 — AUTENTICACIÓN
+# ================================================================
+if "user_logged_in" not in st.session_state:
+    st.session_state.user_logged_in = False
+if "user_id" not in st.session_state:
+    st.session_state.user_id = None
+if "user_email" not in st.session_state:
+    st.session_state.user_email = None
+
+# Si no está logueado, mostrar formulario de login
+if not st.session_state.user_logged_in:
+    st.markdown("<h1 style='text-align:center;color:#0F2744;'>🏠 Nolasco Capital</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center;color:#185FA5;'>Gestión Patrimonial Inmobiliaria</h3>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    tab1, tab2 = st.tabs(["🔐 Iniciar Sesión", "📝 Registrarse"])
+    
+    with tab1:
+        st.markdown("### Inicia sesión con tu cuenta")
+        email_login = st.text_input("📧 Email", key="email_login")
+        password_login = st.text_input("🔒 Contraseña", type="password", key="password_login")
+        
+        if st.button("🚀 Entrar", use_container_width=True):
+            if email_login and password_login:
+                result = login_usuario(email_login, password_login)
+                if result['success']:
+                    st.session_state.user_logged_in = True
+                    st.session_state.user_id = result['user_id']
+                    st.session_state.user_email = result['email']
+                    st.success(f"✅ Bienvenido {result['email']}")
+                    st.rerun()
+                else:
+                    st.error(f"❌ {result['error']}")
+            else:
+                st.warning("⚠️ Completa todos los campos")
+    
+    with tab2:
+        st.markdown("### Crea tu cuenta nueva")
+        email_reg = st.text_input("📧 Email", key="email_reg")
+        password_reg = st.text_input("🔒 Contraseña", type="password", key="password_reg")
+        password_reg2 = st.text_input("🔒 Repetir Contraseña", type="password", key="password_reg2")
+        
+        if st.button("📝 Registrarse", use_container_width=True):
+            if email_reg and password_reg and password_reg2:
+                if password_reg == password_reg2:
+                    if len(password_reg) >= 6:
+                        result = registrar_usuario(email_reg, password_reg)
+                        if result['success']:
+                            st.success("✅ Cuenta creada. Ahora inicia sesión.")
+                        else:
+                            st.error(f"❌ {result['error']}")
+                    else:
+                        st.warning("⚠️ La contraseña debe tener al menos 6 caracteres")
+                else:
+                    st.warning("⚠️ Las contraseñas no coinciden")
+            else:
+                st.warning("⚠️ Completa todos los campos")
+    
+    st.stop()
+
+# ================================================================
+# SECCIÓN 5 — CARGA DE DATOS DESDE SUPABASE
 # ================================================================
 if "df_inm_persistent" not in st.session_state:
     st.session_state.df_inm_persistent = leer_inmuebles()
@@ -191,6 +253,22 @@ with st.sidebar:
 </div>
 <hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.6rem 0;'>
 """, unsafe_allow_html=True)
+
+    # Usuario logueado
+    st.markdown(f"""
+<div style='padding:0.5rem 1rem;background:rgba(96,180,255,0.1);border-radius:6px;margin:0 1rem 1rem;'>
+    <div style='font-size:0.7rem;color:#3a6a8a;'>👤 Usuario</div>
+    <div style='font-size:0.85rem;color:#fff;margin-top:2px;'>{st.session_state.user_email}</div>
+</div>
+""", unsafe_allow_html=True)
+    
+    if st.button("🚪 Cerrar Sesión", use_container_width=True):
+        st.session_state.user_logged_in = False
+        st.session_state.user_id = None
+        st.session_state.user_email = None
+        st.rerun()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
 
     def nav_group(label, grupo_id):
         st.markdown(f"<div style='font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#3a6a8a;padding:0.5rem 1rem 0.3rem;'>{label}</div>", unsafe_allow_html=True)
@@ -1491,10 +1569,8 @@ elif menu == "Diario Contable":
         with col_f3:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
             if st.button("🔄 Limpiar", use_container_width=True, key="limpiar_filtros"):
-                if "filtro_año" in st.session_state:
-                    del st.session_state.filtro_año
-                if "filtro_mes" in st.session_state:
-                    del st.session_state.filtro_mes
+                st.session_state.filtro_año = "Todos"
+                st.session_state.filtro_mes = "Todos"
                 st.rerun()
         
         # Aplicar filtros
@@ -2038,14 +2114,11 @@ elif menu == "Datos de la Cartera":
                         st.rerun()
                     if st.button("🗑️", key=f"del_{idx}", use_container_width=True):
                         if len(st.session_state.df_inm_persistent) > 1:
-                            # Obtener nombre antes de eliminar
-                            nombre_a_eliminar = st.session_state.df_inm_persistent.loc[idx, 'Nombre']
-                            # Eliminar de Supabase
-                            eliminar_inmueble(nombre_a_eliminar)
                             # Eliminar de session_state
                             df_nuevo = st.session_state.df_inm_persistent.drop(idx).reset_index(drop=True)
                             st.session_state.df_inm_persistent = df_nuevo
-                            st.success(f"✓ {nombre_a_eliminar} eliminado")
+                            guardar_inmuebles(df_nuevo)
+                            st.success(f"✓ {row['Nombre']} eliminado")
                             st.rerun()
                         else:
                             st.error("No puedes eliminar el último inmueble")
