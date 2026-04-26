@@ -436,30 +436,30 @@ def calcular_dias_arrendado(row, año_fiscal=None):
 
 def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
     dias_arrendado = calcular_dias_arrendado(row, año_fiscal=año_fiscal)
-    renta_mensual = safe_safe_float(row.get("Renta", 0))
+    renta_mensual = safe_float(row.get("Renta", 0))
     ingresos_integros = renta_mensual * 12
-    intereses = safe_safe_float(row.get("Intereses_Hipoteca", 0))
+    intereses = safe_float(row.get("Intereses_Hipoteca", 0))
     gastos_reparacion = df_mov_local[
         (df_mov_local["Apartamento"] == row["Nombre"]) &
         (df_mov_local["Tipo"] == "Gasto") &
         (df_mov_local["Categoría"].isin(["Mantenimiento", "Reparación"]))
     ]["Importe"].sum()
-    ibi_anual = safe_safe_float(row.get("IBI_Anual", 0))
-    comunidad_anual = safe_safe_float(row.get("Comunidad", 0)) * 12
-    seguro_anual = safe_safe_float(row.get("Seguro_Anual", 0))
-    formalizacion = safe_safe_float(row.get("Gastos_Formalizacion", 0))
+    ibi_anual = safe_float(row.get("IBI_Anual", 0))
+    comunidad_anual = safe_float(row.get("Comunidad", 0)) * 12
+    seguro_anual = safe_float(row.get("Seguro_Anual", 0))
+    formalizacion = safe_float(row.get("Gastos_Formalizacion", 0))
     casilla_0110 = comunidad_anual + seguro_anual + formalizacion
-    servicios = safe_safe_float(row.get("Servicios_Suministros", 0))
-    gastos_juridicos = safe_safe_float(row.get("Gastos_Juridicos", 0))
-    valor_construccion = safe_safe_float(row.get("Valor_Construccion", 0))
+    servicios = safe_float(row.get("Servicios_Suministros", 0))
+    gastos_juridicos = safe_float(row.get("Gastos_Juridicos", 0))
+    valor_construccion = safe_float(row.get("Valor_Construccion", 0))
     amortizacion = valor_construccion * 0.03
-    gastos_años_ant = safe_safe_float(row.get("Gastos_Pendientes_Años_Ant", 0))
+    gastos_años_ant = safe_float(row.get("Gastos_Pendientes_Años_Ant", 0))
     total_gastos = intereses + gastos_reparacion + ibi_anual + casilla_0110 + servicios + gastos_juridicos + amortizacion + gastos_años_ant
     rendimiento_neto = ingresos_integros - total_gastos
     tipo_arrendamiento = str(row.get("Tipo_Arrendamiento", "Larga Duración"))
     reduccion_pct = 0.60 if tipo_arrendamiento == "Larga Duración" else 0.00
     reduccion_importe = rendimiento_neto * reduccion_pct
-    retenciones = safe_safe_float(row.get("Retenciones_IRPF", 0))
+    retenciones = safe_float(row.get("Retenciones_IRPF", 0))
     rendimiento_final = rendimiento_neto - reduccion_importe
     return {
         "0062_0075": f"Ref: {row.get('Ref_Catastral', 'N/A')}",
