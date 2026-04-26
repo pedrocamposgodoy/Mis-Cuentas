@@ -10,7 +10,7 @@ import streamlit as st
 # ─── CREDENCIALES ───────────────────────────────────────────────
 # IMPORTANTE: Reemplaza con tus credenciales reales de Supabase
 SUPABASE_URL = "https://odxixtgqcyddfqaapqgi.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9keGl4dGdxY3lkZGZxYWFwcWdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU3NTI5NDMsImV4cCI6MjA2MTMyODk0M30.5YrMZdlWaQFJ1JHVxpj3-b0wCuJA_HxpH7YgI0RoKec"
+SUPABASE_KEY = " sb_publishable_Obgti7yMfXw8wCUL2FbTtA_EWeyHuM9"
 
 HEADERS = {
     'apikey': SUPABASE_KEY,
