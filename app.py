@@ -160,6 +160,7 @@ if not st.session_state.user_logged_in:
                     st.session_state.user_logged_in = True
                     st.session_state.user_id = result['user_id']
                     st.session_state.user_email = result['email']
+                    st.session_state.access_token = result['access_token']
                     # Limpiar datos del usuario anterior
                     if "df_inm_persistent" in st.session_state:
                         del st.session_state.df_inm_persistent
@@ -271,6 +272,7 @@ with st.sidebar:
         st.session_state.user_logged_in = False
         st.session_state.user_id = None
         st.session_state.user_email = None
+        st.session_state.access_token = None
         # Limpiar datos
         if "df_inm_persistent" in st.session_state:
             del st.session_state.df_inm_persistent
