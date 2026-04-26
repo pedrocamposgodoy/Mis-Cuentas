@@ -130,6 +130,27 @@ def leer_inmuebles(user_id=None):
                 for col in COLS_INM:
                     if col not in df.columns:
                         df[col] = DEFAULTS_FISCAL.get(col, "")
+                # Limpiar campos numéricos — nunca None
+                cols_numericas = [
+                    "Renta","Renta_Mercado","Comunidad","Valor_Construccion",
+                    "Año_Reforma","Año_Construccion","M2_Construidos","Habitaciones",
+                    "Planta","Intereses_Hipoteca","IBI_Anual","Seguro_Anual",
+                    "Gastos_Juridicos","Retenciones_IRPF","Gastos_Formalizacion",
+                    "Gastos_Pendientes_Años_Ant","Servicios_Suministros"
+                ]
+                for col in cols_numericas:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                # Limpiar campos texto — nunca None
+                cols_texto = [
+                    "Nombre","Inquilino","Tipo","Estado","Mobiliario","Parking",
+                    "Ref_Catastral","Titular","CP","Planta","Titular",
+                    "Tipo_Arrendamiento","Cochera_Vinculada","Zona_Tensionada",
+                    "Fecha_Inicio_Contrato","Fecha_Vencimiento_Contrato","NIF_Inquilino"
+                ]
+                for col in cols_texto:
+                    if col in df.columns:
+                        df[col] = df[col].fillna("")
                 return df
             else:
                 # Si no hay inmuebles para este usuario, devolver DataFrame vacío
