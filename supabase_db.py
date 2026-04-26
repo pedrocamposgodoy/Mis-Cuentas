@@ -8,9 +8,9 @@ import json
 import streamlit as st
 
 # ─── CREDENCIALES ───────────────────────────────────────────────
-# IMPORTANTE: Reemplaza con tus credenciales reales de Supabase
+# Credenciales de Supabase - Nolasco Capital
 SUPABASE_URL = "https://odxixtgqcyddfqaapqgi.supabase.co"
-SUPABASE_KEY = " sb_publishable_Obgti7yMfXw8wCUL2FbTtA_EWeyHuM9"
+SUPABASE_KEY = "sb_publishable_Obgti7yMfXw8wCUL2FbTtA_EWeyHuM9"
 
 HEADERS = {
     'apikey': SUPABASE_KEY,
