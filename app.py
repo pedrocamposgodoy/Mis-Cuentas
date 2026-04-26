@@ -1373,7 +1373,7 @@ elif menu == "Fichas (Benchmark)":
     renta_act = f["Renta"]; renta_mer = tasacion(f); desv = (renta_act-renta_mer)/renta_mer*100
     perdida_m = max(0,renta_mer-renta_act); perdida_a = perdida_m*12
     df_gf = df_mov[(df_mov["Apartamento"]==sel)&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]
-    gastos_u = f["Comunidad"]+df_gf["Importe"].sum()
+    gastos_u = (f["Comunidad"] if pd.notna(f.get("Comunidad", 0)) else 0) + df_gf["Importe"].sum()
     rent_bruta = (renta_act*12/f["Valor_Construccion"]*100) if f["Valor_Construccion"]>0 else 0
     rent_neta = ((renta_act-gastos_u)*12/f["Valor_Construccion"]*100) if f["Valor_Construccion"]>0 else 0
     tipo_arr = str(f.get("Tipo_Arrendamiento","Larga Duración"))
@@ -1452,7 +1452,7 @@ elif menu == "Fichas (Benchmark)":
     fig_comp.update_layout(barmode="group",paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=300,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=12),legend=dict(orientation="h",yanchor="bottom",y=1.02,xanchor="right",x=1))
     st.plotly_chart(fig_comp,use_container_width=True)
     st.markdown('<div class="section-title">Análisis de Gastos Reales</div>', unsafe_allow_html=True)
-    res = pd.concat([pd.DataFrame([{"Concepto":"Comunidad","Importe":f["Comunidad"],"Deducible":"S"}]),df_gf[["Concepto","Importe","Deducible"]]])
+    res = pd.concat([pd.DataFrame([{"Concepto":"Comunidad","Importe":f["Comunidad"] if pd.notna(f.get("Comunidad",0)) else 0,"Deducible":"S"}]),df_gf[["Concepto","Importe","Deducible"]]])
     st.dataframe(res.style.format({"Importe":"{:,.2f} €"}),hide_index=True,use_container_width=True)
 
 # ================================================================
