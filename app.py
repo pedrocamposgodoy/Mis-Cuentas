@@ -1118,10 +1118,7 @@ if menu == "Torre de Control":
     # Si no hay inmuebles, redirigir a Cartera
     if df_inm.empty:
         st.markdown("## 🏠 Bienvenido a Nolasco Capital")
-        st.info("📭 Aún no tienes inmuebles registrados. Añade tu primer inmueble para empezar.")
-        if st.button("➕ Añadir primer inmueble", type="primary"):
-            st.session_state.menu = "Cartera"
-            st.rerun()
+        st.info("📭 Aún no tienes inmuebles registrados. Ve a **Datos de Cartera** en el menú lateral para añadir tu primer inmueble.")
         st.stop()
     else:
         pass
@@ -1383,8 +1380,8 @@ elif menu == "Fichas (Benchmark)":
     perdida_m = max(0,renta_mer-renta_act); perdida_a = perdida_m*12
     df_gf = df_mov[(df_mov["Apartamento"]==sel)&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]
     gastos_u = (f["Comunidad"] if pd.notna(f.get("Comunidad", 0)) else 0) + df_gf["Importe"].sum()
-    rent_bruta = (renta_act*12/f["Valor_Construccion"]*100) if f["Valor_Construccion"]>0 else 0
-    rent_neta = ((renta_act-gastos_u)*12/f["Valor_Construccion"]*100) if f["Valor_Construccion"]>0 else 0
+    rent_bruta = (renta_act*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
+    rent_neta = ((renta_act-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
     tipo_arr = str(f.get("Tipo_Arrendamiento","Larga Duración"))
     zona_tens = str(f.get("Zona_Tensionada","N"))=="S"
     cochera_v = str(f.get("Cochera_Vinculada","N"))=="S"
@@ -1430,7 +1427,7 @@ elif menu == "Fichas (Benchmark)":
     cf1,cf2,cf3 = st.columns(3); cols_fiscal = [cf1,cf2,cf3]; mejor_mod,mejor_rn = None,-99999
     for idx,(mod,params) in enumerate(modalidades.items()):
         red = params["reduccion"]; impuesto = max(0, rto_neto*(1-red)*tipo_irpf)
-        rn_real = (rto_neto-impuesto)/f["Valor_Construccion"]*100 if f["Valor_Construccion"]>0 else 0
+        rn_real = (rto_neto-impuesto)/safe_float(f.get("Valor_Construccion",0))*100 if safe_float(f.get("Valor_Construccion",0))>0 else 0
         if rn_real>mejor_rn: mejor_rn=rn_real; mejor_mod=mod
         es_actual = (mod==tipo_arr)
         borde = f"border:2px solid {ACCENT};" if es_actual else f"border:1px solid {BORDER};"
@@ -1448,7 +1445,7 @@ elif menu == "Fichas (Benchmark)":
     else:
         nueva_renta = st.slider("Ajusta la renta mensual (€)", min_value=int(renta_act*0.8), max_value=int(renta_mer*1.2), value=int(renta_act), step=25)
     ganancia_m = nueva_renta-renta_act; ganancia_a = ganancia_m*12
-    nueva_neta = ((nueva_renta-gastos_u)*12/f["Valor_Construccion"]*100) if f["Valor_Construccion"]>0 else 0
+    nueva_neta = ((nueva_renta-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
     s1,s2,s3 = st.columns(3)
     s1.metric("Nueva Renta", f"{nueva_renta:,.0f} €/mes", delta=f"{ganancia_m:+.0f} €")
     s2.metric("Impacto Anual", f"{ganancia_a:+,.0f} €/año")
