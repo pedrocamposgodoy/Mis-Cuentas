@@ -88,10 +88,15 @@ def registrar_usuario(email, password):
 
 # ─── FUNCIONES DE LECTURA ────────────────────────────────────────
 
-def leer_inmuebles():
+def leer_inmuebles(user_id=None):
     """Lee todos los inmuebles de Supabase y devuelve DataFrame."""
     try:
-        r = requests.get(f"{SUPABASE_URL}/rest/v1/inmuebles?select=*", headers=HEADERS)
+        # Filtrar por user_id si se proporciona
+        url = f"{SUPABASE_URL}/rest/v1/inmuebles?select=*"
+        if user_id:
+            url += f"&user_id=eq.{user_id}"
+        
+        r = requests.get(url, headers=HEADERS)
         if r.status_code == 200:
             data = r.json()
             if data:
@@ -136,10 +141,14 @@ def leer_inmuebles():
         return pd.DataFrame(columns=COLS_INM)
 
 
-def leer_movimientos():
+def leer_movimientos(user_id=None):
     """Lee todos los movimientos de Supabase y devuelve DataFrame."""
     try:
-        r = requests.get(f"{SUPABASE_URL}/rest/v1/movimientos?select=*", headers=HEADERS)
+        url = f"{SUPABASE_URL}/rest/v1/movimientos?select=*"
+        if user_id:
+            url += f"&user_id=eq.{user_id}"
+        
+        r = requests.get(url, headers=HEADERS)
         if r.status_code == 200:
             data = r.json()
             if data:
@@ -166,7 +175,7 @@ def leer_movimientos():
 
 # ─── FUNCIONES DE ESCRITURA ──────────────────────────────────────
 
-def guardar_inmuebles(df):
+def guardar_inmuebles(df, user_id=None):
     """Guarda inmuebles en Supabase uno a uno."""
     rename_map = {
         'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
@@ -197,11 +206,16 @@ def guardar_inmuebles(df):
         df_sb = df_sb.where(pd.notna(df_sb), None)
         records = df_sb.to_dict(orient='records')
 
-        # Obtener IDs existentes por nombre
-        r_all = requests.get(
-            f"{SUPABASE_URL}/rest/v1/inmuebles?select=id,nombre",
-            headers=HEADERS
-        )
+        # Añadir user_id a cada record
+        if user_id:
+            for record in records:
+                record['user_id'] = user_id
+
+        # Obtener IDs existentes por nombre (solo del user actual)
+        url = f"{SUPABASE_URL}/rest/v1/inmuebles?select=id,nombre"
+        if user_id:
+            url += f"&user_id=eq.{user_id}"
+        r_all = requests.get(url, headers=HEADERS)
         existentes = {}
         if r_all.status_code == 200:
             for item in r_all.json():
