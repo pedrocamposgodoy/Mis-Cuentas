@@ -1253,21 +1253,24 @@ if menu == "Torre de Control":
     c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Registrados</div><div class="kpi-value" style="color:{RED};">−{total_gastos_registrados:,.0f} €</div><div class="kpi-sub">Total pagado real</div></div>', unsafe_allow_html=True)
     c3.markdown(f'<div class="kpi-card highlight"><div class="kpi-label">Balance Real</div><div class="kpi-value">{balance_real:,.0f} €</div><div class="kpi-sub">Ingresos - Gastos</div></div>', unsafe_allow_html=True)
     st.markdown('<div class="section-title">Rentabilidad por Activo</div>', unsafe_allow_html=True)
-    cols = st.columns(len(df_inm))
-    for i, row in df_inm.iterrows():
-        g_esp    = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
-        gastos_u = row["Comunidad"]+g_esp
-        neto_u   = row["Renta"]-gastos_u
-        rm       = tasacion(row)
-        desv     = (row["Renta"]-rm)/rm*100
-        pill_cls,_ = bench_pill(desv)
-        zt = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
-        with cols[i]:
-            st.markdown(f"""<div class="asset-card"><div class="asset-top" style="background:{COLOR_TOPS[i%len(COLOR_TOPS)]};"></div><div class="asset-body"><div class="asset-name">{row["Nombre"]}{zt}</div><div class="asset-tenant">{row["Inquilino"]}</div><div class="asset-row"><span class="asset-ml">Renta</span><span class="asset-mv" style="color:{GREEN};">+{row["Renta"]:,.0f}€</span></div><div class="asset-row"><span class="asset-ml">Gastos</span><span class="asset-mv" style="color:{RED};">−{gastos_u:,.0f}€</span></div><div class="asset-div"></div><div class="asset-row"><span class="asset-ml">Neto</span><span class="asset-neto">{neto_u:,.0f}€</span></div><span class="pill {pill_cls}">{desv:+.1f}% mercado</span></div></div>""", unsafe_allow_html=True)
-            if st.button("→ Ver ficha", key=f"card_{i}", use_container_width=True):
-                st.session_state.menu = "Fichas (Benchmark)"
-                st.session_state.ficha_sel = row["Nombre"]
-                st.rerun()
+    if df_inm.empty:
+        st.info("📭 No tienes inmuebles registrados. Ve a **Cartera** para añadir tu primer inmueble.")
+    else:
+        cols = st.columns(len(df_inm))
+        for i, row in df_inm.iterrows():
+            g_esp    = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
+            gastos_u = row["Comunidad"]+g_esp
+            neto_u   = row["Renta"]-gastos_u
+            rm       = tasacion(row)
+            desv     = (row["Renta"]-rm)/rm*100
+            pill_cls,_ = bench_pill(desv)
+            zt = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
+            with cols[i]:
+                st.markdown(f"""<div class="asset-card"><div class="asset-top" style="background:{COLOR_TOPS[i%len(COLOR_TOPS)]};"></div><div class="asset-body"><div class="asset-name">{row["Nombre"]}{zt}</div><div class="asset-tenant">{row["Inquilino"]}</div><div class="asset-row"><span class="asset-ml">Renta</span><span class="asset-mv" style="color:{GREEN};">+{row["Renta"]:,.0f}€</span></div><div class="asset-row"><span class="asset-ml">Gastos</span><span class="asset-mv" style="color:{RED};">−{gastos_u:,.0f}€</span></div><div class="asset-div"></div><div class="asset-row"><span class="asset-ml">Neto</span><span class="asset-neto">{neto_u:,.0f}€</span></div><span class="pill {pill_cls}">{desv:+.1f}% mercado</span></div></div>""", unsafe_allow_html=True)
+                if st.button("→ Ver ficha", key=f"card_{i}", use_container_width=True):
+                    st.session_state.menu = "Fichas (Benchmark)"
+                    st.session_state.ficha_sel = row["Nombre"]
+                    st.rerun()
     col_l,col_r = st.columns(2)
     with col_l:
         st.markdown('<div class="section-title">Composición de Rentas</div>', unsafe_allow_html=True)
