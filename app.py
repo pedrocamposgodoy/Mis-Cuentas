@@ -106,7 +106,7 @@ div[data-testid="column"] .stButton>button:hover{{background:#F0F6FF!important;}
 # ================================================================
 from supabase_db import (
     leer_inmuebles, leer_movimientos,
-    guardar_inmuebles, guardar_movimientos_completo,
+    guardar_inmuebles, eliminar_inmueble, guardar_movimientos_completo,
     agregar_movimientos, generar_csv_backup
 )
 
@@ -2038,11 +2038,14 @@ elif menu == "Datos de la Cartera":
                         st.rerun()
                     if st.button("🗑️", key=f"del_{idx}", use_container_width=True):
                         if len(st.session_state.df_inm_persistent) > 1:
+                            # Obtener nombre antes de eliminar
+                            nombre_a_eliminar = st.session_state.df_inm_persistent.loc[idx, 'Nombre']
+                            # Eliminar de Supabase
+                            eliminar_inmueble(nombre_a_eliminar)
                             # Eliminar de session_state
                             df_nuevo = st.session_state.df_inm_persistent.drop(idx).reset_index(drop=True)
                             st.session_state.df_inm_persistent = df_nuevo
-                            guardar_inmuebles(df_nuevo)
-                            st.success(f"✓ {row['Nombre']} eliminado")
+                            st.success(f"✓ {nombre_a_eliminar} eliminado")
                             st.rerun()
                         else:
                             st.error("No puedes eliminar el último inmueble")
