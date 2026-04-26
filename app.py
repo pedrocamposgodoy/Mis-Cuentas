@@ -1161,9 +1161,9 @@ if menu == "Torre de Control":
     # 3. Rentas por debajo del mercado
     for _, row in df_inm.iterrows():
         rm = tasacion(row)
-        desv = (row["Renta"] - rm) / rm * 100
+        desv = (safe_float(row.get("Renta",0)) - rm) / rm * 100
         if desv < -10:
-            potencial = (rm - row["Renta"])
+            potencial = (rm - safe_float(row.get("Renta",0)))
             oportunidades.append(f"{row['Nombre']} está {abs(desv):.0f}% bajo mercado → Puedes subir {potencial:,.0f}€/mes")
     
     # 4. Margen bajo
@@ -1275,15 +1275,15 @@ if menu == "Torre de Control":
         cols = st.columns(len(df_inm))
         for i, row in df_inm.iterrows():
             g_esp    = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
-            comunidad = row["Comunidad"] if pd.notna(row.get("Comunidad", 0)) else 0
+            comunidad = safe_float(row.get("Comunidad",0)) if pd.notna(row.get("Comunidad", 0)) else 0
             gastos_u = comunidad + g_esp
-            neto_u   = row["Renta"]-gastos_u
+            neto_u   = safe_float(row.get("Renta",0))-gastos_u
             rm       = tasacion(row)
-            desv     = (row["Renta"]-rm)/rm*100
+            desv     = (safe_float(row.get("Renta",0))-rm)/rm*100
             pill_cls,_ = bench_pill(desv)
             zt = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
             with cols[i]:
-                st.markdown(f"""<div class="asset-card"><div class="asset-top" style="background:{COLOR_TOPS[i%len(COLOR_TOPS)]};"></div><div class="asset-body"><div class="asset-name">{row["Nombre"]}{zt}</div><div class="asset-tenant">{row["Inquilino"]}</div><div class="asset-row"><span class="asset-ml">Renta</span><span class="asset-mv" style="color:{GREEN};">+{row["Renta"]:,.0f}€</span></div><div class="asset-row"><span class="asset-ml">Gastos</span><span class="asset-mv" style="color:{RED};">−{gastos_u:,.0f}€</span></div><div class="asset-div"></div><div class="asset-row"><span class="asset-ml">Neto</span><span class="asset-neto">{neto_u:,.0f}€</span></div><span class="pill {pill_cls}">{desv:+.1f}% mercado</span></div></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="asset-card"><div class="asset-top" style="background:{COLOR_TOPS[i%len(COLOR_TOPS)]};"></div><div class="asset-body"><div class="asset-name">{row["Nombre"]}{zt}</div><div class="asset-tenant">{row["Inquilino"]}</div><div class="asset-row"><span class="asset-ml">Renta</span><span class="asset-mv" style="color:{GREEN};">+{safe_float(row.get("Renta",0)):,.0f}€</span></div><div class="asset-row"><span class="asset-ml">Gastos</span><span class="asset-mv" style="color:{RED};">−{gastos_u:,.0f}€</span></div><div class="asset-div"></div><div class="asset-row"><span class="asset-ml">Neto</span><span class="asset-neto">{neto_u:,.0f}€</span></div><span class="pill {pill_cls}">{desv:+.1f}% mercado</span></div></div>""", unsafe_allow_html=True)
                 if st.button("→ Ver ficha", key=f"card_{i}", use_container_width=True):
                     st.session_state.menu = "Fichas (Benchmark)"
                     st.session_state.ficha_sel = row["Nombre"]
@@ -1298,9 +1298,9 @@ if menu == "Torre de Control":
         st.markdown('<div class="section-title">Lucro Cesante Anual</div>', unsafe_allow_html=True)
         total_lc=0
         for _,row in df_inm.iterrows():
-            rm=tasacion(row); pa=max(0,rm-row["Renta"])*12; total_lc+=pa
+            rm=tasacion(row); pa=max(0,rm-safe_float(row.get("Renta",0)))*12; total_lc+=pa
             if pa>0:
-                dv=(row["Renta"]-rm)/rm*100; cv=RED if dv<-15 else AMBER
+                dv=(safe_float(row.get("Renta",0))-rm)/rm*100; cv=RED if dv<-15 else AMBER
                 st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:{CARD_BG};border:1px solid {BORDER};border-radius:8px;margin-bottom:6px;"><span style="font-size:0.8rem;color:{TEXT_SEC};">{row["Nombre"]}</span><span style="font-size:0.9rem;font-weight:600;color:{cv};">−{pa:,.0f} €/año</span></div>', unsafe_allow_html=True)
         st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:{ACCENT};border-radius:8px;margin-top:4px;"><span style="font-size:0.72rem;font-weight:500;color:#B5D4F4;text-transform:uppercase;letter-spacing:0.06em;">Total pérdida anual</span><span style="font-size:1.3rem;font-weight:600;color:#fff;">−{total_lc:,.0f} €</span></div>', unsafe_allow_html=True)
     
@@ -1376,10 +1376,10 @@ elif menu == "Fichas (Benchmark)":
             st.rerun()
     
     f = df_inm[df_inm["Nombre"]==sel].iloc[0]
-    renta_act = f["Renta"]; renta_mer = tasacion(f); desv = (renta_act-renta_mer)/renta_mer*100
+    renta_act = safe_float(f.get("Renta",0)); renta_mer = tasacion(f); desv = (renta_act-renta_mer)/renta_mer*100
     perdida_m = max(0,renta_mer-renta_act); perdida_a = perdida_m*12
     df_gf = df_mov[(df_mov["Apartamento"]==sel)&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]
-    gastos_u = (f["Comunidad"] if pd.notna(f.get("Comunidad", 0)) else 0) + df_gf["Importe"].sum()
+    gastos_u = (safe_float(f.get("Comunidad",0)) if pd.notna(f.get("Comunidad", 0)) else 0) + df_gf["Importe"].sum()
     rent_bruta = (renta_act*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
     rent_neta = ((renta_act-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
     tipo_arr = str(f.get("Tipo_Arrendamiento","Larga Duración"))
@@ -1458,7 +1458,7 @@ elif menu == "Fichas (Benchmark)":
     fig_comp.update_layout(barmode="group",paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=300,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=12),legend=dict(orientation="h",yanchor="bottom",y=1.02,xanchor="right",x=1))
     st.plotly_chart(fig_comp,use_container_width=True)
     st.markdown('<div class="section-title">Análisis de Gastos Reales</div>', unsafe_allow_html=True)
-    res = pd.concat([pd.DataFrame([{"Concepto":"Comunidad","Importe":f["Comunidad"] if pd.notna(f.get("Comunidad",0)) else 0,"Deducible":"S"}]),df_gf[["Concepto","Importe","Deducible"]]])
+    res = pd.concat([pd.DataFrame([{"Concepto":"Comunidad","Importe":safe_float(f.get("Comunidad",0)) if pd.notna(f.get("Comunidad",0)) else 0,"Deducible":"S"}]),df_gf[["Concepto","Importe","Deducible"]]])
     st.dataframe(res.style.format({"Importe":"{:,.2f} €"}),hide_index=True,use_container_width=True)
 
 # ================================================================
@@ -1493,7 +1493,7 @@ elif menu == "Auditoría IA":
         nombre = row["Nombre"]
         reforma = int(row.get("Año_Reforma", año_actual))
         años = año_actual - reforma
-        costes = calcular_costes_reforma(años, row["Valor_Construccion"])
+        costes = calcular_costes_reforma(años, safe_float(row.get("Valor_Construccion",0)))
         datos_mantenimiento[nombre] = {
             "urgente": round(costes["urgente"]),
             "medio": round(costes["medio"]),
@@ -2386,11 +2386,11 @@ elif menu == "Asesor Patrimonial IA":
         años = año_actual - reforma
         # Calcular coste estimado basado en valor construcción y antigüedad
         if años >= 8:
-            coste = row["Valor_Construccion"] * 0.05  # 5% del valor
+            coste = safe_float(row.get("Valor_Construccion",0)) * 0.05  # 5% del valor
         elif años >= 5:
-            coste = row["Valor_Construccion"] * 0.03  # 3% del valor
+            coste = safe_float(row.get("Valor_Construccion",0)) * 0.03  # 3% del valor
         else:
-            coste = row["Valor_Construccion"] * 0.015  # 1.5% del valor
+            coste = safe_float(row.get("Valor_Construccion",0)) * 0.015  # 1.5% del valor
         datos_reforma[nombre] = {"coste": round(coste), "reforma": reforma}
     
     coste_total_reformas = sum(d["coste"] for d in datos_reforma.values())
@@ -2407,7 +2407,7 @@ elif menu == "Asesor Patrimonial IA":
             d = datos_reforma.get(nombre, {})
             años_ref = año_actual - d.get("reforma", año_actual)
             coste_ref = d.get("coste", 0)
-            renta_act = row["Renta"]
+            renta_act = safe_float(row.get("Renta",0))
             renta_mer = tasacion(row)
             desv_pct  = (renta_act - renta_mer) / renta_mer * 100 if renta_mer > 0 else 0
 
@@ -2477,8 +2477,8 @@ elif menu == "Asesor Patrimonial IA":
 
         for _, row in df_inm.iterrows():
             nombre = row["Nombre"]
-            renta  = row["Renta"]
-            valor  = row["Valor_Construccion"] if row["Valor_Construccion"] > 0 else 1
+            renta  = safe_float(row.get("Renta",0))
+            valor  = safe_float(row.get("Valor_Construccion",0)) if safe_float(row.get("Valor_Construccion",0)) > 0 else 1
             rent   = renta * 12 / valor * 100
             d      = datos_reforma.get(nombre, {})
             años_r = año_actual - d.get("reforma", año_actual)
