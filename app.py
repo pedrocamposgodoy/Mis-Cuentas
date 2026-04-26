@@ -195,9 +195,9 @@ if not st.session_state.user_logged_in:
 # SECCIÓN 5 — CARGA DE DATOS DESDE SUPABASE
 # ================================================================
 if "df_inm_persistent" not in st.session_state:
-    st.session_state.df_inm_persistent = leer_inmuebles()
+    st.session_state.df_inm_persistent = leer_inmuebles(user_id=st.session_state.user_id)
 if "df_mov_persistent" not in st.session_state:
-    st.session_state.df_mov_persistent = leer_movimientos()
+    st.session_state.df_mov_persistent = leer_movimientos(user_id=st.session_state.user_id)
 
 df_inm = st.session_state.df_inm_persistent
 df_mov = st.session_state.df_mov_persistent
@@ -2117,7 +2117,7 @@ elif menu == "Datos de la Cartera":
                             # Eliminar de session_state
                             df_nuevo = st.session_state.df_inm_persistent.drop(idx).reset_index(drop=True)
                             st.session_state.df_inm_persistent = df_nuevo
-                            guardar_inmuebles(df_nuevo)
+                            guardar_inmuebles(df_nuevo, user_id=st.session_state.user_id)
                             st.success(f"✓ {row['Nombre']} eliminado")
                             st.rerun()
                         else:
@@ -2269,14 +2269,14 @@ elif menu == "Datos de la Cartera":
                     if es_nuevo:
                         df_nuevo = pd.concat([st.session_state.df_inm_persistent, pd.DataFrame([nuevo_inmueble])], ignore_index=True)
                         st.session_state.df_inm_persistent = df_nuevo
-                        guardar_inmuebles(df_nuevo)
+                        guardar_inmuebles(df_nuevo, user_id=st.session_state.user_id)
                         st.toast(f"✅ '{nombre}' guardado en Supabase", icon="✅")
                         st.success(f"✅ Inmueble '{nombre}' añadido correctamente")
                         import time; time.sleep(1.5)
                     else:
                         for col, val in nuevo_inmueble.items():
                             st.session_state.df_inm_persistent.at[st.session_state.inmueble_editando, col] = val
-                        guardar_inmuebles(st.session_state.df_inm_persistent)
+                        guardar_inmuebles(st.session_state.df_inm_persistent, user_id=st.session_state.user_id)
                         st.toast(f"✅ '{nombre}' actualizado en Supabase", icon="✅")
                         st.success(f"✅ Inmueble '{nombre}' actualizado correctamente")
                         import time; time.sleep(1.5)
@@ -2309,7 +2309,7 @@ elif menu == "Datos de la Cartera":
         df_ed = st.data_editor(df_inm, num_rows="dynamic", use_container_width=True, hide_index=True, column_config=col_cfg)
         if st.button("✅ Guardar Cambios de Tabla", type="primary"):
             st.session_state.df_inm_persistent = df_ed
-            guardar_inmuebles(df_ed)
+            guardar_inmuebles(df_ed, user_id=st.session_state.user_id)
             st.success("✓ Datos actualizados.")
             st.rerun()
 
