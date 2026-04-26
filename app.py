@@ -1106,6 +1106,14 @@ Contrato generado con Nolasco Capital - Herramientas Legales
 ══════════════════════════════════════════════════════════════
 """
 if menu == "Torre de Control":
+    # Si no hay inmuebles, redirigir a Cartera
+    if df_inm.empty:
+        st.markdown("## 🏠 Bienvenido a Nolasco Capital")
+        st.info("📭 Aún no tienes inmuebles registrados. Añade tu primer inmueble para empezar.")
+        if st.button("➕ Añadir primer inmueble", type="primary"):
+            st.session_state.menu = "Cartera"
+            st.rerun()
+        st.stop()
     st.markdown('<div class="brand-header">Torre de Control</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
     
