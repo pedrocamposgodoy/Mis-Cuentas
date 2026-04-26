@@ -1491,8 +1491,10 @@ elif menu == "Diario Contable":
         with col_f3:
             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
             if st.button("🔄 Limpiar", use_container_width=True, key="limpiar_filtros"):
-                st.session_state.filtro_año = "Todos"
-                st.session_state.filtro_mes = "Todos"
+                if "filtro_año" in st.session_state:
+                    del st.session_state.filtro_año
+                if "filtro_mes" in st.session_state:
+                    del st.session_state.filtro_mes
                 st.rerun()
         
         # Aplicar filtros
