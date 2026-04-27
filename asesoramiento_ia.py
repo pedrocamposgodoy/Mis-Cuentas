@@ -12,7 +12,9 @@ from datetime import datetime, date
 
 # ── Supabase ────────────────────────────────────────────────────
 try:
-    from supabase_db import _headers, SUPA_URL
+    from supabase_db import _headers, SUPABASE_URL, SUPABASE_KEY
+    SUPA_URL = SUPABASE_URL
+    SUPA_KEY = SUPABASE_KEY
     import requests
     SUPABASE_OK = True
 except Exception:
