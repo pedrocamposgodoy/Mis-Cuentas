@@ -831,10 +831,12 @@ def _render_rgpd(user_id, df_inmuebles, datos_propietario, problemas):
             exito = True
 
             # Verificar conexión Supabase
+            url_preview = SUPA_URL[:40]
+            inmo_nombres = [i["nombre"] for i in seleccionadas]
             debug_msgs.append(f"🔌 SUPABASE_OK: {SUPABASE_OK}")
-            debug_msgs.append(f"🔑 URL: {SUPA_URL[:40]}...")
+            debug_msgs.append(f"🔑 URL: {url_preview}...")
             debug_msgs.append(f"👤 user_id: {user_id}")
-            debug_msgs.append(f"🏢 Inmobiliarias: {[i['nombre'] for i in seleccionadas]}")
+            debug_msgs.append(f"🏢 Inmobiliarias: {inmo_nombres}")
 
             for inmo in seleccionadas:
                 debug_msgs.append(f"--- Procesando: {inmo['nombre']} (id={inmo['id']}) ---")
