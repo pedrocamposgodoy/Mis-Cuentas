@@ -160,7 +160,6 @@ if not st.session_state.user_logged_in:
                     st.session_state.user_logged_in = True
                     st.session_state.user_id = result['user_id']
                     st.session_state.user_email = result['email']
-                    st.session_state.access_token = result['access_token']
                     # Limpiar datos del usuario anterior
                     if "df_inm_persistent" in st.session_state:
                         del st.session_state.df_inm_persistent
@@ -237,19 +236,25 @@ if "ficha_sel" not in st.session_state:  st.session_state.ficha_sel = None
 # Para añadir una pantalla nueva: agrega ("🔑", "Nombre") aquí
 # El orden aquí es el orden que aparece en el menú lateral
 # ================================================================
-PAGES = [
-    ("📊", "Torre de Control",      "Core"),
-    ("🏠", "Fichas (Benchmark)",    "Core"),
-    ("🤖", "Auditoría IA",          "Core"),
-    ("📝", "Diario Contable",       "Core"),
-    ("⚡", "Suministros",           "Core"),
-    ("💰", "Fiscalidad",            "Core"),
-    ("💎", "Macrofinanzas",         "Core"),
-    ("🧠", "Asesor Patrimonial IA", "IA"),
-    ("⚖️", "Legal",                 "Tools"),
-    ("📂", "Datos de la Cartera",   "Config"),
-]
+# ================================================================
+# IMPORT MÓDULO B2B2C
+# ================================================================
+from asesoramiento_ia import render_asesor_ia, render_privacidad
 
+PAGES = [
+    ("📊", "Torre de Control",              "Core"),
+    ("🏠", "Fichas (Benchmark)",            "Core"),
+    ("🤖", "Auditoría IA",                  "Core"),
+    ("📝", "Diario Contable",               "Core"),
+    ("⚡", "Suministros",                   "Core"),
+    ("💰", "Fiscalidad",                    "Core"),
+    ("💎", "Macrofinanzas",                 "Core"),
+    ("🧠", "Asesor Patrimonial IA",         "IA"),
+    ("🏢", "Solicitar Asesoramiento",       "B2B2C"),
+    ("🔒", "Privacidad y Consentimientos",  "B2B2C"),
+    ("⚖️", "Legal",                         "Tools"),
+    ("📂", "Datos de la Cartera",           "Config"),
+]
 with st.sidebar:
     # Logo y marca
     st.markdown("""
@@ -272,7 +277,6 @@ with st.sidebar:
         st.session_state.user_logged_in = False
         st.session_state.user_id = None
         st.session_state.user_email = None
-        st.session_state.access_token = None
         # Limpiar datos
         if "df_inm_persistent" in st.session_state:
             del st.session_state.df_inm_persistent
@@ -303,6 +307,8 @@ with st.sidebar:
     nav_group("Gestión", "Core")
     st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
     nav_group("Inteligencia IA", "IA")
+    st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
+    nav_group("Servicios", "B2B2C")
     st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
     nav_group("Herramientas", "Tools")
     st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
@@ -367,7 +373,7 @@ def alerta_vencimiento(row):
     return "ok", f"✅ Vence en {round(dias/30)} meses"
 
 def guardar_movimientos(nuevos):
-    agregar_movimientos(nuevos, user_id=st.session_state.user_id)
+    agregar_movimientos(nuevos)
     df_nuevos = pd.DataFrame(nuevos)
     df_final = pd.concat([st.session_state.df_mov_persistent, df_nuevos], ignore_index=True)
     st.session_state.df_mov_persistent = df_final
@@ -1664,7 +1670,7 @@ elif menu == "Diario Contable":
                 df_final = df_ed
             
             st.session_state.df_mov_persistent = df_final
-            guardar_movimientos_completo(df_final, user_id=st.session_state.user_id)
+            guardar_movimientos_completo(df_final)
             
             total_movs = len(st.session_state.df_mov_persistent)
             total_ingresos = st.session_state.df_mov_persistent[st.session_state.df_mov_persistent["Tipo"]=="Ingreso"]["Importe"].sum()
@@ -1713,7 +1719,7 @@ elif menu == "Diario Contable":
                 df_completo["Fecha"] = df_completo["Fecha"].dt.strftime("%Y-%m-%d")
                 
                 st.session_state.df_mov_persistent = df_completo
-                guardar_movimientos_completo(df_completo, user_id=st.session_state.user_id)
+                guardar_movimientos_completo(df_completo)
                 
                 total_registrado = df_nuevos["Importe"].sum()
                 st.success(f"✓ Registradas {len(nuevos_ingresos)} rentas por {total_registrado:,.0f}€")
@@ -2797,6 +2803,59 @@ elif menu == "Asesor Patrimonial IA":
     else:
         st.markdown('<div class="section-title">🌳 Árbol de Decisiones</div>', unsafe_allow_html=True)
         st.success("✅ No hay riesgos detectados en este momento. Tu cartera está en buen estado. Vuelve a consultar en el próximo ciclo de renovaciones.")
+
+
+# ================================================================
+# SECCIÓN B2B2C — SOLICITAR ASESORAMIENTO (Capa 2)
+# Árbol de decisión: semáforo → propone solución → inmobiliaria
+# ================================================================
+elif menu == "Solicitar Asesoramiento":
+    st.markdown(f"""
+    <div style='background:{SIDEBAR_BG};padding:20px 24px 16px;
+        border-radius:12px;margin-bottom:24px;
+        border-left:4px solid {ACCENT};'>
+        <h2 style='color:white;margin:0;font-size:22px'>
+            🏢 Solicitar Asesoramiento Profesional
+        </h2>
+        <p style='color:#8899AA;margin:6px 0 0;font-size:14px'>
+            Detectamos oportunidades en tu patrimonio y te conectamos con
+            inmobiliarias profesionales cuando lo necesitas. Tú decides si compartir tus datos.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if df_inm.empty:
+        st.info("📭 Añade al menos un inmueble en 'Datos de la Cartera' para usar el Asesor.")
+    else:
+        datos_propietario = {
+            "nombre":   st.session_state.get("user_nombre",   ""),
+            "email":    st.session_state.get("user_email",    st.session_state.user_email or ""),
+            "telefono": st.session_state.get("user_telefono", ""),
+        }
+        render_asesor_ia(
+            user_id=st.session_state.user_id,
+            df_inmuebles=df_inm,
+            datos_propietario=datos_propietario
+        )
+
+# ================================================================
+# SECCIÓN B2B2C — PRIVACIDAD Y CONSENTIMIENTOS (RGPD)
+# ================================================================
+elif menu == "Privacidad y Consentimientos":
+    st.markdown(f"""
+    <div style='background:{SIDEBAR_BG};padding:20px 24px 16px;
+        border-radius:12px;margin-bottom:24px;
+        border-left:4px solid #0F6E56;'>
+        <h2 style='color:white;margin:0;font-size:22px'>
+            🔒 Privacidad y Consentimientos
+        </h2>
+        <p style='color:#8899AA;margin:6px 0 0;font-size:14px'>
+            Gestiona quién tiene acceso a tus datos y revoca permisos en cualquier momento.
+            Tus derechos RGPD siempre activos.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    render_privacidad(user_id=st.session_state.user_id)
 
 # ================================================================
 # FUNCIONES GENERADORAS DE CONTRATOS (antes de la sección Legal)
