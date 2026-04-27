@@ -21,6 +21,11 @@ except ImportError:
     REPORTLAB_OK = False
 
 # ================================================================
+# IMPORT MÓDULO B2B2C
+# ================================================================
+from asesoramiento_ia import render_asesor_ia, render_privacidad
+
+# ================================================================
 # SECCIÓN 1 — CONFIGURACIÓN Y COLORES
 # Aquí cambias colores, título, icono de la app
 # ================================================================
@@ -236,25 +241,19 @@ if "ficha_sel" not in st.session_state:  st.session_state.ficha_sel = None
 # Para añadir una pantalla nueva: agrega ("🔑", "Nombre") aquí
 # El orden aquí es el orden que aparece en el menú lateral
 # ================================================================
-# ================================================================
-# IMPORT MÓDULO B2B2C
-# ================================================================
-from asesoramiento_ia import render_asesor_ia, render_privacidad
-
 PAGES = [
-    ("📊", "Torre de Control",              "Core"),
-    ("🏠", "Fichas (Benchmark)",            "Core"),
-    ("🤖", "Auditoría IA",                  "Core"),
-    ("📝", "Diario Contable",               "Core"),
-    ("⚡", "Suministros",                   "Core"),
-    ("💰", "Fiscalidad",                    "Core"),
-    ("💎", "Macrofinanzas",                 "Core"),
-    ("🧠", "Asesor Patrimonial IA",         "IA"),
-    ("🏢", "Solicitar Asesoramiento",       "B2B2C"),
-    ("🔒", "Privacidad y Consentimientos",  "B2B2C"),
-    ("⚖️", "Legal",                         "Tools"),
-    ("📂", "Datos de la Cartera",           "Config"),
+    ("📊", "Torre de Control",      "Core"),
+    ("🏠", "Fichas (Benchmark)",    "Core"),
+    ("🔍", "Diagnóstico Patrimonial",       "Core"),
+    ("📝", "Diario Contable",       "Core"),
+    ("⚡", "Suministros",           "Core"),
+    ("💰", "Fiscalidad",            "Core"),
+    ("💎", "Macrofinanzas",         "Core"),
+    ("🧠", "Asesor Patrimonial IA",         "B2B2C"),
+    ("⚖️", "Legal",                 "Tools"),
+    ("📂", "Datos de la Cartera",   "Config"),
 ]
+
 with st.sidebar:
     # Logo y marca
     st.markdown("""
@@ -306,9 +305,9 @@ with st.sidebar:
 
     nav_group("Gestión", "Core")
     st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
-    nav_group("Inteligencia IA", "IA")
+    nav_group("Servicios IA", "B2B2C")
     st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
-    nav_group("Servicios", "B2B2C")
+    nav_group("Inteligencia", "IA")
     st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
     nav_group("Herramientas", "Tools")
     st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
@@ -1473,7 +1472,7 @@ elif menu == "Fichas (Benchmark)":
 # PANTALLA 3 — AUDITORÍA IA DE MANTENIMIENTO
 # Diseño acordeón compacto - sin colores llamativos
 # ================================================================
-elif menu == "Auditoría IA":
+elif menu == "Diagnóstico Patrimonial":
     st.markdown('<div class="brand-header">Auditoría de Mantenimiento</div>', unsafe_allow_html=True)
     st.markdown('<div class="brand-sub">Planificación de reformas por inmueble</div>', unsafe_allow_html=True)
     
@@ -2377,7 +2376,7 @@ elif menu == "Datos de la Cartera":
 # ================================================================
 elif menu == "Asesor Patrimonial IA":
     st.markdown('<div class="brand-header">🧠 Asesor Patrimonial IA</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Análisis estratégico · Decisiones inteligentes · Proyecciones</div>', unsafe_allow_html=True)
+    st.markdown('<div class="brand-sub">Análisis de riesgos · Matriz de activos · Estrategia patrimonial</div>', unsafe_allow_html=True)
 
     # ── DATOS BASE ──────────────────────────────────────────────
     año_actual = datetime.now().year
@@ -2803,59 +2802,6 @@ elif menu == "Asesor Patrimonial IA":
     else:
         st.markdown('<div class="section-title">🌳 Árbol de Decisiones</div>', unsafe_allow_html=True)
         st.success("✅ No hay riesgos detectados en este momento. Tu cartera está en buen estado. Vuelve a consultar en el próximo ciclo de renovaciones.")
-
-
-# ================================================================
-# SECCIÓN B2B2C — SOLICITAR ASESORAMIENTO (Capa 2)
-# Árbol de decisión: semáforo → propone solución → inmobiliaria
-# ================================================================
-elif menu == "Solicitar Asesoramiento":
-    st.markdown(f"""
-    <div style='background:{SIDEBAR_BG};padding:20px 24px 16px;
-        border-radius:12px;margin-bottom:24px;
-        border-left:4px solid {ACCENT};'>
-        <h2 style='color:white;margin:0;font-size:22px'>
-            🏢 Solicitar Asesoramiento Profesional
-        </h2>
-        <p style='color:#8899AA;margin:6px 0 0;font-size:14px'>
-            Detectamos oportunidades en tu patrimonio y te conectamos con
-            inmobiliarias profesionales cuando lo necesitas. Tú decides si compartir tus datos.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if df_inm.empty:
-        st.info("📭 Añade al menos un inmueble en 'Datos de la Cartera' para usar el Asesor.")
-    else:
-        datos_propietario = {
-            "nombre":   st.session_state.get("user_nombre",   ""),
-            "email":    st.session_state.get("user_email",    st.session_state.user_email or ""),
-            "telefono": st.session_state.get("user_telefono", ""),
-        }
-        render_asesor_ia(
-            user_id=st.session_state.user_id,
-            df_inmuebles=df_inm,
-            datos_propietario=datos_propietario
-        )
-
-# ================================================================
-# SECCIÓN B2B2C — PRIVACIDAD Y CONSENTIMIENTOS (RGPD)
-# ================================================================
-elif menu == "Privacidad y Consentimientos":
-    st.markdown(f"""
-    <div style='background:{SIDEBAR_BG};padding:20px 24px 16px;
-        border-radius:12px;margin-bottom:24px;
-        border-left:4px solid #0F6E56;'>
-        <h2 style='color:white;margin:0;font-size:22px'>
-            🔒 Privacidad y Consentimientos
-        </h2>
-        <p style='color:#8899AA;margin:6px 0 0;font-size:14px'>
-            Gestiona quién tiene acceso a tus datos y revoca permisos en cualquier momento.
-            Tus derechos RGPD siempre activos.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-    render_privacidad(user_id=st.session_state.user_id)
 
 # ================================================================
 # FUNCIONES GENERADORAS DE CONTRATOS (antes de la sección Legal)
