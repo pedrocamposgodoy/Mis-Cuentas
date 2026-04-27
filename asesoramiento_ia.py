@@ -1,618 +1,946 @@
+# ================================================================
+# ASESORAMIENTO IA — MÓDULO B2B2C COMPLETO
+# Flujo: Semáforo → Árbol decisión → Resumen → RGPD + Inmobiliaria
+# Capa 1: actualizar zona_stats (agregados sin datos personales)
+# Capa 2: leads con consentimiento RGPD
+# ================================================================
 import streamlit as st
 import pandas as pd
 import hashlib
+import json
 from datetime import datetime, date
-import requests
 
-# ── Importar funciones de BD ────────────────────────────────
-import supabase_db
+# ── Supabase ────────────────────────────────────────────────────
+try:
+    from supabase_db import _headers, SUPA_URL
+    import requests
+    SUPABASE_OK = True
+except Exception:
+    SUPABASE_OK = False
 
-# ============================================================
-# CONSTANTES
-# ============================================================
-
-RENTABILIDAD_MERCADO_GRANADA = {
-    18001: 7.8, 18002: 7.2, 18003: 6.8, 18004: 7.0,
-    18005: 7.5, 18006: 6.5, 18007: 6.2, 18008: 7.0,
-    18009: 5.8, 18010: 6.6, 18011: 6.9, 18012: 6.3,
-    18013: 5.9, 18014: 6.1, 18015: 5.5
+# ── Constantes ──────────────────────────────────────────────────
+RENTABILIDAD_MERCADO = {
+    "18001": 8.2, "18002": 7.8, "18003": 7.2, "18004": 7.5,
+    "18005": 7.9, "18006": 7.0, "18007": 6.8, "18008": 7.3,
+    "18009": 6.5, "18010": 7.1, "18011": 7.0, "18012": 6.9,
+    "18013": 6.6, "18014": 6.7, "18015": 6.4,
 }
 
-TEXTO_LEGAL = """Autorizo expresamente a la inmobiliaria seleccionada a contactarme 
-por teléfono, correo electrónico o cualquier otro medio para informarme sobre 
-opciones de compra, venta, alquiler u optimización de mi patrimonio inmobiliario.
+PRECIOS_M2 = {
+    "18001": 12.5, "18002": 11.8, "18003": 10.2, "18004": 10.8,
+    "18005": 11.2, "18006": 10.0, "18007": 9.5,  "18008": 10.4,
+    "18009": 8.2,  "18010": 9.8,  "18011": 10.1, "18012": 9.6,
+    "18013": 9.0,  "18014": 9.3,  "18015": 8.8,
+}
 
-Entiendo que mis datos personales (nombre, email, teléfono y situación patrimonial) 
-serán cedidos exclusivamente a la inmobiliaria que he seleccionado, y que puedo 
-revocar este consentimiento en cualquier momento desde la sección 
-'Privacidad y Consentimientos' de esta aplicación.
+TEXTO_LEGAL = """
+AUTORIZACIÓN DE CESIÓN DE DATOS PERSONALES (RGPD)
 
-Tratamiento conforme al Reglamento (UE) 2016/679 (RGPD) y la Ley Orgánica 3/2018 (LOPDGDD)."""
+De conformidad con el Reglamento General de Protección de Datos (RGPD UE 2016/679)
+y la Ley Orgánica 3/2018 de Protección de Datos Personales (LOPDGDD), usted autoriza
+expresamente a NOLASCO CAPITAL a ceder sus datos personales (nombre, email, teléfono,
+situación patrimonial) a las inmobiliarias seleccionadas, únicamente con la finalidad
+de recibir asesoramiento profesional sobre su patrimonio inmobiliario.
+
+Esta autorización es voluntaria, granular (por inmobiliaria) y revocable en cualquier
+momento desde la sección "Privacidad y Consentimientos" de la aplicación. Las
+inmobiliarias solo podrán usar sus datos para contactarle sobre el servicio solicitado.
+
+Responsable del tratamiento: Nolasco Capital | Granada
+Derechos: Acceso, rectificación, supresión, portabilidad y oposición (RGPD Art. 15-21)
+"""
+
+HASH_LEGAL = hashlib.sha256(TEXTO_LEGAL.encode()).hexdigest()
+
+# ── Colores ─────────────────────────────────────────────────────
+SIDEBAR_BG = "#0F2744"
+ACCENT     = "#185FA5"
+CARD_BG    = "#FFFFFF"
+TEXT_PRI   = "#0D1B2A"
+TEXT_SEC   = "#5A7A9A"
+GREEN      = "#1a7a40"
+RED        = "#C0392B"
+BORDER     = "#D0DFF0"
 
 
-# ============================================================
-# BLOQUE A — HELPERS
-# ============================================================
-
-def _hash_texto_legal(texto: str) -> str:
-    return hashlib.sha256(texto.encode("utf-8")).hexdigest()
-
-
-def _get_ip() -> str:
+# ================================================================
+# HELPERS
+# ================================================================
+def safe_float(v, d=0):
     try:
-        return requests.get("https://api.ipify.org", timeout=3).text.strip()
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return float(d)
+        return float(v)
     except Exception:
-        return "0.0.0.0"
+        return float(d)
 
 
-def _rentabilidad_mercado(cp: int) -> float:
-    return RENTABILIDAD_MERCADO_GRANADA.get(cp, 7.0)
+def tasacion_renta(row):
+    """Renta de mercado estimada según CP y m2."""
+    p  = PRECIOS_M2.get(str(row.get("CP", "18005")), 10.0)
+    m2 = safe_float(row.get("M2_Construidos", 80))
+    am = 1.05 if row.get("Mobiliario") == "S" else 1.0
+    ap = 1.04 if row.get("Parking")    == "S" else 1.0
+    ae = {"Reformado": 1.08, "Bueno": 1.0, "Regular": 0.92}.get(
+        row.get("Estado", "Bueno"), 1.0)
+    return round(p * m2 * am * ap * ae, 2)
 
 
-# ============================================================
-# BLOQUE B — SEMÁFORO Y ALERTAS
-# ============================================================
-
-def calcular_semaforo(df_inmuebles: pd.DataFrame) -> dict:
-    """
-    Analiza los inmuebles del propietario y devuelve:
-      - color: 'verde' | 'amarillo' | 'rojo'
-      - alertas: lista de problemas detectados
-      - potencial_mejora_euros: cuánto podría ganar
-    """
-    alertas = []
-    potencial = 0.0
-
-    for _, row in df_inmuebles.iterrows():
-        cp = int(row.get("CP", 18001))
-        renta_actual = float(row.get("Renta", 0))
-        renta_mercado = float(row.get("Renta_Mercado", 0))
-
-        # 1. Brecha de renta
-        if renta_mercado > 0 and renta_actual < renta_mercado:
-            brecha = renta_mercado - renta_actual
-            potencial += brecha * 12
-            if brecha / renta_mercado > 0.15:
-                alertas.append({
-                    "tipo": "renta_baja",
-                    "inmueble": row.get("Nombre", "Inmueble"),
-                    "mensaje": f"Renta {renta_actual:.0f}€ vs mercado {renta_mercado:.0f}€ → pierdes {brecha:.0f}€/mes",
-                    "gravedad": "rojo" if brecha / renta_mercado > 0.25 else "amarillo"
-                })
-
-        # 2. Contrato próximo a vencer
-        try:
-            # Buscamos fecha de fin en movimientos (campo Concepto con "contrato")
-            pass
-        except Exception:
-            pass
-
-        # 3. Rentabilidad muy baja
-        valor = float(row.get("Valor_Construccion", 0))
-        if valor > 0 and renta_actual > 0:
-            rent_bruta = (renta_actual * 12) / valor * 100
-            rent_mercado_pct = _rentabilidad_mercado(cp)
-            if rent_bruta < rent_mercado_pct - 1.5:
-                alertas.append({
-                    "tipo": "rentabilidad_baja",
-                    "inmueble": row.get("Nombre", "Inmueble"),
-                    "mensaje": f"Rentabilidad {rent_bruta:.1f}% vs mercado {rent_mercado_pct:.1f}%",
-                    "gravedad": "rojo" if rent_bruta < rent_mercado_pct - 3 else "amarillo"
-                })
-
-    # Decidir color global
-    if any(a["gravedad"] == "rojo" for a in alertas):
-        color = "rojo"
-    elif alertas:
-        color = "amarillo"
-    else:
-        color = "verde"
-
-    return {"color": color, "alertas": alertas, "potencial_mejora_euros": potencial}
-
-
-# ============================================================
-# BLOQUE C — DATOS AGREGADOS DE ZONA (CAPA 1)
-# ============================================================
-
-def generar_alertas_zona(propietario_id: str, cp: int) -> dict:
-    """
-    Genera estadísticas de zona sin identificar a nadie.
-    Usa todos los inmuebles de la BD para agregar por CP.
-    """
+def dias_vencimiento(row):
     try:
-        # Leer todos los inmuebles de ese CP (todos los usuarios)
-        headers = supabase_db._headers()
-        url = f"{supabase_db.SUPABASE_URL}/rest/v1/inmuebles?CP=eq.{cp}&select=Renta,Renta_Mercado,Valor_Construccion"
-        resp = requests.get(url, headers=headers, timeout=10)
-
-        if resp.status_code == 200 and resp.json():
-            df = pd.DataFrame(resp.json())
-            df["Renta"] = pd.to_numeric(df["Renta"], errors="coerce")
-            df["Renta_Mercado"] = pd.to_numeric(df["Renta_Mercado"], errors="coerce")
-
-            rent_mercado = _rentabilidad_mercado(cp)
-            n_total = len(df)
-            n_baja = len(df[df["Renta"] < df["Renta_Mercado"] * 0.85])
-            brecha_media = (df["Renta_Mercado"] - df["Renta"]).clip(lower=0).mean()
-        else:
-            # Datos de ejemplo si no hay suficientes usuarios aún
-            n_total = 12
-            n_baja = 8
-            brecha_media = 95.0
-            rent_mercado = _rentabilidad_mercado(cp)
-
+        fv = str(row.get("Fecha_Vencimiento_Contrato", ""))
+        return (datetime.strptime(fv, "%Y-%m-%d").date() - date.today()).days
     except Exception:
-        n_total = 12
-        n_baja = 8
-        brecha_media = 95.0
-        rent_mercado = _rentabilidad_mercado(cp)
-
-    return {
-        "cp": cp,
-        "num_propietarios_zona": n_total,
-        "num_baja_rentabilidad": n_baja,
-        "pct_baja_rentabilidad": round(n_baja / max(n_total, 1) * 100, 1),
-        "brecha_media_euros": round(brecha_media, 0),
-        "rentabilidad_mercado": rent_mercado,
-        "lucro_cesante_zona_mes": round(brecha_media * n_total, 0),
-    }
+        return None
 
 
-# ============================================================
-# BLOQUE D — LEER INMOBILIARIAS DE ZONA
-# ============================================================
-
-def leer_inmobiliarias_zona(cp: int) -> pd.DataFrame:
-    """Devuelve inmobiliarias que operan en ese CP."""
-    try:
-        headers = supabase_db._headers()
-        url = f"{supabase_db.SUPABASE_URL}/rest/v1/inmobiliarias?activa=eq.true&select=*"
-        resp = requests.get(url, headers=headers, timeout=10)
-
-        if resp.status_code == 200 and resp.json():
-            df = pd.DataFrame(resp.json())
-            # Filtrar por CP (el array cp[] contiene ese CP)
-            # Supabase no permite filtro directo en arrays sin postgrest avanzado
-            # → traemos todas activas y filtramos en Python
-            def tiene_cp(lista):
-                if isinstance(lista, list):
-                    return cp in lista
-                return False
-
-            df = df[df["cp"].apply(tiene_cp)]
-            if len(df) > 0:
-                return df.reset_index(drop=True)
-
-    except Exception as e:
-        st.warning(f"No se pudieron cargar inmobiliarias: {e}")
-
-    # Fallback — datos ficticios si BD vacía
-    return pd.DataFrame([
-        {"id": 1, "nombre": "Inmobiliaria Núñez Granada",   "zona": "Granada Centro",    "descripcion": "Especialistas en Centro y Realejo"},
-        {"id": 2, "nombre": "Century21 Granada Capital",    "zona": "Granada Norte",     "descripcion": "10 años en Granada Norte"},
-        {"id": 3, "nombre": "Remax Granada",                "zona": "Zaidín",            "descripcion": "Líderes en Zaidín"},
-    ])
+def rentabilidad_bruta(row):
+    renta = safe_float(row.get("Renta", 0))
+    valor = safe_float(row.get("Valor_Construccion", 1))
+    if valor <= 0:
+        return 0
+    return round(renta * 12 / valor * 100, 2)
 
 
-# ============================================================
-# BLOQUE E — REGISTRAR CONSENTIMIENTO (RGPD)
-# ============================================================
-
-def registrar_consentimiento(propietario_id: str, inmobiliaria_id: int) -> int | None:
-    """
-    Inserta un registro de consentimiento en BD.
-    Devuelve el ID del consentimiento creado.
-    """
-    try:
-        hash_legal = _hash_texto_legal(TEXTO_LEGAL)
-        ip = _get_ip()
-
-        payload = {
-            "propietario_id": propietario_id,
-            "inmobiliaria_id": inmobiliaria_id,
-            "timestamp": datetime.utcnow().isoformat(),
-            "ip_address": ip,
-            "consentimiento": True,
-            "documento_legal_hash": hash_legal,
-            "revocado_at": None
-        }
-
-        headers = {**supabase_db._headers(), "Prefer": "return=representation"}
-        url = f"{supabase_db.SUPABASE_URL}/rest/v1/consentimientos"
-        resp = requests.post(url, json=payload, headers=headers, timeout=10)
-
-        if resp.status_code in (200, 201) and resp.json():
-            return resp.json()[0]["id"]
-
-    except Exception as e:
-        st.error(f"Error registrando consentimiento: {e}")
-
-    return None
-
-
-# ============================================================
-# BLOQUE F — CREAR LEAD CUALIFICADO
-# ============================================================
-
-def _generar_argumentario(nombre: str, renta_actual: float, renta_mercado: float,
-                           inmueble_nombre: str) -> str:
-    brecha = renta_mercado - renta_actual
-    brecha_anual = brecha * 12
-
-    if brecha > 0:
-        return (
-            f"Estimado/a {nombre}, hemos detectado que su inmueble '{inmueble_nombre}' "
-            f"tiene una renta actual de {renta_actual:.0f}€/mes cuando el mercado en su "
-            f"zona está en {renta_mercado:.0f}€/mes. "
-            f"Esto supone una pérdida de {brecha:.0f}€ al mes, es decir, "
-            f"{brecha_anual:.0f}€ al año. "
-            f"Podemos ayudarle a optimizar su rentabilidad y maximizar el valor de su patrimonio."
-        )
-    else:
-        return (
-            f"Estimado/a {nombre}, su inmueble '{inmueble_nombre}' está bien posicionado "
-            f"en el mercado actual. Podemos ayudarle a mantener y mejorar su rentabilidad "
-            f"con una gestión profesional."
-        )
-
-
-def crear_lead_cualificado(propietario_id: str, inmobiliaria_id: int,
-                            consentimiento_id: int, datos_propietario: dict,
-                            df_inmuebles: pd.DataFrame) -> bool:
-    """
-    Crea el lead en la BD con argumentario automático.
-    """
-    try:
-        # Tomar el inmueble con mayor brecha como referencia
-        df = df_inmuebles.copy()
-        df["brecha"] = pd.to_numeric(df["Renta_Mercado"], errors="coerce") - \
-                       pd.to_numeric(df["Renta"], errors="coerce")
-        df = df.sort_values("brecha", ascending=False)
-        inmueble_ref = df.iloc[0] if len(df) > 0 else None
-
-        renta_actual = float(inmueble_ref["Renta"]) if inmueble_ref is not None else 0
-        renta_mercado = float(inmueble_ref["Renta_Mercado"]) if inmueble_ref is not None else 0
-        cp = int(inmueble_ref["CP"]) if inmueble_ref is not None else 18001
-        inmueble_nombre = inmueble_ref["Nombre"] if inmueble_ref is not None else "Inmueble"
-
-        argumentario = _generar_argumentario(
-            datos_propietario.get("nombre", "Propietario"),
-            renta_actual, renta_mercado, inmueble_nombre
-        )
-
-        rent_mercado_pct = _rentabilidad_mercado(cp)
-        valor = float(inmueble_ref.get("Valor_Construccion", 0)) if inmueble_ref is not None else 0
-        rent_actual_pct = (renta_actual * 12 / valor * 100) if valor > 0 else 0
-
-        payload = {
-            "propietario_id": propietario_id,
-            "inmobiliaria_id": inmobiliaria_id,
-            "consentimiento_id": consentimiento_id,
-            "nombre": datos_propietario.get("nombre", ""),
-            "email": datos_propietario.get("email", ""),
-            "telefono": datos_propietario.get("telefono", ""),
-            "cp": cp,
-            "tipo_propiedad": str(inmueble_ref.get("Tipo", "Residencial")) if inmueble_ref is not None else "Residencial",
-            "m2": int(inmueble_ref.get("M2_Construidos", 0)) if inmueble_ref is not None else 0,
-            "rentabilidad_actual": round(rent_actual_pct, 2),
-            "rentabilidad_mercado": round(rent_mercado_pct, 2),
-            "motivo_texto": f"Rentabilidad {rent_actual_pct:.1f}% vs mercado {rent_mercado_pct:.1f}% en CP {cp}",
-            "argumentario": argumentario,
-            "estado": "nuevo",
-            "exportado_inmohub": False
-        }
-
-        headers = {**supabase_db._headers(), "Prefer": "return=representation"}
-        url = f"{supabase_db.SUPABASE_URL}/rest/v1/leads_inmobiliarias"
-        resp = requests.post(url, json=payload, headers=headers, timeout=10)
-
-        return resp.status_code in (200, 201)
-
-    except Exception as e:
-        st.error(f"Error creando lead: {e}")
-        return False
-
-
-# ============================================================
-# BLOQUE G — REVOCAR CONSENTIMIENTO
-# ============================================================
-
-def revocar_consentimiento(consentimiento_id: int) -> bool:
-    try:
-        headers = supabase_db._headers()
-        url = f"{supabase_db.SUPABASE_URL}/rest/v1/consentimientos?id=eq.{consentimiento_id}"
-        payload = {"revocado_at": datetime.utcnow().isoformat()}
-        resp = requests.patch(url, json=payload, headers=headers, timeout=10)
-        return resp.status_code == 204
-    except Exception as e:
-        st.error(f"Error revocando consentimiento: {e}")
-        return False
-
-
-def leer_consentimientos_propietario(propietario_id: str) -> pd.DataFrame:
-    try:
-        headers = supabase_db._headers()
-        url = (f"{supabase_db.SUPABASE_URL}/rest/v1/consentimientos"
-               f"?propietario_id=eq.{propietario_id}"
-               f"&select=*,inmobiliarias(nombre,zona)")
-        resp = requests.get(url, headers=headers, timeout=10)
-
-        if resp.status_code == 200 and resp.json():
-            df = pd.DataFrame(resp.json())
-            # Expandir nombre de inmobiliaria
-            if "inmobiliarias" in df.columns:
-                df["inmobiliaria_nombre"] = df["inmobiliarias"].apply(
-                    lambda x: x.get("nombre", "") if isinstance(x, dict) else ""
-                )
-                df["inmobiliaria_zona"] = df["inmobiliarias"].apply(
-                    lambda x: x.get("zona", "") if isinstance(x, dict) else ""
-                )
-            df["timestamp"] = pd.to_datetime(df["timestamp"])
-            return df
-    except Exception as e:
-        st.warning(f"No se pudieron cargar consentimientos: {e}")
-
-    return pd.DataFrame()
-
-
-# ============================================================
-# BLOQUE H — UI: ASESOR PATRIMONIAL IA (pantallas 1 y 2)
-# ============================================================
-
-def render_asesor_ia(user_id: str, df_inmuebles: pd.DataFrame,
-                     datos_propietario: dict):
-    """
-    Renderiza el módulo completo del Asesor Patrimonial IA.
-    Llama a esta función desde app.py en la sección correspondiente.
-    """
-
-    # ── Inicializar estado ──────────────────────────────────
-    if "asesor_paso" not in st.session_state:
-        st.session_state.asesor_paso = 0
-    if "asesor_inmobiliarias_seleccionadas" not in st.session_state:
-        st.session_state.asesor_inmobiliarias_seleccionadas = []
-
-    # ── PASO 0: Semáforo + datos de zona ───────────────────
-    if st.session_state.asesor_paso == 0:
-        _render_paso0_semaforo(df_inmuebles)
-
-    # ── PASO 1: Selector de inmobiliarias ──────────────────
-    elif st.session_state.asesor_paso == 1:
-        _render_paso1_selector(user_id, df_inmuebles, datos_propietario)
-
-    # ── PASO 2: Confirmación ───────────────────────────────
-    elif st.session_state.asesor_paso == 2:
-        _render_paso2_confirmacion()
-
-
-def _render_paso0_semaforo(df_inmuebles: pd.DataFrame):
-    semaforo = calcular_semaforo(df_inmuebles)
-    color = semaforo["color"]
-    alertas = semaforo["alertas"]
-    potencial = semaforo["potencial_mejora_euros"]
-
-    # CP del propietario (primer inmueble)
-    cp = int(df_inmuebles["CP"].iloc[0]) if len(df_inmuebles) > 0 else 18001
-    zona = generar_alertas_zona("", cp)
-
-    # ── Cabecera con semáforo ──────────────────────────────
-    col1, col2 = st.columns([1, 4])
-    with col1:
-        if color == "verde":
-            st.success("🟢")
-        elif color == "amarillo":
-            st.warning("🟡")
-        else:
-            st.error("🔴")
-
-    with col2:
-        if color == "verde":
-            st.success("**Tu patrimonio está bien gestionado.** No se detectan problemas urgentes.")
-        elif color == "amarillo":
-            st.warning(f"**Se detectaron oportunidades de mejora.** Podrías ganar hasta **{potencial:.0f}€/año** más.")
-        else:
-            st.error(f"**Atención: se detectaron problemas críticos.** Estás perdiendo hasta **{potencial:.0f}€/año.**")
-
-    # ── Alertas personales ─────────────────────────────────
-    if alertas:
-        st.markdown("#### Tus alertas personales")
-        for a in alertas:
-            if a["gravedad"] == "rojo":
-                st.error(f"🔴 **{a['inmueble']}** — {a['mensaje']}")
-            else:
-                st.warning(f"🟡 **{a['inmueble']}** — {a['mensaje']}")
-
-    # ── Datos de zona (Capa 1 — anónimos) ─────────────────
-    st.markdown("---")
-    st.markdown(f"#### Tu zona: CP {cp}")
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Propietarios en tu zona", zona["num_propietarios_zona"])
-    c2.metric("Con baja rentabilidad", f"{zona['num_baja_rentabilidad']} ({zona['pct_baja_rentabilidad']}%)")
-    c3.metric("Pérdida media zona/mes", f"{zona['brecha_media_euros']:.0f}€")
-
-    st.caption("Datos agregados de zona · Sin nombres ni datos personales de nadie")
-
-    # ── Árbol de decisión ─────────────────────────────────
-    st.markdown("---")
-
-    if color == "verde":
-        st.info("No se recomienda ninguna acción urgente. Puedes revisar las Fichas de Benchmark para seguir optimizando.")
-        if st.button("📊 Ver Fichas Benchmark"):
-            st.session_state.menu = "Fichas (Benchmark)"
-            st.rerun()
+# ================================================================
+# CAPA 1 — ACTUALIZAR ZONA STATS EN SUPABASE
+# Se llama cada vez que el propietario guarda/modifica inmuebles
+# ================================================================
+def actualizar_zona_stats(df_inmuebles: pd.DataFrame):
+    """Agrega datos por CP y los sube a zona_stats (sin datos personales)."""
+    if not SUPABASE_OK or df_inmuebles.empty:
         return
 
-    # ── IA propone solución (amarillo/rojo) ───────────────
-    st.markdown("#### ¿Qué puedes hacer?")
+    año_actual = datetime.now().year
 
-    with st.expander("💡 Ver recomendaciones de la IA", expanded=True):
-        for a in alertas:
-            if a["tipo"] == "renta_baja":
-                st.markdown(f"**{a['inmueble']}:** La renta está por debajo del mercado. "
-                             f"Considera actualizar el alquiler en la próxima renovación de contrato.")
-            elif a["tipo"] == "rentabilidad_baja":
-                st.markdown(f"**{a['inmueble']}:** La rentabilidad bruta es baja. "
-                             f"Puedes mejorarla reduciendo gastos o renegociando la renta.")
+    for cp, grupo in df_inmuebles.groupby("CP"):
+        cp = str(cp)
+        rentas_actuales = grupo["Renta"].apply(lambda x: safe_float(x)).tolist()
+        rentas_mercado  = grupo.apply(tasacion_renta, axis=1).tolist()
+        rentabilidades  = grupo.apply(rentabilidad_bruta, axis=1).tolist()
 
-    st.markdown("#### ¿Quieres gestionar esto tú solo o con ayuda profesional?")
+        brecha_euros = [max(0, m - a) for a, m in zip(rentas_actuales, rentas_mercado)]
+        brecha_pcts  = [
+            (m - a) / m * 100 if m > 0 else 0
+            for a, m in zip(rentas_actuales, rentas_mercado)
+        ]
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("✅ Lo gestiono yo", use_container_width=True):
-            st.success("Perfecto. Puedes usar las Fichas Benchmark y los Simuladores para orientarte.")
-            st.session_state.asesor_paso = 0
-
-    with col2:
-        if st.button("🏢 Quiero asesoramiento de una inmobiliaria", type="primary", use_container_width=True):
-            st.session_state.asesor_paso = 1
-            st.rerun()
-
-
-def _render_paso1_selector(user_id: str, df_inmuebles: pd.DataFrame,
-                            datos_propietario: dict):
-    st.markdown("### Selecciona qué inmobiliaria puede contactarte")
-    st.caption("Solo la inmobiliaria que marques recibirá tus datos. Las demás no sabrán que existes.")
-
-    cp = int(df_inmuebles["CP"].iloc[0]) if len(df_inmuebles) > 0 else 18001
-    df_inmobs = leer_inmobiliarias_zona(cp)
-
-    seleccionadas = []
-    st.markdown("**Inmobiliarias disponibles en tu zona:**")
-
-    for _, inmob in df_inmobs.iterrows():
-        checked = st.checkbox(
-            f"**{inmob['nombre']}** — {inmob.get('descripcion', inmob.get('zona', ''))}",
-            value=False,
-            key=f"inmob_{inmob['id']}"
+        vencen_30  = sum(
+            1 for _, r in grupo.iterrows()
+            if (d := dias_vencimiento(r)) is not None and 0 <= d <= 30
         )
-        if checked:
-            seleccionadas.append(int(inmob["id"]))
-
-    # ── Texto legal ───────────────────────────────────────
-    st.markdown("---")
-    with st.expander("📄 Texto completo del consentimiento (RGPD)", expanded=False):
-        st.text(TEXTO_LEGAL)
-
-    st.warning("⚠️ Al confirmar, tus datos serán enviados SOLO a las inmobiliarias que hayas marcado.")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("← Volver", use_container_width=True):
-            st.session_state.asesor_paso = 0
-            st.rerun()
-
-    with col2:
-        confirmar = st.button(
-            "✅ Confirmar y enviar mis datos",
-            type="primary",
-            use_container_width=True,
-            disabled=len(seleccionadas) == 0
+        vencen_90  = sum(
+            1 for _, r in grupo.iterrows()
+            if (d := dias_vencimiento(r)) is not None and 0 <= d <= 90
         )
 
-    if len(seleccionadas) == 0:
-        st.caption("Debes seleccionar al menos una inmobiliaria para continuar.")
+        precio_m2s = [PRECIOS_M2.get(cp, 10.0)] * len(grupo)
 
-    if confirmar and seleccionadas:
-        exito = True
-        for inmob_id in seleccionadas:
-            consent_id = registrar_consentimiento(user_id, inmob_id)
-            if consent_id:
-                ok = crear_lead_cualificado(
-                    user_id, inmob_id, consent_id,
-                    datos_propietario, df_inmuebles
-                )
-                if not ok:
-                    exito = False
-            else:
-                exito = False
+        stats = {
+            "cp":                  cp,
+            "num_propietarios":    len(grupo),
+            "rentabilidad_media":  round(sum(rentabilidades) / len(rentabilidades), 2),
+            "brecha_renta_media":  round(sum(brecha_euros) / len(brecha_euros), 2),
+            "brecha_pct_media":    round(sum(brecha_pcts) / len(brecha_pcts), 2),
+            "contratos_vencen_30d": vencen_30,
+            "contratos_vencen_90d": vencen_90,
+            "precio_m2_medio":     round(sum(precio_m2s) / len(precio_m2s), 2),
+            "renta_media_actual":  round(sum(rentas_actuales) / len(rentas_actuales), 2),
+            "renta_media_mercado": round(sum(rentas_mercado) / len(rentas_mercado), 2),
+            "lucro_cesante_total": round(sum(brecha_euros), 2),
+            "updated_at":          datetime.now().isoformat(),
+        }
 
-        if exito:
-            st.session_state.asesor_inmobiliarias_seleccionadas = seleccionadas
-            st.session_state.asesor_paso = 2
-            st.rerun()
-        else:
-            st.error("Hubo un problema al guardar. Inténtalo de nuevo.")
+        try:
+            url = f"{SUPA_URL}/rest/v1/zona_stats"
+            requests.post(
+                url,
+                headers={**_headers(), "Prefer": "resolution=merge-duplicates"},
+                json=stats,
+                timeout=5,
+            )
+        except Exception:
+            pass  # No bloquear la app si falla el stats
 
 
-def _render_paso2_confirmacion():
-    st.success("### ✅ Datos enviados correctamente")
-    st.markdown(
-        "Hemos compartido tu información con las inmobiliarias seleccionadas. "
-        "Puedes **revocar este consentimiento** en cualquier momento desde la sección "
-        "**Privacidad y Consentimientos**."
+# ================================================================
+# CAPA 2 — CONSENTIMIENTO Y LEAD
+# ================================================================
+def _leer_inmobiliarias_zona(cp: str):
+    """Devuelve inmobiliarias activas para ese CP."""
+    if not SUPABASE_OK:
+        return _inmobiliarias_fallback(cp)
+    try:
+        url = f"{SUPA_URL}/rest/v1/inmobiliarias?activa=eq.true&select=*"
+        r = requests.get(url, headers=_headers(), timeout=5)
+        todas = r.json() if r.status_code == 200 else []
+        # Filtrar por CP (el array cp[] contiene el CP del propietario)
+        filtradas = [i for i in todas if isinstance(i.get("cp"), list) and cp in i["cp"]]
+        return filtradas if filtradas else todas[:4]
+    except Exception:
+        return _inmobiliarias_fallback(cp)
+
+
+def _inmobiliarias_fallback(cp):
+    return [
+        {"id": "demo-1", "nombre": "Núñez Inmobiliaria",       "descripcion": "Especialista zona centro",  "cp": [cp]},
+        {"id": "demo-2", "nombre": "Century21 Granada Centro", "descripcion": "Red nacional presente",     "cp": [cp]},
+        {"id": "demo-3", "nombre": "Remax Granada",            "descripcion": "Cobertura completa Granada","cp": [cp]},
+    ]
+
+
+def _registrar_consentimiento(propietario_id, inmobiliaria_id):
+    if not SUPABASE_OK:
+        return {"id": "demo-consent"}
+    try:
+        url = f"{SUPA_URL}/rest/v1/consentimientos"
+        payload = {
+            "propietario_id":      propietario_id,
+            "inmobiliaria_id":     inmobiliaria_id,
+            "consentimiento":      True,
+            "documento_legal_hash": HASH_LEGAL,
+            "timestamp":           datetime.now().isoformat(),
+        }
+        r = requests.post(
+            url,
+            headers={**_headers(), "Prefer": "return=representation,resolution=merge-duplicates"},
+            json=payload,
+            timeout=5,
+        )
+        data = r.json()
+        return data[0] if isinstance(data, list) and data else {}
+    except Exception:
+        return {}
+
+
+def _crear_lead(propietario_id, inmobiliaria_id, consentimiento_id,
+                datos_prop, resumen_problemas, argumentario):
+    if not SUPABASE_OK:
+        return True
+    try:
+        url = f"{SUPA_URL}/rest/v1/leads_inmobiliarias"
+        payload = {
+            "propietario_id":      propietario_id,
+            "inmobiliaria_id":     inmobiliaria_id,
+            "consentimiento_id":   consentimiento_id,
+            "nombre":              datos_prop.get("nombre", ""),
+            "email":               datos_prop.get("email", ""),
+            "telefono":            datos_prop.get("telefono", ""),
+            "motivo_texto":        resumen_problemas,
+            "argumentario":        argumentario,
+            "estado":              "nuevo",
+            "exportado_inmohub":   False,
+        }
+        r = requests.post(
+            url,
+            headers={**_headers(), "Prefer": "return=representation"},
+            json=payload,
+            timeout=5,
+        )
+        return r.status_code in (200, 201)
+    except Exception:
+        return False
+
+
+# ================================================================
+# ANÁLISIS DE PROBLEMAS — CORAZÓN DEL ASESOR
+# ================================================================
+def detectar_problemas(df_inmuebles: pd.DataFrame) -> list:
+    """
+    Detecta todos los problemas de la cartera y los ordena por €/mes de impacto.
+    Cada problema tiene: inmueble, tipo, descripcion, impacto_euros,
+    coste_solucion, tipo_ayuda ('solo'|'dinero'|'inmobiliaria')
+    """
+    año_actual = datetime.now().year
+    problemas = []
+
+    for _, row in df_inmuebles.iterrows():
+        nombre     = row.get("Nombre", "Inmueble")
+        renta_act  = safe_float(row.get("Renta", 0))
+        renta_mer  = tasacion_renta(row)
+        valor_con  = safe_float(row.get("Valor_Construccion", 0))
+        año_ref    = int(safe_float(row.get("Año_Reforma", año_actual - 3), año_actual - 3))
+        años_sin_reforma = año_actual - año_ref
+        dias_vec   = dias_vencimiento(row)
+        rent_bruta = rentabilidad_bruta(row)
+        rent_mer_pct = RENTABILIDAD_MERCADO.get(str(row.get("CP", "18005")), 7.5)
+
+        # 1. RENTA BAJO MERCADO (>10% de diferencia)
+        if renta_mer > 0 and (renta_mer - renta_act) / renta_mer > 0.10:
+            brecha_mes = round(renta_mer - renta_act, 2)
+            problemas.append({
+                "inmueble":      nombre,
+                "tipo":          "renta_baja",
+                "emoji":         "📉",
+                "titulo":        f"Renta bajo mercado",
+                "descripcion":   f"Cobras {renta_act:,.0f}€/mes pero el mercado paga {renta_mer:,.0f}€/mes",
+                "impacto_euros": brecha_mes,
+                "coste_solucion": 0,
+                "tipo_ayuda":    "inmobiliaria" if (dias_vec is not None and dias_vec < 60) else "solo",
+                "detalle_ayuda": "Renegociar en la próxima renovación" if (dias_vec is None or dias_vec >= 60)
+                                 else "El contrato vence pronto, una inmobiliaria puede ayudarte a renegociar",
+            })
+
+        # 2. CONTRATO VENCIDO O MUY PRÓXIMO
+        if dias_vec is not None:
+            if dias_vec < 0:
+                problemas.append({
+                    "inmueble":      nombre,
+                    "tipo":          "contrato_vencido",
+                    "emoji":         "⚠️",
+                    "titulo":        "Contrato vencido",
+                    "descripcion":   f"El contrato venció hace {abs(dias_vec)} días",
+                    "impacto_euros": round(renta_mer - renta_act, 2) if renta_mer > renta_act else 50,
+                    "coste_solucion": 0,
+                    "tipo_ayuda":    "inmobiliaria",
+                    "detalle_ayuda": "Necesitas renovar o buscar nuevo inquilino",
+                })
+            elif dias_vec <= 60:
+                problemas.append({
+                    "inmueble":      nombre,
+                    "tipo":          "contrato_pronto",
+                    "emoji":         "🔔",
+                    "titulo":        f"Contrato vence en {dias_vec} días",
+                    "descripcion":   f"Tienes {dias_vec} días para preparar la renovación",
+                    "impacto_euros": round(renta_mer - renta_act, 2) if renta_mer > renta_act else 30,
+                    "coste_solucion": 0,
+                    "tipo_ayuda":    "inmobiliaria",
+                    "detalle_ayuda": "Momento ideal para renegociar al precio de mercado",
+                })
+
+        # 3. REFORMA PENDIENTE (más de 7 años sin reformar)
+        if años_sin_reforma >= 7 and valor_con > 0:
+            coste_reforma = round(valor_con * 0.05)  # 5% del valor de construcción
+            riesgo_caida  = round(renta_act * 0.18)  # riesgo de perder 18% de renta
+            problemas.append({
+                "inmueble":      nombre,
+                "tipo":          "reforma",
+                "emoji":         "🔧",
+                "titulo":        f"Reforma pendiente ({años_sin_reforma} años sin reformar)",
+                "descripcion":   f"Última reforma en {año_ref}. Riesgo de degradación y caída de renta.",
+                "impacto_euros": riesgo_caida,
+                "coste_solucion": coste_reforma,
+                "tipo_ayuda":    "dinero",
+                "detalle_ayuda": f"Necesitas aproximadamente {coste_reforma:,.0f}€ para la reforma",
+            })
+
+        # 4. RENTABILIDAD BAJA VS MERCADO (más de 2 puntos)
+        if rent_bruta > 0 and (rent_mer_pct - rent_bruta) > 2:
+            perdida_anual = round((rent_mer_pct - rent_bruta) / 100 * valor_con)
+            problemas.append({
+                "inmueble":      nombre,
+                "tipo":          "rentabilidad_baja",
+                "emoji":         "📊",
+                "titulo":        f"Rentabilidad baja ({rent_bruta:.1f}% vs {rent_mer_pct:.1f}% mercado)",
+                "descripcion":   f"Tu ROI es {rent_bruta:.1f}%, el mercado da {rent_mer_pct:.1f}%",
+                "impacto_euros": round(perdida_anual / 12),
+                "coste_solucion": 0,
+                "tipo_ayuda":    "inmobiliaria",
+                "detalle_ayuda": "Puede ser mejor vender y reinvertir en activo de mayor rentabilidad",
+            })
+
+    # Ordenar por impacto económico descendente
+    problemas.sort(key=lambda x: x["impacto_euros"], reverse=True)
+    return problemas
+
+
+def generar_argumentario(datos_prop: dict, problemas: list) -> str:
+    nombre = datos_prop.get("nombre") or datos_prop.get("email", "propietario")
+    total_perdida = sum(p["impacto_euros"] for p in problemas)
+    resumen = "\n".join([f"- {p['emoji']} {p['inmueble']}: {p['titulo']}" for p in problemas])
+    return (
+        f"Propietario {nombre} con {len(problemas)} situación(es) que requieren atención. "
+        f"Impacto económico estimado: {total_perdida:,.0f}€/mes.\n\n"
+        f"Situaciones detectadas:\n{resumen}"
     )
-    st.info("Las inmobiliarias se pondrán en contacto contigo en los próximos días.")
 
-    if st.button("Volver al inicio"):
-        st.session_state.asesor_paso = 0
+
+# ================================================================
+# UI — RENDER PRINCIPAL
+# ================================================================
+def render_asesor_ia(user_id: str, df_inmuebles: pd.DataFrame, datos_propietario: dict):
+
+    # Inicializar session_state
+    for key, val in [
+        ("asesor_paso", 0),
+        ("asesor_problema_idx", 0),
+        ("asesor_decisiones", {}),   # {idx: 'solo'|'inmobiliaria'|'skip'}
+        ("asesor_mostrar_rgpd", False),
+        ("asesor_inmos_seleccionadas", []),
+        ("asesor_enviado", False),
+    ]:
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+    paso = st.session_state.asesor_paso
+
+    # Detectar problemas (siempre)
+    problemas = detectar_problemas(df_inmuebles)
+    # Actualizar zona_stats en background (Capa 1)
+    actualizar_zona_stats(df_inmuebles)
+
+    # ── PASO 0: SEMÁFORO GLOBAL ──────────────────────────────────
+    if paso == 0:
+        _render_semaforo(problemas, df_inmuebles)
+
+    # ── PASO 1: ÁRBOL DE DECISIONES ─────────────────────────────
+    elif paso == 1:
+        _render_arbol(problemas, df_inmuebles)
+
+    # ── PASO 2: RESUMEN DEL PLAN ─────────────────────────────────
+    elif paso == 2:
+        _render_resumen(problemas)
+
+    # ── PASO 3: RGPD + INMOBILIARIAS ────────────────────────────
+    elif paso == 3:
+        _render_rgpd(user_id, df_inmuebles, datos_propietario, problemas)
+
+
+# ================================================================
+# PASO 0 — SEMÁFORO GLOBAL
+# ================================================================
+def _render_semaforo(problemas, df_inmuebles):
+    total_perdida = sum(p["impacto_euros"] for p in problemas)
+    num_inm = len(df_inmuebles)
+
+    if not problemas:
+        st.markdown(f"""
+        <div style='background:#EDF7F1;border-left:5px solid #1a7a40;
+            border-radius:8px;padding:1.2rem;margin-bottom:1rem;'>
+            <div style='font-size:1.1rem;font-weight:600;color:#1a7a40;'>
+                🟢 Tu cartera está en buen estado
+            </div>
+            <div style='color:#2d5a3d;margin-top:6px;font-size:0.9rem;'>
+                No detectamos problemas urgentes en tus {num_inm} inmuebles.
+                Vuelve a consultar cuando se acerquen renovaciones de contrato.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        return
+
+    # Determinar color global
+    criticos = [p for p in problemas if p["tipo_ayuda"] == "inmobiliaria"]
+    color = "#C0392B" if criticos else "#F39C12"
+    emoji = "🔴" if criticos else "🟡"
+
+    st.markdown(f"""
+    <div style='background:{"#FDECEA" if criticos else "#FFF9E6"};
+        border-left:5px solid {color};border-radius:8px;
+        padding:1.2rem;margin-bottom:1.5rem;'>
+        <div style='font-size:1.1rem;font-weight:600;color:{color};'>
+            {emoji} Detectamos {len(problemas)} situación(es) en tu cartera
+        </div>
+        <div style='color:{TEXT_PRI};margin-top:6px;font-size:0.9rem;'>
+            Impacto económico estimado: <strong>{total_perdida:,.0f}€/mes</strong>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("### 📋 Situaciones ordenadas por impacto")
+
+    for i, p in enumerate(problemas):
+        color_p = "#C0392B" if p["tipo_ayuda"] == "inmobiliaria" else (
+                  "#D97706" if p["tipo_ayuda"] == "dinero" else "#185FA5")
+        st.markdown(f"""
+        <div style='background:{CARD_BG};border-left:3px solid {color_p};
+            border-radius:6px;padding:0.8rem 1rem;margin-bottom:0.5rem;
+            display:flex;justify-content:space-between;align-items:center;'>
+            <div>
+                <div style='font-weight:600;color:{TEXT_PRI};font-size:0.9rem;'>
+                    {p["emoji"]} {p["inmueble"]} — {p["titulo"]}
+                </div>
+                <div style='color:{TEXT_SEC};font-size:0.8rem;margin-top:3px;'>
+                    {p["descripcion"]}
+                </div>
+            </div>
+            <div style='text-align:right;min-width:100px;'>
+                <div style='font-weight:700;color:{color_p};font-size:1rem;'>
+                    -{p["impacto_euros"]:,.0f}€/mes
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.info(f"🔵 **Puedes resolver tú solo:** {sum(1 for p in problemas if p['tipo_ayuda']=='solo')} situaciones")
+    with col2:
+        st.warning(f"🏢 **Necesitas ayuda profesional:** {sum(1 for p in problemas if p['tipo_ayuda'] in ('dinero','inmobiliaria'))} situaciones")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🔍 Analizar cada situación →", type="primary", use_container_width=True, key="btn_analizar"):
+        st.session_state.asesor_paso = 1
+        st.session_state.asesor_problema_idx = 0
+        st.session_state.asesor_decisiones = {}
         st.rerun()
 
 
-# ============================================================
-# BLOQUE I — UI: PRIVACIDAD Y CONSENTIMIENTOS
-# ============================================================
+# ================================================================
+# PASO 1 — ÁRBOL DE DECISIONES PROBLEMA A PROBLEMA
+# ================================================================
+def _render_arbol(problemas, df_inmuebles):
+    idx   = st.session_state.asesor_problema_idx
+    total = len(problemas)
 
-def render_privacidad(user_id: str):
-    """
-    Renderiza la pestaña de Privacidad y Consentimientos.
-    """
-    st.markdown("### 🔒 Privacidad y Consentimientos")
-    st.caption("Aquí puedes ver y gestionar todos los datos que has compartido.")
-
-    df = leer_consentimientos_propietario(user_id)
-
-    if df.empty:
-        st.info("No has compartido tus datos con ninguna inmobiliaria aún.")
+    if idx >= total:
+        # Todos procesados → ir al resumen
+        st.session_state.asesor_paso = 2
+        st.rerun()
         return
 
-    # ── Activos ───────────────────────────────────────────
-    activos = df[df["revocado_at"].isna()]
-    revocados = df[df["revocado_at"].notna()]
+    p = problemas[idx]
 
-    if len(activos) > 0:
-        st.markdown("#### Consentimientos activos")
-        for _, row in activos.iterrows():
-            with st.container():
-                col1, col2, col3 = st.columns([3, 2, 1])
-                with col1:
-                    st.markdown(f"**{row.get('inmobiliaria_nombre', 'Inmobiliaria')}**")
-                    st.caption(f"{row.get('inmobiliaria_zona', '')} · {row.get('ip_address', '')}")
-                with col2:
-                    fecha = row["timestamp"].strftime("%d/%m/%Y %H:%M") if pd.notna(row["timestamp"]) else ""
-                    st.caption(f"Autorizado el {fecha}")
-                with col3:
-                    if st.button("Revocar", key=f"rev_{row['id']}"):
-                        if revocar_consentimiento(int(row["id"])):
-                            st.success("Consentimiento revocado.")
-                            st.rerun()
-                st.divider()
+    # Barra de progreso
+    st.markdown(f"""
+    <div style='background:{BORDER};border-radius:20px;height:6px;margin-bottom:1rem;'>
+        <div style='background:{ACCENT};border-radius:20px;height:6px;
+            width:{int((idx/total)*100)}%;'></div>
+    </div>
+    <div style='font-size:0.75rem;color:{TEXT_SEC};margin-bottom:1.2rem;'>
+        Situación {idx+1} de {total}
+    </div>
+    """, unsafe_allow_html=True)
 
-    # ── Revocados ─────────────────────────────────────────
-    if len(revocados) > 0:
-        with st.expander(f"Historial de consentimientos revocados ({len(revocados)})"):
-            for _, row in revocados.iterrows():
-                st.caption(
-                    f"❌ {row.get('inmobiliaria_nombre', '')} · "
-                    f"Revocado el {pd.to_datetime(row['revocado_at']).strftime('%d/%m/%Y')}"
-                )
+    # Tarjeta del problema
+    color_p = "#C0392B" if p["tipo_ayuda"] == "inmobiliaria" else (
+              "#D97706" if p["tipo_ayuda"] == "dinero" else "#185FA5")
 
-    # ── Derechos RGPD ─────────────────────────────────────
-    st.markdown("---")
-    st.markdown("#### Tus derechos RGPD")
-    st.markdown(
-        "Tienes derecho a acceder, rectificar, suprimir y portar tus datos. "
-        "Para ejercerlos puedes revocar cualquier consentimiento arriba o "
-        "contactar con nosotros en **privacidad@nolascocapital.es**"
+    st.markdown(f"""
+    <div style='background:{CARD_BG};border-left:4px solid {color_p};
+        border-radius:8px;padding:1.2rem;margin-bottom:1.2rem;'>
+        <div style='font-size:1rem;font-weight:700;color:{TEXT_PRI};'>
+            {p["emoji"]} {p["inmueble"]} — {p["titulo"]}
+        </div>
+        <div style='color:{TEXT_SEC};font-size:0.85rem;margin-top:6px;'>
+            {p["descripcion"]}
+        </div>
+        <div style='margin-top:10px;font-size:0.9rem;font-weight:600;color:{color_p};'>
+            Impacto: -{p["impacto_euros"]:,.0f}€/mes
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Lógica según tipo de ayuda
+    if p["tipo_ayuda"] == "solo":
+        # IA puede resolverlo — muestra recomendación directa
+        st.markdown(f"""
+        <div style='background:#EDF7F1;border-radius:8px;padding:1rem;margin-bottom:1rem;'>
+            <div style='font-weight:600;color:#1a7a40;'>✅ Puedes resolverlo tú solo</div>
+            <div style='color:{TEXT_PRI};margin-top:6px;font-size:0.88rem;'>
+                {p["detalle_ayuda"]}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Entendido, lo gestiono", use_container_width=True, key=f"solo_{idx}"):
+                st.session_state.asesor_decisiones[idx] = "solo"
+                st.session_state.asesor_problema_idx = idx + 1
+                st.rerun()
+        with col2:
+            if st.button("🏢 Prefiero ayuda profesional", use_container_width=True, key=f"prof_{idx}"):
+                st.session_state.asesor_decisiones[idx] = "inmobiliaria"
+                st.session_state.asesor_problema_idx = idx + 1
+                st.rerun()
+
+    elif p["tipo_ayuda"] == "dinero":
+        # Necesita dinero — pregunta si lo tiene
+        coste = p["coste_solucion"]
+        st.markdown(f"""
+        <div style='background:#FFF9E6;border-radius:8px;padding:1rem;margin-bottom:1rem;'>
+            <div style='font-weight:600;color:#D97706;'>💰 Para resolver esto necesitas {coste:,.0f}€</div>
+            <div style='color:{TEXT_PRI};margin-top:6px;font-size:0.88rem;'>
+                {p["detalle_ayuda"]}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown("**¿Tienes ese presupuesto disponible?**")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button(f"✅ Sí, tengo {coste:,.0f}€", use_container_width=True, key=f"si_{idx}"):
+                st.session_state.asesor_decisiones[idx] = "solo"
+                st.session_state.asesor_problema_idx = idx + 1
+                st.rerun()
+        with col2:
+            if st.button("❌ No tengo ese presupuesto", use_container_width=True, key=f"no_{idx}"):
+                st.session_state.asesor_decisiones[idx] = "inmobiliaria"
+                st.session_state.asesor_problema_idx = idx + 1
+                st.rerun()
+
+    elif p["tipo_ayuda"] == "inmobiliaria":
+        # Directamente necesita inmobiliaria
+        st.markdown(f"""
+        <div style='background:#FDECEA;border-radius:8px;padding:1rem;margin-bottom:1rem;'>
+            <div style='font-weight:600;color:#C0392B;'>🏢 Esta situación requiere ayuda profesional</div>
+            <div style='color:{TEXT_PRI};margin-top:6px;font-size:0.88rem;'>
+                {p["detalle_ayuda"]}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🏢 Quiero asesoramiento", use_container_width=True,
+                         type="primary", key=f"inmo_{idx}"):
+                st.session_state.asesor_decisiones[idx] = "inmobiliaria"
+                st.session_state.asesor_problema_idx = idx + 1
+                st.rerun()
+        with col2:
+            if st.button("⏭️ Lo dejo para más adelante", use_container_width=True, key=f"skip_{idx}"):
+                st.session_state.asesor_decisiones[idx] = "skip"
+                st.session_state.asesor_problema_idx = idx + 1
+                st.rerun()
+
+    # Botón volver solo si no es el primero
+    if idx > 0:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("← Volver a la situación anterior", key=f"back_{idx}"):
+            st.session_state.asesor_problema_idx = idx - 1
+            # Eliminar decisión del problema actual
+            st.session_state.asesor_decisiones.pop(idx, None)
+            st.rerun()
+
+
+# ================================================================
+# PASO 2 — RESUMEN DEL PLAN COMPLETO
+# ================================================================
+def _render_resumen(problemas):
+    decisiones = st.session_state.asesor_decisiones
+    solos       = [problemas[i] for i, d in decisiones.items() if d == "solo"]
+    inmos       = [problemas[i] for i, d in decisiones.items() if d == "inmobiliaria"]
+    skips       = [problemas[i] for i, d in decisiones.items() if d == "skip"]
+
+    total_resuelto  = sum(p["impacto_euros"] for p in solos)
+    total_delegado  = sum(p["impacto_euros"] for p in inmos)
+    total_aplazado  = sum(p["impacto_euros"] for p in skips)
+
+    st.markdown("### 📊 Resumen de tu plan patrimonial")
+
+    # Métricas
+    c1, c2, c3 = st.columns(3)
+    c1.metric("✅ Resuelves tú", f"{len(solos)} situaciones", f"-{total_resuelto:,.0f}€/mes recuperados")
+    c2.metric("🏢 Con inmobiliaria", f"{len(inmos)} situaciones", f"-{total_delegado:,.0f}€/mes a resolver")
+    c3.metric("⏭️ Aplazado", f"{len(skips)} situaciones", f"-{total_aplazado:,.0f}€/mes pendientes")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    if solos:
+        st.markdown("#### ✅ Lo que puedes hacer tú solo")
+        for p in solos:
+            st.markdown(f"""
+            <div style='background:#EDF7F1;border-radius:6px;padding:0.7rem 1rem;
+                margin-bottom:0.4rem;border-left:3px solid #1a7a40;'>
+                <strong>{p["emoji"]} {p["inmueble"]}</strong> — {p["titulo"]}
+                <div style='font-size:0.8rem;color:{TEXT_SEC};margin-top:3px;'>
+                    {p["detalle_ayuda"]}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    if inmos:
+        st.markdown("<br>#### 🏢 Donde una inmobiliaria puede ayudarte")
+        for p in inmos:
+            st.markdown(f"""
+            <div style='background:#FDECEA;border-radius:6px;padding:0.7rem 1rem;
+                margin-bottom:0.4rem;border-left:3px solid #C0392B;'>
+                <strong>{p["emoji"]} {p["inmueble"]}</strong> — {p["titulo"]}
+                <div style='font-size:0.8rem;color:{TEXT_SEC};margin-top:3px;'>
+                    {p["detalle_ayuda"]}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("← Revisar decisiones", use_container_width=True, key="back_resumen"):
+            st.session_state.asesor_paso = 1
+            st.session_state.asesor_problema_idx = 0
+            st.session_state.asesor_decisiones = {}
+            st.rerun()
+    with col2:
+        if inmos:
+            if st.button("🏢 Solicitar asesoramiento profesional →",
+                         type="primary", use_container_width=True, key="btn_rgpd"):
+                st.session_state.asesor_paso = 3
+                st.rerun()
+        else:
+            st.success("✅ ¡Perfecto! Puedes resolver todo tú solo. Plan guardado.")
+            if st.button("🔄 Nueva consulta", use_container_width=True, key="reset_ok"):
+                _reset_asesor()
+                st.rerun()
+
+
+# ================================================================
+# PASO 3 — RGPD + SELECTOR INMOBILIARIAS
+# ================================================================
+def _render_rgpd(user_id, df_inmuebles, datos_propietario, problemas):
+    decisiones = st.session_state.asesor_decisiones
+    inmos_prob  = [problemas[i] for i, d in decisiones.items() if d == "inmobiliaria"]
+
+    if st.session_state.asesor_enviado:
+        st.markdown(f"""
+        <div style='background:#EDF7F1;border-left:5px solid #1a7a40;
+            border-radius:8px;padding:1.5rem;text-align:center;'>
+            <div style='font-size:1.3rem;font-weight:700;color:#1a7a40;margin-bottom:8px;'>
+                ✅ Solicitud enviada correctamente
+            </div>
+            <div style='color:{TEXT_PRI};font-size:0.9rem;'>
+                Las inmobiliarias seleccionadas se pondrán en contacto contigo.<br>
+                Puedes gestionar o revocar este consentimiento en cualquier momento
+                desde <strong>Privacidad y Consentimientos</strong>.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Nueva consulta", use_container_width=True, key="reset_final"):
+            _reset_asesor()
+            st.rerun()
+        return
+
+    # Argumentario
+    argumentario = generar_argumentario(datos_propietario, inmos_prob)
+    resumen_txt  = "\n".join([f"- {p['emoji']} {p['inmueble']}: {p['titulo']}" for p in inmos_prob])
+
+    st.markdown("### 🏢 Solicitar asesoramiento profesional")
+
+    # Mostrar resumen de lo que se va a pedir
+    st.markdown(f"""
+    <div style='background:{CARD_BG};border:1px solid {BORDER};
+        border-radius:8px;padding:1rem;margin-bottom:1.2rem;'>
+        <div style='font-weight:600;color:{TEXT_PRI};margin-bottom:8px;'>
+            📋 Vas a solicitar ayuda con:
+        </div>
+        {chr(10).join([
+            f"<div style='font-size:0.88rem;color:{TEXT_SEC};padding:3px 0;'>"
+            f"{p['emoji']} <strong>{p['inmueble']}</strong> — {p['titulo']}</div>"
+            for p in inmos_prob
+        ])}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Datos de contacto
+    st.markdown("#### 👤 Tus datos de contacto")
+    col1, col2 = st.columns(2)
+    with col1:
+        nombre_contacto = st.text_input("Nombre completo", key="rgpd_nombre",
+            value=datos_propietario.get("nombre", ""))
+        telefono = st.text_input("Teléfono", key="rgpd_telefono",
+            value=datos_propietario.get("telefono", ""))
+    with col2:
+        email = st.text_input("Email", key="rgpd_email",
+            value=datos_propietario.get("email", ""))
+
+    # CP del primer inmueble para filtrar inmobiliarias
+    cp_ref = str(df_inmuebles.iloc[0].get("CP", "18001")) if not df_inmuebles.empty else "18001"
+    inmobiliarias = _leer_inmobiliarias_zona(cp_ref)
+
+    # Selector de inmobiliarias
+    st.markdown("#### 🏢 Selecciona las inmobiliarias que pueden contactarte")
+    st.caption("Solo las inmobiliarias que marques recibirán tus datos.")
+
+    seleccionadas = []
+    for inmo in inmobiliarias:
+        checked = st.checkbox(
+            f"**{inmo['nombre']}** — {inmo.get('descripcion', '')}",
+            key=f"chk_{inmo['id']}",
+            value=False  # Nunca premarcado (RGPD)
+        )
+        if checked:
+            seleccionadas.append(inmo)
+
+    # Texto legal RGPD
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("📜 Ver texto legal completo (RGPD)"):
+        st.text(TEXTO_LEGAL)
+
+    # Checkbox de consentimiento
+    st.markdown("<br>", unsafe_allow_html=True)
+    consentimiento_ok = st.checkbox(
+        "✅ He leído y acepto la política de protección de datos. "
+        "Autorizo expresamente el envío de mis datos a las inmobiliarias seleccionadas.",
+        key="chk_consentimiento",
+        value=False
     )
 
-    if st.button("📥 Descargar mis datos (JSON)"):
-        import json
-        datos = df.to_dict(orient="records")
-        st.download_button(
-            label="Descargar",
-            data=json.dumps(datos, default=str, ensure_ascii=False, indent=2),
-            file_name=f"mis_datos_nolasco_{date.today()}.json",
-            mime="application/json"
-        )
+    # Botones
+    st.markdown("<br>", unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("← Volver al resumen", use_container_width=True, key="back_rgpd"):
+            st.session_state.asesor_paso = 2
+            st.rerun()
+    with col2:
+        btn_disabled = not (consentimiento_ok and seleccionadas and nombre_contacto and email)
+        if st.button(
+            "📨 CONFIRMAR Y ENVIAR MIS DATOS",
+            type="primary",
+            use_container_width=True,
+            key="btn_confirmar",
+            disabled=btn_disabled
+        ):
+            datos_ok = {
+                "nombre":   nombre_contacto,
+                "email":    email,
+                "telefono": telefono,
+            }
+            exito = True
+            for inmo in seleccionadas:
+                consent = _registrar_consentimiento(user_id, inmo["id"])
+                consent_id = consent.get("id")
+                ok = _crear_lead(
+                    user_id, inmo["id"], consent_id,
+                    datos_ok, resumen_txt, argumentario
+                )
+                if not ok:
+                    exito = False
+
+            if exito:
+                st.session_state.asesor_enviado = True
+                st.rerun()
+            else:
+                st.error("⚠️ Error al enviar. Inténtalo de nuevo.")
+
+    if btn_disabled and not st.session_state.get("chk_consentimiento"):
+        st.caption("Para enviar: selecciona al menos una inmobiliaria, completa tus datos y acepta el consentimiento.")
+
+
+# ================================================================
+# PRIVACIDAD — GESTIÓN RGPD
+# ================================================================
+def render_privacidad(user_id: str):
+    st.markdown("### 🔒 Tus consentimientos activos")
+
+    if not SUPABASE_OK:
+        st.warning("⚠️ Conexión con base de datos no disponible.")
+        return
+
+    try:
+        url = (f"{SUPA_URL}/rest/v1/consentimientos"
+               f"?propietario_id=eq.{user_id}&select=*,inmobiliarias(nombre)&order=created_at.desc")
+        r = requests.get(url, headers=_headers(), timeout=5)
+        consentimientos = r.json() if r.status_code == 200 else []
+    except Exception:
+        consentimientos = []
+
+    activos  = [c for c in consentimientos if not c.get("revocado_at")]
+    revocados = [c for c in consentimientos if c.get("revocado_at")]
+
+    if not consentimientos:
+        st.info("No has dado ningún consentimiento todavía.")
+    else:
+        # Activos
+        if activos:
+            st.markdown(f"#### ✅ Activos ({len(activos)})")
+            for c in activos:
+                nombre_inmo = c.get("inmobiliarias", {}).get("nombre", "Inmobiliaria")
+                fecha = c.get("created_at", "")[:10]
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.markdown(f"""
+                    <div style='background:{CARD_BG};border:1px solid {BORDER};
+                        border-radius:6px;padding:0.7rem 1rem;'>
+                        <strong>{nombre_inmo}</strong>
+                        <div style='font-size:0.78rem;color:{TEXT_SEC};'>Dado el {fecha}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col2:
+                    if st.button("🗑️ Revocar", key=f"rev_{c['id']}", use_container_width=True):
+                        try:
+                            url_rev = f"{SUPA_URL}/rest/v1/consentimientos?id=eq.{c['id']}"
+                            requests.patch(
+                                url_rev,
+                                headers=_headers(),
+                                json={"revocado_at": datetime.now().isoformat()},
+                                timeout=5
+                            )
+                            st.success("✅ Consentimiento revocado.")
+                            st.rerun()
+                        except Exception:
+                            st.error("Error al revocar.")
+
+        # Revocados
+        if revocados:
+            st.markdown(f"#### ❌ Revocados ({len(revocados)})")
+            for c in revocados:
+                nombre_inmo = c.get("inmobiliarias", {}).get("nombre", "Inmobiliaria")
+                fecha_rev = c.get("revocado_at", "")[:10]
+                st.markdown(f"""
+                <div style='background:#F8F8F8;border:1px solid {BORDER};
+                    border-radius:6px;padding:0.7rem 1rem;margin-bottom:4px;
+                    opacity:0.6;'>
+                    <strong>{nombre_inmo}</strong>
+                    <span style='font-size:0.78rem;color:{TEXT_SEC};margin-left:8px;'>
+                        Revocado el {fecha_rev}
+                    </span>
+                </div>
+                """, unsafe_allow_html=True)
+
+    # Descargar datos (derecho RGPD)
+    st.markdown("<br>")
+    st.markdown("#### 📥 Descargar tus datos (Art. 20 RGPD)")
+    datos_export = {
+        "user_id": user_id,
+        "consentimientos": consentimientos,
+        "exportado_en": datetime.now().isoformat(),
+    }
+    st.download_button(
+        "📥 Descargar mis datos en JSON",
+        data=json.dumps(datos_export, indent=2, default=str),
+        file_name=f"mis_datos_nolasco_{datetime.now().strftime('%Y%m%d')}.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+
+
+# ================================================================
+# DIAGNÓSTICO POR INMUEBLE (para usar en Fichas)
+# ================================================================
+def render_diagnostico_inmueble(row: dict):
+    """Mini-diagnóstico para mostrar al final de cada ficha benchmark."""
+    problemas = detectar_problemas(pd.DataFrame([row]))
+    if not problemas:
+        st.markdown(f"""
+        <div style='background:#EDF7F1;border-left:3px solid #1a7a40;
+            border-radius:6px;padding:0.7rem 1rem;margin-top:1rem;'>
+            <span style='color:#1a7a40;font-weight:600;'>🟢 Sin alertas detectadas</span>
+        </div>
+        """, unsafe_allow_html=True)
+        return
+
+    st.markdown(f"""
+    <div style='margin-top:1rem;padding:0.5rem 0;border-top:1px solid {BORDER};'>
+        <div style='font-size:0.75rem;letter-spacing:0.1em;text-transform:uppercase;
+            color:{TEXT_SEC};margin-bottom:0.5rem;'>🔍 Diagnóstico</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    for p in problemas:
+        color_p = "#C0392B" if p["tipo_ayuda"] == "inmobiliaria" else "#D97706"
+        st.markdown(f"""
+        <div style='background:#FFF8F5;border-left:3px solid {color_p};
+            border-radius:4px;padding:0.5rem 0.8rem;margin-bottom:4px;'>
+            <div style='font-size:0.82rem;font-weight:600;color:{color_p};'>
+                {p["emoji"]} {p["titulo"]}
+            </div>
+            <div style='font-size:0.75rem;color:{TEXT_SEC};'>
+                -{p["impacto_euros"]:,.0f}€/mes
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    if st.button("🧠 Ver en Asesor Patrimonial IA →",
+                 key=f"goto_asesor_{row.get('Nombre','')}", use_container_width=True):
+        st.session_state.menu = "Asesor Patrimonial IA"
+        st.rerun()
+
+
+# ================================================================
+# HELPERS
+# ================================================================
+def _reset_asesor():
+    for key in ["asesor_paso", "asesor_problema_idx", "asesor_decisiones",
+                "asesor_mostrar_rgpd", "asesor_inmos_seleccionadas", "asesor_enviado"]:
+        if key in st.session_state:
+            del st.session_state[key]
