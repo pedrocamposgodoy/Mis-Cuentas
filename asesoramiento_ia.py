@@ -489,6 +489,9 @@ def _render_arbol(problemas, df_inmuebles):
         st.rerun()
         return
 
+    # Comprobar si estamos en modo revisión (ya hay decisiones tomadas)
+    en_revision = len(st.session_state.asesor_decisiones) > 0
+
     p = problemas[idx]
 
     # Barra de progreso
@@ -501,6 +504,22 @@ def _render_arbol(problemas, df_inmuebles):
         Situación {idx+1} de {total}
     </div>
     """, unsafe_allow_html=True)
+
+    # Mostrar decisión previa si ya había una (modo revisión)
+    decision_previa = st.session_state.asesor_decisiones.get(idx)
+    if decision_previa:
+        etiquetas = {
+            "solo": ("✅ Decidiste: resolverlo tú solo", "#1a7a40", "#EDF7F1"),
+            "inmobiliaria": ("🏢 Decidiste: pedir asesoramiento profesional", "#C0392B", "#FDECEA"),
+            "skip": ("⏭️ Decidiste: aplazarlo para más adelante", "#888", "#F8F8F8"),
+        }
+        etiqueta, color, bg = etiquetas.get(decision_previa, ("", "#888", "#F8F8F8"))
+        st.markdown(f"""
+        <div style='background:{bg};border-left:3px solid {color};border-radius:6px;
+            padding:0.5rem 1rem;margin-bottom:0.8rem;font-size:0.85rem;font-weight:600;color:{color};'>
+            {etiqueta} — puedes cambiarla abajo
+        </div>
+        """, unsafe_allow_html=True)
 
     # Tarjeta del problema
     color_p = "#C0392B" if p["tipo_ayuda"] == "inmobiliaria" else (
@@ -631,33 +650,45 @@ def _render_resumen(problemas):
             <div style='background:#EDF7F1;border-radius:6px;padding:0.7rem 1rem;
                 margin-bottom:0.4rem;border-left:3px solid #1a7a40;'>
                 <strong>{p["emoji"]} {p["inmueble"]}</strong> — {p["titulo"]}
-                <div style='font-size:0.8rem;color:{TEXT_SEC};margin-top:3px;'>
+                <div style='font-size:0.8rem;color:#5A7A9A;margin-top:3px;'>
                     {p["detalle_ayuda"]}
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
     if inmos:
-        st.markdown("<br>#### 🏢 Donde una inmobiliaria puede ayudarte")
+        st.markdown("#### 🏢 Donde una inmobiliaria puede ayudarte")
         for p in inmos:
             st.markdown(f"""
             <div style='background:#FDECEA;border-radius:6px;padding:0.7rem 1rem;
                 margin-bottom:0.4rem;border-left:3px solid #C0392B;'>
                 <strong>{p["emoji"]} {p["inmueble"]}</strong> — {p["titulo"]}
-                <div style='font-size:0.8rem;color:{TEXT_SEC};margin-top:3px;'>
+                <div style='font-size:0.8rem;color:#5A7A9A;margin-top:3px;'>
                     {p["detalle_ayuda"]}
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
+    if skips:
+        st.markdown("#### ⏭️ Aplazado para más adelante")
+        for p in skips:
+            st.markdown(f"""
+            <div style='background:#F8F8F8;border-radius:6px;padding:0.7rem 1rem;
+                margin-bottom:0.4rem;border-left:3px solid #aaa;opacity:0.7;'>
+                <strong>{p["emoji"]} {p["inmueble"]}</strong> — {p["titulo"]}
+            </div>
+            """, unsafe_allow_html=True)
+
     st.markdown("<br>", unsafe_allow_html=True)
+    st.info("💡 Puedes revisar cualquier decisión volviendo al análisis situación por situación.")
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("← Revisar decisiones", use_container_width=True, key="back_resumen"):
+        if st.button("← Revisar mis decisiones", use_container_width=True, key="back_resumen"):
+            # Vuelve al árbol manteniendo las decisiones ya tomadas para poder cambiarlas
             st.session_state.asesor_paso = 1
             st.session_state.asesor_problema_idx = 0
-            st.session_state.asesor_decisiones = {}
+            # NO reseteamos asesor_decisiones — así el usuario ve lo que ya eligió
             st.rerun()
     with col2:
         if inmos:
@@ -666,7 +697,7 @@ def _render_resumen(problemas):
                 st.session_state.asesor_paso = 3
                 st.rerun()
         else:
-            st.success("✅ ¡Perfecto! Puedes resolver todo tú solo. Plan guardado.")
+            st.success("✅ ¡Perfecto! Puedes resolver todo tú solo.")
             if st.button("🔄 Nueva consulta", use_container_width=True, key="reset_ok"):
                 _reset_asesor()
                 st.rerun()
