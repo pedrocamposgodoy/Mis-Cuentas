@@ -207,15 +207,20 @@ def _registrar_consentimiento(propietario_id, inmobiliaria_id):
             json=payload,
             timeout=5,
         )
+        if r.status_code not in (200, 201):
+            st.warning(f"⚠️ Error al guardar consentimiento: {r.status_code} - {r.text}")
+            return {}
         data = r.json()
         return data[0] if isinstance(data, list) and data else {}
-    except Exception:
+    except Exception as e:
+        st.warning(f"⚠️ Error técnico: {str(e)}")
         return {}
 
 
 def _crear_lead(propietario_id, inmobiliaria_id, consentimiento_id,
                 datos_prop, resumen_problemas, argumentario):
     if not SUPABASE_OK:
+        st.warning("⚠️ Supabase no conectado — usando modo demo")
         return True
     try:
         url = f"{SUPA_URL}/rest/v1/leads_inmobiliarias"
@@ -237,8 +242,14 @@ def _crear_lead(propietario_id, inmobiliaria_id, consentimiento_id,
             json=payload,
             timeout=5,
         )
-        return r.status_code in (200, 201)
-    except Exception:
+        if r.status_code not in (200, 201):
+            st.error(f"❌ Error al crear lead: {r.status_code}")
+            st.error(f"Respuesta: {r.text}")
+            return False
+        st.success("✅ Lead guardado en Supabase")
+        return True
+    except Exception as e:
+        st.error(f"❌ Error técnico: {str(e)}")
         return False
 
 
