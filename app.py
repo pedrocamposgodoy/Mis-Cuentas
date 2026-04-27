@@ -2628,8 +2628,12 @@ elif menu == "Asesor Patrimonial IA":
                             st.session_state.arbol_paso = 2
                             st.rerun()
 
-                # Botón volver
-                if st.button("← Volver", key="back_1"):
+                # Botón volver del paso 1 ya está en el bloque de arriba
+
+            # NODO 1: botón volver (solo en paso 1)
+            if paso == 1:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("← Volver al inicio", key="back_1_nav", use_container_width=True):
                     st.session_state.arbol_paso = 0
                     st.session_state.arbol_decision = {}
                     st.rerun()
@@ -2751,53 +2755,53 @@ elif menu == "Asesor Patrimonial IA":
 
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            # Botones de navegación
-            col_b1, col_b2 = st.columns(2)
-            with col_b1:
-                if st.button("← Volver al inicio", key="back_2", use_container_width=True):
-                    st.session_state.arbol_paso = 0
-                    st.session_state.arbol_decision = {}
-                    st.session_state.mostrar_impacto = False
-                    st.rerun()
-            with col_b2:
-                if st.button("📊 Ver impacto numérico →", key="ver_impacto_num", use_container_width=True, type="primary"):
-                    st.session_state.mostrar_impacto = True
-                    st.rerun()
-            
-            # Mostrar impacto numérico si está activado
-            if st.session_state.get("mostrar_impacto", False):
+                # Botones de navegación — solo en paso 2
                 st.markdown("<br>", unsafe_allow_html=True)
-                with st.expander("📊 Impacto Numérico de esta Estrategia", expanded=True):
-                    if problema == "cash":
-                        c1, c2, c3 = st.columns(3)
-                        c1.metric("💰 Cash liberado", "18,000€", help="Venta de activo bajo rendimiento")
-                        c2.metric("📉 Impacto renta mensual", "-60€/mes", delta="-60", delta_color="inverse", help="Pérdida temporal por venta de cochera")
-                        c3.metric("✅ ROI 5 años", "+2,400€", delta="+2,400", help="Ahorro neto vs mantener activo depreciándose")
-                    
-                    elif problema == "reforma":
-                        c1, c2, c3 = st.columns(3)
-                        coste_reforma = df_inm["Valor_Construccion"].max() * 0.08
-                        renta_protegida = df_inm["Renta"].max()
-                        ahorro_5y = (renta_protegida * 0.18 * 12 * 5) - (60 * 12 * 5)
-                        c1.metric("💸 Inversión necesaria", f"{coste_reforma:,.0f}€", help="8% del valor de construcción")
-                        c2.metric("🛡️ Renta mensual protegida", f"{renta_protegida:,.0f}€", help="Mantienes renta alta evitando deterioro")
-                        c3.metric("✅ Ahorro 5 años", f"{ahorro_5y:,.0f}€", delta=f"+{ahorro_5y:,.0f}", help="vs dejar deteriorar sin reformar")
-                    
-                    elif problema == "renta":
-                        c1, c2, c3 = st.columns(3)
-                        subida_prop = 10
-                        impacto_mes = df_inm["Renta"].mean() * 0.10
-                        impacto_anual = impacto_mes * 12
-                        c1.metric("📈 Subida propuesta", f"+{subida_prop}%", help="Incremento recomendado basado en mercado")
-                        c2.metric("💰 Impacto mensual promedio", f"+{impacto_mes:,.0f}€", delta=f"+{impacto_mes:,.0f}", help="Por inmueble")
-                        c3.metric("✅ Incremento anual", f"+{impacto_anual:,.0f}€/año", delta=f"+{impacto_anual:,.0f}", help="Ingresos adicionales anuales")
+                col_b1, col_b2 = st.columns(2)
+                with col_b1:
+                    if st.button("← Volver al inicio", key="back_2", use_container_width=True):
+                        st.session_state.arbol_paso = 0
+                        st.session_state.arbol_decision = {}
+                        st.session_state.mostrar_impacto = False
+                        st.rerun()
+                with col_b2:
+                    if st.button("📊 Ver impacto numérico →", key="ver_impacto_num", use_container_width=True, type="primary"):
+                        st.session_state.mostrar_impacto = True
+                        st.rerun()
                 
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("✅ Entendido, volver al inicio", key="entendido_volver", use_container_width=True, type="primary"):
-                    st.session_state.arbol_paso = 0
-                    st.session_state.arbol_decision = {}
-                    st.session_state.mostrar_impacto = False
-                    st.rerun()
+                # Mostrar impacto numérico si está activado
+                if st.session_state.get("mostrar_impacto", False):
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    with st.expander("📊 Impacto Numérico de esta Estrategia", expanded=True):
+                        if problema == "cash":
+                            c1, c2, c3 = st.columns(3)
+                            c1.metric("💰 Cash liberado", "18,000€")
+                            c2.metric("📉 Impacto renta mensual", "-60€/mes", delta="-60", delta_color="inverse")
+                            c3.metric("✅ ROI 5 años", "+2,400€", delta="+2,400")
+                        
+                        elif problema == "reforma":
+                            c1, c2, c3 = st.columns(3)
+                            coste_reforma = df_inm["Valor_Construccion"].max() * 0.08
+                            renta_protegida = df_inm["Renta"].max()
+                            ahorro_5y = (renta_protegida * 0.18 * 12 * 5) - (60 * 12 * 5)
+                            c1.metric("💸 Inversión necesaria", f"{coste_reforma:,.0f}€")
+                            c2.metric("🛡️ Renta mensual protegida", f"{renta_protegida:,.0f}€")
+                            c3.metric("✅ Ahorro 5 años", f"{ahorro_5y:,.0f}€", delta=f"+{ahorro_5y:,.0f}")
+                        
+                        elif problema == "renta":
+                            c1, c2, c3 = st.columns(3)
+                            impacto_mes = df_inm["Renta"].mean() * 0.10
+                            impacto_anual = impacto_mes * 12
+                            c1.metric("📈 Subida propuesta", "+10%")
+                            c2.metric("💰 Impacto mensual", f"+{impacto_mes:,.0f}€", delta=f"+{impacto_mes:,.0f}")
+                            c3.metric("✅ Incremento anual", f"+{impacto_anual:,.0f}€", delta=f"+{impacto_anual:,.0f}")
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("✅ Entendido, volver al inicio", key="entendido_volver", use_container_width=True, type="primary"):
+                        st.session_state.arbol_paso = 0
+                        st.session_state.arbol_decision = {}
+                        st.session_state.mostrar_impacto = False
+                        st.rerun()
 
     else:
         st.markdown('<div class="section-title">🌳 Árbol de Decisiones</div>', unsafe_allow_html=True)
