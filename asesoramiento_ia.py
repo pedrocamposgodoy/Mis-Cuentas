@@ -827,22 +827,66 @@ def _render_rgpd(user_id, df_inmuebles, datos_propietario, problemas):
                 "email":    email,
                 "telefono": telefono,
             }
+            debug_msgs = []
             exito = True
+
+            # Verificar conexión Supabase
+            debug_msgs.append(f"🔌 SUPABASE_OK: {SUPABASE_OK}")
+            debug_msgs.append(f"🔑 URL: {SUPA_URL[:40]}...")
+            debug_msgs.append(f"👤 user_id: {user_id}")
+            debug_msgs.append(f"🏢 Inmobiliarias: {[i['nombre'] for i in seleccionadas]}")
+
             for inmo in seleccionadas:
-                consent = _registrar_consentimiento(user_id, inmo["id"])
-                consent_id = consent.get("id")
-                ok = _crear_lead(
-                    user_id, inmo["id"], consent_id,
-                    datos_ok, resumen_txt, argumentario
-                )
-                if not ok:
+                debug_msgs.append(f"--- Procesando: {inmo['nombre']} (id={inmo['id']}) ---")
+
+                # Test directo de escritura en leads sin pasar por consentimiento
+                try:
+                    url = f"{SUPA_URL}/rest/v1/leads_inmobiliarias"
+                    payload = {
+                        "propietario_id":    user_id,
+                        "inmobiliaria_id":   inmo["id"],
+                        "nombre":            nombre_contacto,
+                        "email":             email,
+                        "telefono":          telefono,
+                        "motivo_texto":      resumen_txt,
+                        "argumentario":      argumentario,
+                        "estado":            "nuevo",
+                        "exportado_inmohub": False,
+                    }
+                    import requests as req
+                    r = req.post(
+                        url,
+                        headers={
+                            "apikey":        SUPA_KEY,
+                            "Authorization": f"Bearer {SUPA_KEY}",
+                            "Content-Type":  "application/json",
+                            "Prefer":        "return=representation",
+                        },
+                        json=payload,
+                        timeout=10,
+                    )
+                    debug_msgs.append(f"HTTP status: {r.status_code}")
+                    debug_msgs.append(f"Respuesta: {r.text[:300]}")
+                    if r.status_code in (200, 201):
+                        debug_msgs.append(f"✅ Lead creado OK")
+                    else:
+                        debug_msgs.append(f"❌ Error HTTP {r.status_code}")
+                        exito = False
+                except Exception as e:
+                    debug_msgs.append(f"❌ Excepción: {str(e)}")
                     exito = False
+
+            # Mostrar debug siempre
+            with st.expander("🔍 Debug técnico", expanded=True):
+                for msg in debug_msgs:
+                    st.text(msg)
 
             if exito:
                 st.session_state.asesor_enviado = True
-                st.rerun()
+                # No rerun inmediato — dejamos ver el debug
+                st.success("✅ Leads enviados. Recarga la página para ver la confirmación.")
             else:
-                st.error("⚠️ Error al enviar. Inténtalo de nuevo.")
+                st.error("⚠️ Hay errores. Revisa el debug técnico arriba.")
 
     if btn_disabled and not st.session_state.get("chk_consentimiento"):
         st.caption("Para enviar: selecciona al menos una inmobiliaria, completa tus datos y acepta el consentimiento.")
