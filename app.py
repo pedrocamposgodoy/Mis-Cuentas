@@ -1145,150 +1145,185 @@ if menu == "Torre de Control":
     ing_b_teorico  = df_inm["Renta"].sum()
     
     # DEBUG: Mostrar info de carga de datos
-    st.caption(f"🔍 Debug: {len(df_mov)} operaciones cargadas | Ingresos: {total_ingresos_registrados:,.0f}€ | Gastos: {total_gastos_registrados:,.0f}€")
-    
-    # Detectar alertas y oportunidades
-    alertas_pendientes = []
-    oportunidades = []
-    
-    # 1. Ingresos no registrados
-    if total_ingresos_registrados < ing_b_teorico * 0.5:
-        alertas_pendientes.append(f"Registra los cobros del mes en el Diario Contable (esperados: {ing_b_teorico:,.0f}€)")
-    
-    # 2. Contratos próximos a vencer
+    # ── Previsión mensual desde datos de cartera ────────────────
+    mes_actual  = datetime.now().month
+    anio_actual = datetime.now().year
+    df_mov_fecha = df_mov.copy()
+    df_mov_fecha["Fecha"] = pd.to_datetime(df_mov_fecha["Fecha"], errors="coerce")
+    df_mes = df_mov_fecha[
+        (df_mov_fecha["Fecha"].dt.month == mes_actual) &
+        (df_mov_fecha["Fecha"].dt.year  == anio_actual)
+    ]
+    ing_mes_real = df_mes[df_mes["Tipo"]=="Ingreso"]["Importe"].sum()
+    gas_mes_real = df_mes[df_mes["Tipo"]=="Gasto"]["Importe"].sum()
+    bal_mes_real = ing_mes_real - gas_mes_real
+
+    ing_previsto = df_inm["Renta"].apply(lambda x: safe_float(x)).sum()
+    gas_previsto = (
+        df_inm["Comunidad"].apply(lambda x: safe_float(x)).sum() +
+        df_inm["IBI_Anual"].apply(lambda x: safe_float(x)).sum() / 12 +
+        df_inm["Seguro_Anual"].apply(lambda x: safe_float(x)).sum() / 12 +
+        df_inm["Intereses_Hipoteca"].apply(lambda x: safe_float(x)).sum()
+    )
+    bal_previsto = ing_previsto - gas_previsto
+
+    ing_pct = min(int(ing_mes_real / ing_previsto * 100), 100) if ing_previsto > 0 else 0
+    gas_pct = min(int(gas_mes_real / gas_previsto * 100), 100) if gas_previsto > 0 else 0
+    bal_pct = min(int(bal_mes_real / bal_previsto * 100), 100) if bal_previsto > 0 else 0
+    ing_desv = ing_mes_real - ing_previsto
+    gas_desv = gas_mes_real - gas_previsto
+    bal_desv = bal_mes_real - bal_previsto
+
+    # ── Detectar alertas críticas (para robot) ──────────────────
+    alertas_criticas = []
+    alertas_medias   = []
     for _, row in df_inm.iterrows():
         tipo_alert, msg = alerta_vencimiento(row)
-        if tipo_alert in ["vencido", "urgente"]:
-            dias = dias_para_vencimiento(row.get("Fecha_Vencimiento_Contrato"))
-            if dias and dias < 60:
-                alertas_pendientes.append(f"{row['Nombre']}: Contrato vence en {abs(dias)} días")
-    
-    # 3. Rentas por debajo del mercado
+        if tipo_alert in ("vencido", "urgente"):
+            alertas_criticas.append(f"{row['Nombre']}: {msg}")
+        elif tipo_alert == "aviso":
+            alertas_medias.append(f"{row['Nombre']}: {msg}")
     for _, row in df_inm.iterrows():
-        rm = tasacion(row)
-        desv = (safe_float(row.get("Renta",0)) - rm) / rm * 100
-        if desv < -10:
-            potencial = (rm - safe_float(row.get("Renta",0)))
-            oportunidades.append(f"{row['Nombre']} está {abs(desv):.0f}% bajo mercado → Puedes subir {potencial:,.0f}€/mes")
-    
-    # 4. Margen bajo
-    if margen_real < 50 and margen_real > 0:
-        oportunidades.append(f"Margen ajustado ({margen_real:.1f}%). Revisa gastos en Suministros")
-    
-    # Estado general basado en DATOS REALES
-    if balance_real > 0 and margen_real > 70:
-        estado_corto = "✅ Todo excelente"
-        estado_largo = f"**Genial!** Has registrado **{total_ingresos_registrados:,.0f}€** de ingresos contra **{total_gastos_registrados:,.0f}€** de gastos = **{balance_real:,.0f}€** de balance neto con un margen excelente del **{margen_real:.1f}%**."
-    elif balance_real > 0 and margen_real > 50:
-        estado_corto = "✅ Todo bien"
-        estado_largo = f"**Bien!** Balance real: **{balance_real:,.0f}€** ({total_ingresos_registrados:,.0f}€ ingresos - {total_gastos_registrados:,.0f}€ gastos) con **{margen_real:.1f}%** de margen."
-    elif balance_real > 0:
-        estado_corto = "⚠️ Margen ajustado"
-        estado_largo = f"Balance positivo de **{balance_real:,.0f}€**, pero el margen es ajustado (**{margen_real:.1f}%**). Ingresos: {total_ingresos_registrados:,.0f}€ | Gastos: {total_gastos_registrados:,.0f}€"
-    else:
-        estado_corto = "⚠️ Revisar gastos"
-        estado_largo = f"**Atención:** Balance negativo de **{balance_real:,.0f}€**. Gastos ({total_gastos_registrados:,.0f}€) superan ingresos ({total_ingresos_registrados:,.0f}€)."
-    
-    # Inicializar estado de expansión
-    if "chatbot_expandido" not in st.session_state:
-        st.session_state.chatbot_expandido = False
-    
-    # Mostrar tarjeta plegable
-    with st.container():
-        # Header con robot e info
-        col_robot, col_info, col_toggle = st.columns([1.2, 3.8, 1])
-        
-        with col_robot:
-            # Robot científico animado en Canvas
-            robot_html = """
-            <div style="width:120px;height:130px;margin:0 auto;">
-            <canvas id="robotCanvas" style="display:block;width:100%;height:auto;border-radius:12px;"></canvas>
-            <script>
-            (function(){
-            const cv=document.getElementById('robotCanvas');
-            if(!cv||cv.dataset.init)return;
-            cv.dataset.init='1';
-            const cx=cv.getContext('2d');
-            cv.width=240;cv.height=260;
-            let T=0;
-            function rr(x,y,w,h,r){cx.beginPath();cx.moveTo(x+r,y);cx.lineTo(x+w-r,y);cx.quadraticCurveTo(x+w,y,x+w,y+r);cx.lineTo(x+w,y+h-r);cx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);cx.lineTo(x+r,y+h);cx.quadraticCurveTo(x,y+h,x,y+h-r);cx.lineTo(x,y+r);cx.quadraticCurveTo(x,y,x+r,y);cx.closePath();}
-            function drawBg(){const g=cx.createRadialGradient(120,100,20,120,130,160);g.addColorStop(0,'#e8f6ff');g.addColorStop(1,'#bcd8f0');cx.fillStyle=g;cx.fillRect(0,0,240,260);}
-            function drawBody(bx,by){cx.save();cx.translate(bx,by);const bg=cx.createLinearGradient(0,-30,0,30);bg.addColorStop(0,'#90c8f0');bg.addColorStop(0.5,'#4080c0');bg.addColorStop(1,'#2060a0');cx.fillStyle=bg;rr(-25,-30,50,60,12);cx.fill();cx.strokeStyle='rgba(255,255,255,0.2)';cx.lineWidth=1;cx.stroke();cx.restore();}
-            function drawHead(hx,hy){cx.save();cx.translate(hx,hy);const hg=cx.createRadialGradient(-10,-15,5,0,0,50);hg.addColorStop(0,'#b8e0ff');hg.addColorStop(0.6,'#5090c8');hg.addColorStop(1,'#2060a0');cx.fillStyle=hg;cx.beginPath();cx.arc(0,0,45,0,Math.PI*2);cx.fill();cx.strokeStyle='rgba(255,255,255,0.25)';cx.lineWidth=2;cx.stroke();const blink=Math.abs(Math.sin(T*0.0008));const lookX=Math.sin(T*0.002)*3;function eye(ex,ey){const eg=cx.createRadialGradient(ex,ey,1,ex,ey,12);eg.addColorStop(0,'rgba(80,210,255,0.6)');eg.addColorStop(1,'rgba(80,210,255,0)');cx.fillStyle=eg;cx.beginPath();cx.ellipse(ex,ey,12,12*blink,0,0,Math.PI*2);cx.fill();const ig=cx.createRadialGradient(ex-2+lookX,ey-2,0.5,ex+lookX,ey,8);ig.addColorStop(0,'#b8f0ff');ig.addColorStop(0.4,'#30b8f0');ig.addColorStop(1,'#03284a');cx.fillStyle=ig;cx.beginPath();cx.ellipse(ex,ey,8,8*blink,0,0,Math.PI*2);cx.fill();cx.fillStyle='#020c18';cx.beginPath();cx.ellipse(ex+lookX*0.5,ey,4,4*blink,0,0,Math.PI*2);cx.fill();if(blink>0.4){cx.fillStyle='rgba(255,255,255,0.85)';cx.beginPath();cx.ellipse(ex-3,ey-3,2,1.5,-0.4,0,Math.PI*2);cx.fill();}}
-            eye(-14,-8);eye(14,-8);const smile=Math.sin(T*0.002)*2;cx.strokeStyle='rgba(80,210,255,0.7)';cx.lineWidth=2;cx.lineCap='round';cx.beginPath();cx.moveTo(-12,12+smile);cx.quadraticCurveTo(0,20+smile,12,12+smile);cx.stroke();cx.restore();}
-            function drawAntenna(ax,ay){cx.save();cx.translate(ax,ay);const wb=Math.sin(T*0.004)*6;cx.strokeStyle='#5090c8';cx.lineWidth=2;cx.lineCap='round';cx.beginPath();cx.moveTo(0,0);cx.quadraticCurveTo(wb*0.5,-15,wb,-30);cx.stroke();const p=5+Math.sin(T*0.008)*2;const pg=cx.createRadialGradient(wb,-35,0.5,wb,-35,p+5);pg.addColorStop(0,'rgba(80,210,255,0.7)');pg.addColorStop(1,'rgba(80,210,255,0)');cx.fillStyle=pg;cx.beginPath();cx.arc(wb,-35,p+5,0,Math.PI*2);cx.fill();const bg=cx.createRadialGradient(wb-2,-37,0.5,wb,-35,p);bg.addColorStop(0,'#ffffff');bg.addColorStop(0.3,'#90e0ff');bg.addColorStop(1,'#1890e0');cx.fillStyle=bg;cx.beginPath();cx.arc(wb,-35,p,0,Math.PI*2);cx.fill();cx.restore();}
-            function frame(){drawBg();const bob=Math.sin(T*0.004)*3;drawBody(120,150+bob);drawHead(120,100+bob);drawAntenna(120,70+bob);T+=16;requestAnimationFrame(frame);}
-            frame();
-            })();
-            </script>
-            </div>
-            """
-            st.components.v1.html(robot_html, height=135)
-        
-        with col_info:
-            st.markdown(f"""
-            <div style="padding-top:30px;">
-                <span style="font-weight:600;color:{TEXT_PRI};font-size:1.1rem;">Resumen IA</span>
-                <span style="color:{TEXT_SEC};font-size:0.95rem;"> │ </span>
-                <span style="font-size:0.95rem;color:{TEXT_PRI};">{estado_corto}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col_toggle:
-            st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
-            if st.button("▼" if not st.session_state.chatbot_expandido else "▲", key="toggle_chatbot", use_container_width=True):
-                st.session_state.chatbot_expandido = not st.session_state.chatbot_expandido
-                st.rerun()
-    
-    # Mostrar contenido expandido si está activo
-    if st.session_state.chatbot_expandido:
-        with st.container():
-            st.markdown(f"""
-            <div style="background:{CARD_BG};border:1px solid {ACCENT};border-left:4px solid {ACCENT};border-radius:8px;padding:1rem;margin-bottom:1.5rem;margin-top:-0.5rem;">
-                <div style="font-size:0.9rem;color:{TEXT_PRI};line-height:1.6;margin-bottom:12px;">
-                    {estado_largo}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if alertas_pendientes:
-                st.markdown("**📋 Pendientes:**")
-                for alerta in alertas_pendientes[:3]:
-                    st.markdown(f"• {alerta}")
-                st.markdown("")
-            
-            if oportunidades:
-                st.markdown("**💡 Oportunidades:**")
-                for oport in oportunidades[:3]:
-                    st.markdown(f"• {oport}")
-                st.markdown("")
-            
-            if not alertas_pendientes and not oportunidades:
-                st.success("✅ Todo está en orden. Continúa registrando movimientos para optimizar deducciones fiscales.")
+        rm   = tasacion(row)
+        desv_r = (safe_float(row.get("Renta", 0)) - rm) / rm * 100 if rm > 0 else 0
+        if desv_r < -15:
+            perdida = rm - safe_float(row.get("Renta", 0))
+            alertas_criticas.append(f"{row['Nombre']}: renta {abs(desv_r):.0f}% bajo mercado — pérdida {perdida:,.0f}€/mes")
+        elif desv_r < -5:
+            alertas_medias.append(f"{row['Nombre']}: renta {abs(desv_r):.0f}% bajo mercado")
 
-    st.markdown("---")
-    
-    # KPIs principales - MOSTRAR INGRESOS REALES REGISTRADOS
+    # ── Robot mini con bocadillo (solo si hay alertas) ──────────
+    if alertas_criticas or alertas_medias:
+        alerta_txt  = alertas_criticas[0] if alertas_criticas else alertas_medias[0]
+        es_critica  = bool(alertas_criticas)
+        borde_color = "#C0392B" if es_critica else "#F39C12"
+        fondo_color = "#FDECEA" if es_critica else "#FFF9E6"
+        texto_color = "#C0392B" if es_critica else "#854F0B"
+        extra = f"<span style='font-size:0.75rem;color:{borde_color};margin-left:8px;'>+{len(alertas_criticas)-1} alertas más</span>" if len(alertas_criticas) > 1 else ""
+        robot_mini_html = f"""
+        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px;">
+          <div style="flex-shrink:0;">
+            <canvas id="robotMini" width="80" height="80"
+              style="display:block;width:46px;height:46px;border-radius:50%;"></canvas>
+          </div>
+          <div style="position:relative;background:{fondo_color};border:1px solid {borde_color};
+              border-radius:10px;padding:9px 14px;max-width:520px;">
+            <div style="position:absolute;left:-8px;top:14px;width:0;height:0;
+                border-top:6px solid transparent;border-bottom:6px solid transparent;
+                border-right:8px solid {borde_color};"></div>
+            <div style="position:absolute;left:-6px;top:15px;width:0;height:0;
+                border-top:5px solid transparent;border-bottom:5px solid transparent;
+                border-right:7px solid {fondo_color};"></div>
+            <span style="font-size:0.85rem;font-weight:600;color:{texto_color};">
+              {"🚨" if es_critica else "⚠️"} {alerta_txt}
+            </span>{extra}
+          </div>
+        </div>
+        <script>
+        (function(){{
+          const cv=document.getElementById('robotMini');
+          if(!cv||cv.dataset.init)return; cv.dataset.init='1';
+          const cx=cv.getContext('2d');
+          const g=cx.createRadialGradient(40,35,8,40,40,45);
+          g.addColorStop(0,'#e8f6ff');g.addColorStop(1,'#bcd8f0');
+          cx.fillStyle=g;cx.fillRect(0,0,80,80);
+          const bg=cx.createLinearGradient(40,32,40,58);
+          bg.addColorStop(0,'#90c8f0');bg.addColorStop(0.5,'#4080c0');bg.addColorStop(1,'#2060a0');
+          cx.fillStyle=bg;cx.beginPath();cx.roundRect(26,36,28,30,5);cx.fill();
+          const hg=cx.createRadialGradient(36,30,4,40,34,22);
+          hg.addColorStop(0,'#b8e0ff');hg.addColorStop(0.6,'#5090c8');hg.addColorStop(1,'#2060a0');
+          cx.fillStyle=hg;cx.beginPath();cx.arc(40,34,20,0,Math.PI*2);cx.fill();
+          function eye(ex,ey){{
+            cx.fillStyle='rgba(80,210,255,0.5)';cx.beginPath();cx.arc(ex,ey,5,0,Math.PI*2);cx.fill();
+            const ig=cx.createRadialGradient(ex-1,ey-1,0.5,ex,ey,3.5);
+            ig.addColorStop(0,'#b8f0ff');ig.addColorStop(0.4,'#30b8f0');ig.addColorStop(1,'#03284a');
+            cx.fillStyle=ig;cx.beginPath();cx.arc(ex,ey,3.5,0,Math.PI*2);cx.fill();
+            cx.fillStyle='#020c18';cx.beginPath();cx.arc(ex,ey,1.8,0,Math.PI*2);cx.fill();
+            cx.fillStyle='rgba(255,255,255,0.85)';cx.beginPath();cx.arc(ex-1,ey-1,0.9,0,Math.PI*2);cx.fill();
+          }}
+          eye(33,31);eye(47,31);
+          cx.strokeStyle='#5090c8';cx.lineWidth=1.5;cx.lineCap='round';
+          cx.beginPath();cx.moveTo(40,14);cx.lineTo(40,8);cx.stroke();
+          const pg=cx.createRadialGradient(39,6,0.4,40,6,3.5);
+          pg.addColorStop(0,'#ffffff');pg.addColorStop(0.3,'#90e0ff');pg.addColorStop(1,'#1890e0');
+          cx.fillStyle=pg;cx.beginPath();cx.arc(40,6,2.8,0,Math.PI*2);cx.fill();
+        }})();
+        </script>
+        """
+        st.components.v1.html(robot_mini_html, height=62)
+
+    # ── KPIs acumulado total ────────────────────────────────────
     c1, c2, c3 = st.columns(3)
-    c1.markdown(f'<div class="kpi-card"><div class="kpi-label">Ingresos Registrados</div><div class="kpi-value" style="color:{GREEN};">{total_ingresos_registrados:,.0f} €</div><div class="kpi-sub">Total cobrado real</div></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Registrados</div><div class="kpi-value" style="color:{RED};">−{total_gastos_registrados:,.0f} €</div><div class="kpi-sub">Total pagado real</div></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="kpi-card highlight"><div class="kpi-label">Balance Real</div><div class="kpi-value">{balance_real:,.0f} €</div><div class="kpi-sub">Ingresos - Gastos</div></div>', unsafe_allow_html=True)
+    c1.markdown(f'<div class="kpi-card"><div class="kpi-label">Ingresos Registrados</div><div class="kpi-value" style="color:{GREEN};">{total_ingresos_registrados:,.0f} €</div><div class="kpi-sub">Total cobrado acumulado</div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Registrados</div><div class="kpi-value" style="color:{RED};">−{total_gastos_registrados:,.0f} €</div><div class="kpi-sub">Total pagado acumulado</div></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="kpi-card highlight"><div class="kpi-label">Balance Real</div><div class="kpi-value">{balance_real:,.0f} €</div><div class="kpi-sub">Margen {margen_real:.0f}%</div></div>', unsafe_allow_html=True)
+
+    # ── Previsión vs Real mes actual ────────────────────────────
+    nombre_mes = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                  "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][mes_actual-1]
+
+    def _color_desv(val, invertido=False):
+        if invertido: return GREEN if val <= 0 else RED
+        return GREEN if val >= 0 else RED
+    def _flecha(val, invertido=False):
+        if invertido: return "▼" if val <= 0 else "▲"
+        return "▲" if val >= 0 else "▼"
+    def _barra(pct, color):
+        return f'<div style="height:5px;background:#D0DFF0;border-radius:4px;overflow:hidden;margin:4px 0 2px 0;"><div style="width:{pct}%;height:100%;background:{color};border-radius:4px;"></div></div>'
+
+    st.markdown(f'<div class="section-title">Previsión vs Real — {nombre_mes} {anio_actual}</div>', unsafe_allow_html=True)
+    p1, p2, p3 = st.columns(3)
+    p1.markdown(f"""<div class="kpi-card">
+      <div class="kpi-label">Ingresos {nombre_mes}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;">
+        <div class="kpi-value" style="color:{GREEN};font-size:1.5rem;">{ing_mes_real:,.0f} €</div>
+        <div style="font-size:0.8rem;color:{TEXT_SEC};">de {ing_previsto:,.0f} €</div>
+      </div>
+      {_barra(ing_pct, GREEN)}
+      <div style="display:flex;justify-content:space-between;">
+        <span style="font-size:0.7rem;color:{TEXT_SEC};">{ing_pct}% completado</span>
+        <span style="font-size:0.78rem;font-weight:600;color:{_color_desv(ing_desv)};">{_flecha(ing_desv)} {abs(ing_desv):,.0f} €</span>
+      </div></div>""", unsafe_allow_html=True)
+    p2.markdown(f"""<div class="kpi-card">
+      <div class="kpi-label">Gastos {nombre_mes}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;">
+        <div class="kpi-value" style="color:{RED};font-size:1.5rem;">{gas_mes_real:,.0f} €</div>
+        <div style="font-size:0.8rem;color:{TEXT_SEC};">de {gas_previsto:,.0f} €</div>
+      </div>
+      {_barra(gas_pct, RED)}
+      <div style="display:flex;justify-content:space-between;">
+        <span style="font-size:0.7rem;color:{TEXT_SEC};">{gas_pct}% ejecutado</span>
+        <span style="font-size:0.78rem;font-weight:600;color:{_color_desv(gas_desv, invertido=True)};">{_flecha(gas_desv, invertido=True)} {abs(gas_desv):,.0f} €</span>
+      </div></div>""", unsafe_allow_html=True)
+    p3.markdown(f"""<div class="kpi-card" style="border-left:3px solid {ACCENT};">
+      <div class="kpi-label">Balance {nombre_mes}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;">
+        <div class="kpi-value" style="color:{ACCENT};font-size:1.5rem;">{bal_mes_real:,.0f} €</div>
+        <div style="font-size:0.8rem;color:{TEXT_SEC};">de {bal_previsto:,.0f} €</div>
+      </div>
+      {_barra(bal_pct, ACCENT)}
+      <div style="display:flex;justify-content:space-between;">
+        <span style="font-size:0.7rem;color:{TEXT_SEC};">{bal_pct}% del objetivo</span>
+        <span style="font-size:0.78rem;font-weight:600;color:{_color_desv(bal_desv)};">{_flecha(bal_desv)} {abs(bal_desv):,.0f} €</span>
+      </div></div>""", unsafe_allow_html=True)
+
+    # ── Activos (compactos) ─────────────────────────────────────
     st.markdown('<div class="section-title">Rentabilidad por Activo</div>', unsafe_allow_html=True)
     if df_inm.empty:
         st.info("📭 No tienes inmuebles registrados. Ve a **Cartera** para añadir tu primer inmueble.")
     else:
         cols = st.columns(len(df_inm))
         for i, row in df_inm.iterrows():
-            g_esp    = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
-            comunidad = safe_float(row.get("Comunidad",0)) if pd.notna(row.get("Comunidad", 0)) else 0
-            gastos_u = comunidad + g_esp
-            neto_u   = safe_float(row.get("Renta",0))-gastos_u
-            rm       = tasacion(row)
-            desv     = (safe_float(row.get("Renta",0))-rm)/rm*100
-            pill_cls,_ = bench_pill(desv)
+            g_esp     = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
+            comunidad = safe_float(row.get("Comunidad", 0)) if pd.notna(row.get("Comunidad", 0)) else 0
+            gastos_u  = comunidad + g_esp
+            neto_u    = safe_float(row.get("Renta", 0)) - gastos_u
+            rm        = tasacion(row)
+            desv      = (safe_float(row.get("Renta", 0)) - rm) / rm * 100
+            pill_cls, _ = bench_pill(desv)
             zt = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
             with cols[i]:
-                st.markdown(f"""<div class="asset-card"><div class="asset-top" style="background:{COLOR_TOPS[i%len(COLOR_TOPS)]};"></div><div class="asset-body"><div class="asset-name">{row["Nombre"]}{zt}</div><div class="asset-tenant">{row["Inquilino"]}</div><div class="asset-row"><span class="asset-ml">Renta</span><span class="asset-mv" style="color:{GREEN};">+{safe_float(row.get("Renta",0)):,.0f}€</span></div><div class="asset-row"><span class="asset-ml">Gastos</span><span class="asset-mv" style="color:{RED};">−{gastos_u:,.0f}€</span></div><div class="asset-div"></div><div class="asset-row"><span class="asset-ml">Neto</span><span class="asset-neto">{neto_u:,.0f}€</span></div><span class="pill {pill_cls}">{desv:+.1f}% mercado</span></div></div>""", unsafe_allow_html=True)
+                st.markdown(f"""<div class="asset-card"><div class="asset-top" style="background:{COLOR_TOPS[i%len(COLOR_TOPS)]};"></div><div class="asset-body" style="padding:0.7rem 1rem 0.5rem 1rem;"><div class="asset-name">{row["Nombre"]}{zt}</div><div class="asset-tenant">{row["Inquilino"]}</div><div class="asset-row"><span class="asset-ml">Renta</span><span class="asset-mv" style="color:{GREEN};">+{safe_float(row.get("Renta",0)):,.0f}€</span></div><div class="asset-row"><span class="asset-ml">Gastos</span><span class="asset-mv" style="color:{RED};">−{gastos_u:,.0f}€</span></div><div class="asset-div"></div><div class="asset-row"><span class="asset-ml">Neto</span><span class="asset-neto">{neto_u:,.0f}€</span></div><span class="pill {pill_cls}">{desv:+.1f}% mercado</span></div></div>""", unsafe_allow_html=True)
                 if st.button("→ Ver ficha", key=f"card_{i}", use_container_width=True):
                     st.session_state.menu = "Fichas (Benchmark)"
                     st.session_state.ficha_sel = row["Nombre"]
