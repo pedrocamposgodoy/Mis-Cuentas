@@ -370,7 +370,8 @@ def alerta_vencimiento(row):
     return "ok", f"✅ Vence en {round(dias/30)} meses"
 
 def guardar_movimientos(nuevos):
-    agregar_movimientos(nuevos)
+    user_id = st.session_state.get("user_id", "")
+    agregar_movimientos(nuevos, user_id)
     df_nuevos = pd.DataFrame(nuevos)
     df_final = pd.concat([st.session_state.df_mov_persistent, df_nuevos], ignore_index=True)
     st.session_state.df_mov_persistent = df_final
