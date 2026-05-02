@@ -1702,7 +1702,7 @@ elif menu == "Diario Contable":
                 df_final = df_ed
             
             st.session_state.df_mov_persistent = df_final
-            guardar_movimientos_completo(df_final)
+            guardar_movimientos_completo(df_final, user_id=st.session_state.get("user_id", ""))
             
             total_movs = len(st.session_state.df_mov_persistent)
             total_ingresos = st.session_state.df_mov_persistent[st.session_state.df_mov_persistent["Tipo"]=="Ingreso"]["Importe"].sum()
@@ -1751,7 +1751,7 @@ elif menu == "Diario Contable":
                 df_completo["Fecha"] = df_completo["Fecha"].dt.strftime("%Y-%m-%d")
                 
                 st.session_state.df_mov_persistent = df_completo
-                guardar_movimientos_completo(df_completo)
+                guardar_movimientos_completo(df_completo, user_id=st.session_state.get("user_id", ""))
                 
                 total_registrado = df_nuevos["Importe"].sum()
                 st.success(f"✓ Registradas {len(nuevos_ingresos)} rentas por {total_registrado:,.0f}€")
