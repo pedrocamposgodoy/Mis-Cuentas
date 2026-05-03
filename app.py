@@ -44,67 +44,11 @@ AMBER      = "#854F0B"
 COLOR_TOPS = ["#185FA5","#0F6E56","#378ADD","#639922","#D85A30","#7F77DD"]
 
 # ================================================================
-# SECCIÓN 2 — ESTILOS CSS (diseño visual)
-# No tocar salvo que quieras cambiar colores o tipografía
+# SECCIÓN 2 — ESTILOS CSS (Design System Nolasco Capital)
 # ================================================================
-st.markdown(f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
-.block-container{{padding-top:1.2rem!important;padding-bottom:0!important;}}
-html,body,[class*="css"]{{font-family:'DM Sans',sans-serif;background-color:{MAIN_BG}!important;color:{TEXT_PRI};}}
-[data-testid="stSidebar"]{{background:{SIDEBAR_BG}!important;border-right:1px solid #1a3a5c;min-width:260px!important;}}
-[data-testid="stSidebar"] .stButton>button{{
-    background:transparent!important;border:none!important;color:#8ab4d4!important;
-    font-family:'DM Sans',sans-serif!important;font-size:0.9rem!important;font-weight:400!important;
-    text-align:left!important;padding:0.55rem 1rem!important;border-radius:0 6px 6px 0!important;
-    width:100%!important;margin-bottom:2px!important;box-shadow:none!important;
-    border-left:3px solid transparent!important;transition:all 0.15s ease!important;
-}}
-[data-testid="stSidebar"] .stButton>button:hover{{
-    background:rgba(96,180,255,0.1)!important;color:#fff!important;
-    border-left:3px solid rgba(96,180,255,0.4)!important;
-}}
-[data-testid="stSidebar"] .stButton>button:hover{{background:rgba(96,180,255,0.08)!important;color:#fff!important;border-left:3px solid rgba(96,180,255,0.3)!important;}}
-.nav-active{{border-left:3px solid #60B4FF;background:rgba(96,180,255,0.12);padding:0.65rem 1.4rem;margin-bottom:1px;border-radius:0 6px 6px 0;font-size:0.88rem;font-weight:600;color:#fff;font-family:'DM Sans',sans-serif;}}
-.brand-header{{font-family:'DM Serif Display',serif;font-size:2rem;color:{TEXT_PRI};border-bottom:2px solid {ACCENT};padding-bottom:0.4rem;margin-bottom:0.2rem;}}
-.brand-sub{{font-size:0.7rem;letter-spacing:0.18em;text-transform:uppercase;color:{TEXT_SEC};margin-bottom:1.5rem;}}
-.section-title{{font-family:'DM Serif Display',serif;font-size:1.35rem;color:{TEXT_PRI};border-left:3px solid {ACCENT};padding-left:0.7rem;margin:1.5rem 0 1rem 0;}}
-.kpi-card{{background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;padding:1.2rem 1.3rem;text-align:left;}}
-.kpi-card.highlight{{background:{ACCENT};border-color:{ACCENT};}}
-.kpi-label{{font-size:0.62rem;letter-spacing:0.1em;text-transform:uppercase;color:{TEXT_SEC};margin-bottom:0.4rem;}}
-.kpi-card.highlight .kpi-label{{color:#B5D4F4;}}
-.kpi-value{{font-family:'DM Serif Display',serif;font-size:2rem;line-height:1;color:{TEXT_PRI};}}
-.kpi-card.highlight .kpi-value{{color:#fff;}}
-.kpi-sub{{font-size:0.7rem;color:{TEXT_SEC};margin-top:0.3rem;}}
-.kpi-card.highlight .kpi-sub{{color:#B5D4F4;}}
-.asset-card{{background:{CARD_BG};border:1px solid {BORDER};border-radius:10px 10px 0 0;overflow:hidden;}}
-.asset-top{{height:4px;}}
-.asset-body{{padding:1rem 1.1rem 0.8rem 1.1rem;}}
-.asset-name{{font-size:0.82rem;font-weight:600;color:{TEXT_PRI};margin-bottom:2px;}}
-.asset-tenant{{font-size:0.72rem;color:{TEXT_SEC};margin-bottom:0.8rem;}}
-.asset-row{{display:flex;justify-content:space-between;margin-bottom:4px;}}
-.asset-ml{{font-size:0.65rem;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.04em;}}
-.asset-mv{{font-size:0.82rem;font-weight:500;}}
-.asset-div{{height:0.5px;background:{BORDER};margin:7px 0;}}
-.asset-neto{{font-size:1rem;font-weight:600;color:{TEXT_PRI};}}
-.pill{{display:inline-block;font-size:0.65rem;padding:2px 7px;border-radius:20px;margin-top:5px;}}
-.pill-red{{background:#FCEBEB;color:#A32D2D;}}
-.pill-amber{{background:#FAEEDA;color:#854F0B;}}
-.pill-green{{background:#EAF3DE;color:#3B6D11;}}
-.status-red{{background:#FDECEA;border-left:5px solid {RED};padding:1.2rem;border-radius:6px;}}
-.status-yellow{{background:#FFF9E6;border-left:5px solid #F39C12;padding:1.2rem;border-radius:6px;}}
-.status-green{{background:#EDF7F1;border-left:5px solid {GREEN};padding:1.2rem;border-radius:6px;}}
-div[data-testid="column"] .stButton>button{{
-    background:{CARD_BG}!important;border:1px solid {BORDER}!important;
-    border-top:none!important;border-radius:0 0 10px 10px!important;
-    color:{ACCENT}!important;font-size:0.72rem!important;font-weight:500!important;
-    padding:0.4rem 1.1rem!important;width:100%!important;text-align:left!important;
-    box-shadow:none!important;margin-top:0!important;
-}}
-div[data-testid="column"] .stButton>button:hover{{background:#F0F6FF!important;}}
-#MainMenu,footer,header{{visibility:hidden;}}
-</style>
-""", unsafe_allow_html=True)
+from nolasco_styles import inject_styles
+inject_styles()
+
 
 # ================================================================
 # SECCIÓN 3 — BASE DE DATOS SUPABASE (Bloque 6)
@@ -151,58 +95,138 @@ if "filtro_mes" not in st.session_state:
 
 # Si no está logueado, mostrar formulario de login
 if not st.session_state.user_logged_in:
-    st.markdown("<h1 style='text-align:center;color:#0F2744;'>🏠 Nolasco Capital</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align:center;color:#185FA5;'>Gestión Patrimonial Inmobiliaria</h3>", unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    tab1, tab2 = st.tabs(["🔐 Iniciar Sesión", "📝 Registrarse"])
-    
-    with tab1:
-        st.markdown("### Inicia sesión con tu cuenta")
-        email_login = st.text_input("📧 Email", key="email_login")
-        password_login = st.text_input("🔒 Contraseña", type="password", key="password_login")
-        
-        if st.button("🚀 Entrar", use_container_width=True):
-            if email_login and password_login:
-                result = login_usuario(email_login, password_login)
-                if result['success']:
-                    st.session_state.user_logged_in = True
-                    st.session_state.user_id = result['user_id']
-                    st.session_state.user_email = result['email']
-                    # Limpiar datos del usuario anterior
-                    if "df_inm_persistent" in st.session_state:
-                        del st.session_state.df_inm_persistent
-                    if "df_mov_persistent" in st.session_state:
-                        del st.session_state.df_mov_persistent
-                    st.success(f"✅ Bienvenido {result['email']}")
-                    st.rerun()
-                else:
-                    st.error(f"❌ {result['error']}")
-            else:
-                st.warning("⚠️ Completa todos los campos")
-    
-    with tab2:
-        st.markdown("### Crea tu cuenta nueva")
-        email_reg = st.text_input("📧 Email", key="email_reg")
-        password_reg = st.text_input("🔒 Contraseña", type="password", key="password_reg")
-        password_reg2 = st.text_input("🔒 Repetir Contraseña", type="password", key="password_reg2")
-        
-        if st.button("📝 Registrarse", use_container_width=True):
-            if email_reg and password_reg and password_reg2:
-                if password_reg == password_reg2:
-                    if len(password_reg) >= 6:
-                        result = registrar_usuario(email_reg, password_reg)
-                        if result['success']:
-                            st.success("✅ Cuenta creada. Ahora inicia sesión.")
-                        else:
-                            st.error(f"❌ {result['error']}")
+    # Inyectar CSS de login
+    st.markdown("""
+<style>
+.stApp { background: #0F2744 !important; }
+.login-card {
+    background: white;
+    border-radius: 16px;
+    padding: 2.5rem 2.5rem 2rem;
+    max-width: 480px;
+    margin: 4rem auto 0;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.login-title {
+    font-family: 'DM Serif Display', Georgia, serif;
+    font-size: 2rem;
+    color: #0F2744;
+    margin-bottom: 0.2rem;
+}
+.login-sub {
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #5A7A9A;
+    border-bottom: 2px solid #185FA5;
+    padding-bottom: 0.8rem;
+    margin-bottom: 1.2rem;
+}
+.login-desc {
+    font-size: 0.9rem;
+    color: #3a5a7a;
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+}
+div[data-testid="stTextInput"] label {
+    font-size: 0.65rem !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+    color: #5A7A9A !important;
+    font-weight: 600 !important;
+}
+div[data-testid="stTextInput"] input {
+    border: 1.5px solid #D0DFF0 !important;
+    border-radius: 8px !important;
+    padding: 0.6rem 0.8rem !important;
+    font-size: 0.95rem !important;
+}
+div[data-testid="stTextInput"] input:focus {
+    border-color: #185FA5 !important;
+    box-shadow: 0 0 0 3px rgba(24,95,165,0.1) !important;
+}
+div.stButton > button {
+    background: #185FA5 !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 0.7rem !important;
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+    width: 100% !important;
+    margin-top: 0.5rem !important;
+}
+div.stButton > button:hover {
+    background: #0F4A8A !important;
+}
+.login-register {
+    text-align: center;
+    margin-top: 1rem;
+    font-size: 0.85rem;
+    color: #5A7A9A;
+}
+.login-register a { color: #185FA5; text-decoration: none; font-weight: 600; }
+</style>
+""", unsafe_allow_html=True)
+
+    st.markdown("""
+<div class="login-card">
+  <div class="login-title">Nolasco Capital</div>
+  <div class="login-sub">Granada · Tu Patrimonio Inmobiliario</div>
+  <div class="login-desc">
+    Gestiona tu cartera, descubre cuánto pierdes frente al mercado y simula tus impuestos.
+    <strong>Gratis siempre.</strong>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+    # Centrar el formulario
+    _, col_center, _ = st.columns([1, 2, 1])
+    with col_center:
+        modo = st.radio("", ["🔐 Iniciar Sesión", "📝 Registrarse"],
+                        horizontal=True, label_visibility="collapsed",
+                        key="login_modo")
+
+        if modo == "🔐 Iniciar Sesión":
+            email_login    = st.text_input("Email", key="email_login", placeholder="tu@email.com")
+            password_login = st.text_input("Contraseña", type="password", key="password_login", placeholder="••••••••")
+            if st.button("🚀 Iniciar sesión", use_container_width=True):
+                if email_login and password_login:
+                    result = login_usuario(email_login, password_login)
+                    if result['success']:
+                        st.session_state.user_logged_in = True
+                        st.session_state.user_id = result['user_id']
+                        st.session_state.user_email = result['email']
+                        if "df_inm_persistent" in st.session_state:
+                            del st.session_state.df_inm_persistent
+                        if "df_mov_persistent" in st.session_state:
+                            del st.session_state.df_mov_persistent
+                        st.success(f"✅ Bienvenido {result['email']}")
+                        st.rerun()
                     else:
-                        st.warning("⚠️ La contraseña debe tener al menos 6 caracteres")
+                        st.error(f"❌ {result['error']}")
                 else:
-                    st.warning("⚠️ Las contraseñas no coinciden")
-            else:
-                st.warning("⚠️ Completa todos los campos")
-    
+                    st.warning("⚠️ Completa todos los campos")
+        else:
+            email_reg    = st.text_input("Email", key="email_reg", placeholder="tu@email.com")
+            password_reg = st.text_input("Contraseña", type="password", key="password_reg", placeholder="••••••••")
+            password_reg2 = st.text_input("Repetir Contraseña", type="password", key="password_reg2", placeholder="••••••••")
+            if st.button("📝 Registrarse gratis", use_container_width=True):
+                if email_reg and password_reg and password_reg2:
+                    if password_reg == password_reg2:
+                        if len(password_reg) >= 6:
+                            result = registrar_usuario(email_reg, password_reg)
+                            if result['success']:
+                                st.success("✅ Cuenta creada. Ahora inicia sesión.")
+                            else:
+                                st.error(f"❌ {result['error']}")
+                        else:
+                            st.warning("⚠️ La contraseña debe tener al menos 6 caracteres")
+                    else:
+                        st.warning("⚠️ Las contraseñas no coinciden")
+                else:
+                    st.warning("⚠️ Completa todos los campos")
+
     st.stop()
 
 # ================================================================
@@ -1132,8 +1156,8 @@ if menu == "Torre de Control":
         st.stop()
     else:
         pass
-    st.markdown('<div class="brand-header">Torre de Control</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-header">Torre de Control</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
     
     # ═══════════════════════════════════════════════════════════
     # CHATBOT COMPACTO — TARJETA PLEGABLE
@@ -1259,9 +1283,9 @@ if menu == "Torre de Control":
 
     # ── KPIs acumulado total ────────────────────────────────────
     c1, c2, c3 = st.columns(3)
-    c1.markdown(f'<div class="kpi-card"><div class="kpi-label">Ingresos Registrados</div><div class="kpi-value" style="color:{GREEN};">{total_ingresos_registrados:,.0f} €</div><div class="kpi-sub">Total cobrado acumulado</div></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="kpi-card"><div class="kpi-label">Gastos Registrados</div><div class="kpi-value" style="color:{RED};">−{total_gastos_registrados:,.0f} €</div><div class="kpi-sub">Total pagado acumulado</div></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="kpi-card highlight"><div class="kpi-label">Balance Real</div><div class="kpi-value">{balance_real:,.0f} €</div><div class="kpi-sub">Margen {margen_real:.0f}%</div></div>', unsafe_allow_html=True)
+    c1.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Ingresos Registrados</div><div class="nc-kpi__value" style="color:{GREEN};">{total_ingresos_registrados:,.0f} €</div><div class="nc-kpi__sub">Total cobrado acumulado</div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Gastos Registrados</div><div class="nc-kpi__value" style="color:{RED};">−{total_gastos_registrados:,.0f} €</div><div class="nc-kpi__sub">Total pagado acumulado</div></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="nc-kpi is-highlight"><div class="nc-kpi__label">Balance Real</div><div class="nc-kpi__value">{balance_real:,.0f} €</div><div class="nc-kpi__sub">Margen {margen_real:.0f}%</div></div>', unsafe_allow_html=True)
 
     # ── Previsión vs Real mes actual ────────────────────────────
     nombre_mes = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
@@ -1276,12 +1300,12 @@ if menu == "Torre de Control":
     def _barra(pct, color):
         return f'<div style="height:5px;background:#D0DFF0;border-radius:4px;overflow:hidden;margin:4px 0 2px 0;"><div style="width:{pct}%;height:100%;background:{color};border-radius:4px;"></div></div>'
 
-    st.markdown(f'<div class="section-title">Previsión vs Real — {nombre_mes} {anio_actual}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="nc-section-title">Previsión vs Real — {nombre_mes} {anio_actual}</div>', unsafe_allow_html=True)
     p1, p2, p3 = st.columns(3)
-    p1.markdown(f"""<div class="kpi-card">
-      <div class="kpi-label">Ingresos {nombre_mes}</div>
+    p1.markdown(f"""<div class="nc-kpi">
+      <div class="nc-kpi__label">Ingresos {nombre_mes}</div>
       <div style="display:flex;align-items:baseline;gap:8px;">
-        <div class="kpi-value" style="color:{GREEN};font-size:1.5rem;">{ing_mes_real:,.0f} €</div>
+        <div class="nc-kpi__value" style="color:{GREEN};font-size:1.5rem;">{ing_mes_real:,.0f} €</div>
         <div style="font-size:0.8rem;color:{TEXT_SEC};">de {ing_previsto:,.0f} €</div>
       </div>
       {_barra(ing_pct, GREEN)}
@@ -1289,10 +1313,10 @@ if menu == "Torre de Control":
         <span style="font-size:0.7rem;color:{TEXT_SEC};">{ing_pct}% completado</span>
         <span style="font-size:0.78rem;font-weight:600;color:{_color_desv(ing_desv)};">{_flecha(ing_desv)} {abs(ing_desv):,.0f} €</span>
       </div></div>""", unsafe_allow_html=True)
-    p2.markdown(f"""<div class="kpi-card">
-      <div class="kpi-label">Gastos {nombre_mes}</div>
+    p2.markdown(f"""<div class="nc-kpi">
+      <div class="nc-kpi__label">Gastos {nombre_mes}</div>
       <div style="display:flex;align-items:baseline;gap:8px;">
-        <div class="kpi-value" style="color:{RED};font-size:1.5rem;">{gas_mes_real:,.0f} €</div>
+        <div class="nc-kpi__value" style="color:{RED};font-size:1.5rem;">{gas_mes_real:,.0f} €</div>
         <div style="font-size:0.8rem;color:{TEXT_SEC};">de {gas_previsto:,.0f} €</div>
       </div>
       {_barra(gas_pct, RED)}
@@ -1300,10 +1324,10 @@ if menu == "Torre de Control":
         <span style="font-size:0.7rem;color:{TEXT_SEC};">{gas_pct}% ejecutado</span>
         <span style="font-size:0.78rem;font-weight:600;color:{_color_desv(gas_desv, invertido=True)};">{_flecha(gas_desv, invertido=True)} {abs(gas_desv):,.0f} €</span>
       </div></div>""", unsafe_allow_html=True)
-    p3.markdown(f"""<div class="kpi-card" style="border-left:3px solid {ACCENT};">
-      <div class="kpi-label">Balance {nombre_mes}</div>
+    p3.markdown(f"""<div class="nc-kpi" style="border-left:3px solid {ACCENT};">
+      <div class="nc-kpi__label">Balance {nombre_mes}</div>
       <div style="display:flex;align-items:baseline;gap:8px;">
-        <div class="kpi-value" style="color:{ACCENT};font-size:1.5rem;">{bal_mes_real:,.0f} €</div>
+        <div class="nc-kpi__value" style="color:{ACCENT};font-size:1.5rem;">{bal_mes_real:,.0f} €</div>
         <div style="font-size:0.8rem;color:{TEXT_SEC};">de {bal_previsto:,.0f} €</div>
       </div>
       {_barra(bal_pct, ACCENT)}
@@ -1313,7 +1337,7 @@ if menu == "Torre de Control":
       </div></div>""", unsafe_allow_html=True)
 
     # ── Activos (compactos) ─────────────────────────────────────
-    st.markdown('<div class="section-title">Rentabilidad por Activo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-section-title">Rentabilidad por Activo</div>', unsafe_allow_html=True)
     if df_inm.empty:
         st.info("📭 No tienes inmuebles registrados. Ve a **Cartera** para añadir tu primer inmueble.")
     else:
@@ -1335,12 +1359,12 @@ if menu == "Torre de Control":
                     st.rerun()
     col_l,col_r = st.columns(2)
     with col_l:
-        st.markdown('<div class="section-title">Composición de Rentas</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-section-title">Composición de Rentas</div>', unsafe_allow_html=True)
         fig = go.Figure(go.Bar(x=df_inm["Renta"],y=df_inm["Nombre"],orientation="h",marker_color=COLOR_TOPS[:len(df_inm)],text=[f"{r:,.0f} €" for r in df_inm["Renta"]],textposition="outside"))
         fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=60,t=10,b=10),height=280,xaxis=dict(showgrid=False,visible=False),yaxis=dict(showgrid=False),font=dict(family="DM Sans",size=12))
         st.plotly_chart(fig,use_container_width=True)
     with col_r:
-        st.markdown('<div class="section-title">Lucro Cesante Anual</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-section-title">Lucro Cesante Anual</div>', unsafe_allow_html=True)
         total_lc=0
         for _,row in df_inm.iterrows():
             rm=tasacion(row); pa=max(0,rm-safe_float(row.get("Renta",0)))*12; total_lc+=pa
@@ -1350,7 +1374,7 @@ if menu == "Torre de Control":
         st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:{ACCENT};border-radius:8px;margin-top:4px;"><span style="font-size:0.72rem;font-weight:500;color:#B5D4F4;text-transform:uppercase;letter-spacing:0.06em;">Total pérdida anual</span><span style="font-size:1.3rem;font-weight:600;color:#fff;">−{total_lc:,.0f} €</span></div>', unsafe_allow_html=True)
     
     # Gráfico histórico últimos 12 meses
-    st.markdown('<div class="section-title">📈 Evolución Últimos 12 Meses</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-section-title">📈 Evolución Últimos 12 Meses</div>', unsafe_allow_html=True)
     
     # Generar datos históricos agregando movimientos por mes
     df_mov["Fecha"] = pd.to_datetime(df_mov["Fecha"], errors="coerce")
@@ -1390,7 +1414,7 @@ if menu == "Torre de Control":
     st.plotly_chart(fig_hist, use_container_width=True)
     alertas = [(row["Nombre"],*alerta_vencimiento(row)) for _,row in df_inm.iterrows() if alerta_vencimiento(row)[0] in ("vencido","urgente","aviso")]
     if alertas:
-        st.markdown('<div class="section-title">📅 Alertas de Contratos</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-section-title">📅 Alertas de Contratos</div>', unsafe_allow_html=True)
         for nombre,tipo,msg in alertas:
             cls = "status-red" if tipo in ("vencido","urgente") else "status-yellow"
             st.markdown(f'<div class="{cls}" style="margin-bottom:6px;"><b>{nombre}</b> — {msg}</div>', unsafe_allow_html=True)
@@ -1400,8 +1424,8 @@ if menu == "Torre de Control":
 # Análisis de mercado, motor de tasación, simulador de renta
 # ================================================================
 elif menu == "Fichas (Benchmark)":
-    st.markdown('<div class="brand-header">Benchmark y Análisis Fiscal</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Análisis de mercado · Comparativa fiscal por modalidad</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-header">Benchmark y Análisis Fiscal</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Análisis de mercado · Comparativa fiscal por modalidad</div>', unsafe_allow_html=True)
     
     # Navegación con botones prev/next
     lista_inmuebles = df_inm["Nombre"].tolist()
@@ -1431,10 +1455,10 @@ elif menu == "Fichas (Benchmark)":
     zona_tens = str(f.get("Zona_Tensionada","N"))=="S"
     cochera_v = str(f.get("Cochera_Vinculada","N"))=="S"
     k1,k2,k3,k4 = st.columns(4)
-    k1.markdown(f'<div class="kpi-card"><div class="kpi-label">Renta Actual</div><div class="kpi-value" style="color:{GREEN};">{renta_act:,.0f} €</div><div class="kpi-sub">mensual</div></div>', unsafe_allow_html=True)
-    k2.markdown(f'<div class="kpi-card"><div class="kpi-label">Renta Tasada</div><div class="kpi-value" style="color:{TEXT_PRI};">{renta_mer:,.0f} €</div><div class="kpi-sub">motor CP + características</div></div>', unsafe_allow_html=True)
-    k3.markdown(f'<div class="kpi-card"><div class="kpi-label">Rentabilidad Bruta</div><div class="kpi-value" style="color:{ACCENT};">{rent_bruta:.1f}%</div><div class="kpi-sub">sobre valor construcción</div></div>', unsafe_allow_html=True)
-    k4.markdown(f'<div class="kpi-card highlight"><div class="kpi-label">Rentabilidad Neta</div><div class="kpi-value">{rent_neta:.1f}%</div><div class="kpi-sub">{tipo_arr}</div></div>', unsafe_allow_html=True)
+    k1.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Renta Actual</div><div class="nc-kpi__value" style="color:{GREEN};">{renta_act:,.0f} €</div><div class="nc-kpi__sub">mensual</div></div>', unsafe_allow_html=True)
+    k2.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Renta Tasada</div><div class="nc-kpi__value" style="color:{TEXT_PRI};">{renta_mer:,.0f} €</div><div class="nc-kpi__sub">motor CP + características</div></div>', unsafe_allow_html=True)
+    k3.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Rentabilidad Bruta</div><div class="nc-kpi__value" style="color:{ACCENT};">{rent_bruta:.1f}%</div><div class="nc-kpi__sub">sobre valor construcción</div></div>', unsafe_allow_html=True)
+    k4.markdown(f'<div class="nc-kpi is-highlight"><div class="nc-kpi__label">Rentabilidad Neta</div><div class="nc-kpi__value">{rent_neta:.1f}%</div><div class="nc-kpi__sub">{tipo_arr}</div></div>', unsafe_allow_html=True)
     badges = []
     if zona_tens: badges.append(f'<span style="background:#FDECEA;color:#A32D2D;font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">🔒 Zona Tensionada</span>')
     if cochera_v: badges.append(f'<span style="background:#EDF7F1;color:#1a7a40;font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">🅿️ Cochera Vinculada</span>')
@@ -1452,12 +1476,12 @@ elif menu == "Fichas (Benchmark)":
         st.markdown(f'<div class="{cls_v}" style="margin-bottom:1rem;"><b>📅 Contrato:</b> {msg_v}</div>', unsafe_allow_html=True)
     c1,c2 = st.columns(2)
     with c1:
-        st.markdown('<div class="section-title">Renta Actual vs Tasada</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-section-title">Renta Actual vs Tasada</div>', unsafe_allow_html=True)
         fig_bar = go.Figure(go.Bar(x=["Renta Actual","Renta Tasada"],y=[renta_act,renta_mer],marker_color=[ACCENT,"#D0DFF0"],text=[f"{renta_act:,.0f} €",f"{renta_mer:,.0f} €"],textposition="outside",width=0.4))
         fig_bar.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=240,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=13),showlegend=False)
         st.plotly_chart(fig_bar,use_container_width=True)
     with c2:
-        st.markdown('<div class="section-title">Estatus de Mercado</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-section-title">Estatus de Mercado</div>', unsafe_allow_html=True)
         if desv<-15:   clase,msg,icon="status-red","Rentabilidad Crítica","🔴"
         elif desv<-5:  clase,msg,icon="status-yellow","Margen de Mejora","🟡"
         else:          clase,msg,icon="status-green","Activo en Mercado","🟢"
@@ -1465,7 +1489,7 @@ elif menu == "Fichas (Benchmark)":
         if perdida_a>0:
             lucro_html=f'<div style="margin-top:12px;padding-top:12px;border-top:1px dashed rgba(0,0,0,0.15);"><span style="font-size:0.88rem;"><b>💸 Lucro Cesante:</b><br>Pérdida mensual: <b>{perdida_m:,.2f} €</b><br>Pérdida anualizada: <b style="color:{RED};font-size:1.15rem;">{perdida_a:,.2f} €/año</b></span></div>'
         st.markdown(f'<div class="{clase}"><b style="font-size:1.1rem;">{icon} {msg}</b><br>Desviación: <b>{desv:.1f}%</b>{lucro_html}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">⚖️ Comparativa Fiscal por Modalidad</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-section-title">⚖️ Comparativa Fiscal por Modalidad</div>', unsafe_allow_html=True)
     st.caption("Rentabilidad neta real tras aplicar reducción IRPF según tipo de arrendamiento")
     rto_neto = (renta_act-gastos_u)*12; tipo_irpf = 0.45
     modalidades = {"Larga Duración":{"reduccion":0.60,"iva":False},"Temporada":{"reduccion":0.00,"iva":False},"Vacacional":{"reduccion":0.00,"iva":True}}
@@ -1482,7 +1506,7 @@ elif menu == "Fichas (Benchmark)":
         cols_fiscal[idx].markdown(f"""<div style="background:{CARD_BG};{borde}border-radius:10px;padding:1.1rem;text-align:center;"><div style="font-size:0.72rem;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">{mod}</div><div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div><div style="font-size:0.7rem;color:{TEXT_SEC};margin-top:4px;">Rent. neta real/año</div><div style="font-size:0.75rem;color:{TEXT_PRI};margin-top:8px;">{red_txt}{iva_txt}</div><div style="font-size:0.7rem;color:{RED};margin-top:4px;">Impuesto est.: {impuesto:,.0f} €/año</div>{badge}</div>""", unsafe_allow_html=True)
     if mejor_mod:
         st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%).</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">Simulador de Subida de Renta</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-section-title">Simulador de Subida de Renta</div>', unsafe_allow_html=True)
     if zona_tens:
         max_renta = int(renta_act*1.03)
         st.warning(f"🔒 Zona tensionada: subida máxima al IPC (3%). Renta máxima: {max_renta:,.0f} €/mes")
@@ -1495,14 +1519,14 @@ elif menu == "Fichas (Benchmark)":
     s1.metric("Nueva Renta", f"{nueva_renta:,.0f} €/mes", delta=f"{ganancia_m:+.0f} €")
     s2.metric("Impacto Anual", f"{ganancia_a:+,.0f} €/año")
     s3.metric("Nueva Rent. Neta", f"{nueva_neta:.1f}%", delta=f"{nueva_neta-rent_neta:+.1f}%")
-    st.markdown('<div class="section-title">Comparativa de Activos — Renta vs Tasación</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-section-title">Comparativa de Activos — Renta vs Tasación</div>', unsafe_allow_html=True)
     rt = [tasacion(r) for _,r in df_inm.iterrows()]
     fig_comp = go.Figure()
     fig_comp.add_trace(go.Bar(name="Renta Actual",x=df_inm["Nombre"],y=df_inm["Renta"],marker_color=ACCENT,text=[f"{r:,.0f}€" for r in df_inm["Renta"]],textposition="outside"))
     fig_comp.add_trace(go.Bar(name="Renta Tasada",x=df_inm["Nombre"],y=rt,marker_color="#D0DFF0",text=[f"{r:,.0f}€" for r in rt],textposition="outside"))
     fig_comp.update_layout(barmode="group",paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=300,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=12),legend=dict(orientation="h",yanchor="bottom",y=1.02,xanchor="right",x=1))
     st.plotly_chart(fig_comp,use_container_width=True)
-    st.markdown('<div class="section-title">Análisis de Gastos Reales</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-section-title">Análisis de Gastos Reales</div>', unsafe_allow_html=True)
     res = pd.concat([pd.DataFrame([{"Concepto":"Comunidad","Importe":safe_float(f.get("Comunidad",0)) if pd.notna(f.get("Comunidad",0)) else 0,"Deducible":"S"}]),df_gf[["Concepto","Importe","Deducible"]]])
     st.dataframe(res.style.format({"Importe":"{:,.2f} €"}),hide_index=True,use_container_width=True)
 
@@ -1510,8 +1534,8 @@ elif menu == "Fichas (Benchmark)":
 # PANTALLA 3 — AUDITORÍA IA DE MANTENIMIENTO
 # Diseño acordeón compacto - sin colores llamativos
 # ================================================================
-    st.markdown('<div class="brand-header">Auditoría de Mantenimiento</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Planificación de reformas por inmueble</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-header">Auditoría de Mantenimiento</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Planificación de reformas por inmueble</div>', unsafe_allow_html=True)
     
     # Generar datos dinámicamente desde el CSV
     # Función para calcular costes estimados según años reforma
@@ -1627,8 +1651,8 @@ elif menu == "Fichas (Benchmark)":
 # Registro de ingresos y gastos, parseo inteligente de texto
 # ================================================================
 elif menu == "Diario Contable":
-    st.markdown('<div class="brand-header">Diario Contable</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Registro de operaciones · Ingresos · Gastos</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-header">Diario Contable</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Registro de operaciones · Ingresos · Gastos</div>', unsafe_allow_html=True)
     tab1, tab2, tab3 = st.tabs(["📋 Registro de Operaciones", "📥 Registrar Ingresos", "📤 Registrar Gastos"])
     with tab1:
         # Filtros de fecha
@@ -1890,12 +1914,12 @@ elif menu == "Diario Contable":
 # Auditoría de potencia eléctrica, comparador de tarifas
 # ================================================================
 elif menu == "Suministros":
-    st.markdown('<div class="brand-header">Optimización de Suministros</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Auditoría de potencia eléctrica · Comparador tarifario</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-header">Optimización de Suministros</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Auditoría de potencia eléctrica · Comparador tarifario</div>', unsafe_allow_html=True)
     inmueble_sel = st.selectbox("Selecciona inmueble:", df_inm["Nombre"].tolist())
     f = df_inm[df_inm["Nombre"]==inmueble_sel].iloc[0]
     hab = int(f.get("Habitaciones",2))
-    st.markdown('<div class="section-title">⚡ Auditoría de Potencia Contratada</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-section-title">⚡ Auditoría de Potencia Contratada</div>', unsafe_allow_html=True)
     col1,col2 = st.columns(2)
     with col1:
         potencia_actual = st.number_input("Potencia contratada (kW)",min_value=1.0,max_value=30.0,value=4.4,step=0.1)
@@ -1913,11 +1937,11 @@ elif menu == "Suministros":
     pot_rec=next((p for p in POTENCIAS_REE if p>=base_kw+extra),17.25)
     coste_act=potencia_actual*42.0; coste_opt=pot_rec*42.0; ahorro=coste_act-coste_opt
     with col2:
-        st.markdown(f"""<div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;padding:1.4rem;"><div class="kpi-label">Potencia recomendada</div><div style="font-family:'DM Serif Display',serif;font-size:2.2rem;color:{ACCENT};">{pot_rec} kW</div><div class="kpi-sub">Basado en {hab} hab. + equipos</div><hr style="border:0;border-top:1px solid {BORDER};margin:0.8rem 0;"><div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span class="kpi-label">Coste actual/año</span><span style="font-size:0.9rem;font-weight:600;color:{RED};">{coste_act:,.0f} €</span></div><div style="display:flex;justify-content:space-between;"><span class="kpi-label">Coste óptimo/año</span><span style="font-size:0.9rem;font-weight:600;color:{GREEN};">{coste_opt:,.0f} €</span></div></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;padding:1.4rem;"><div class="nc-kpi__label">Potencia recomendada</div><div style="font-family:'DM Serif Display',serif;font-size:2.2rem;color:{ACCENT};">{pot_rec} kW</div><div class="nc-kpi__sub">Basado en {hab} hab. + equipos</div><hr style="border:0;border-top:1px solid {BORDER};margin:0.8rem 0;"><div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span class="nc-kpi__label">Coste actual/año</span><span style="font-size:0.9rem;font-weight:600;color:{RED};">{coste_act:,.0f} €</span></div><div style="display:flex;justify-content:space-between;"><span class="nc-kpi__label">Coste óptimo/año</span><span style="font-size:0.9rem;font-weight:600;color:{GREEN};">{coste_opt:,.0f} €</span></div></div>""", unsafe_allow_html=True)
         cls_a="status-green" if ahorro>5 else ("status-red" if ahorro<-5 else "status-green")
         msg_a=f"✅ Ahorro potencial: {ahorro:,.0f} €/año · Bajar a {pot_rec} kW" if ahorro>5 else (f"⚠️ Potencia insuficiente · Subir a {pot_rec} kW" if ahorro<-5 else "✅ Potencia correctamente ajustada")
         st.markdown(f'<div class="{cls_a}" style="margin-top:0.8rem;">{msg_a}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="section-title">📊 Comparador Tarifa Fija vs Indexada</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-section-title">📊 Comparador Tarifa Fija vs Indexada</div>', unsafe_allow_html=True)
     tc1,tc2,tc3=st.columns(3)
     with tc1: kwh=st.number_input("Consumo mensual (kWh)",min_value=50,max_value=2000,value=200,step=10)
     with tc2: pfijo=st.number_input("Tarifa fija (€/kWh)",min_value=0.05,max_value=0.50,value=0.18,step=0.01,format="%.3f")
@@ -1940,8 +1964,8 @@ elif menu == "Suministros":
 # Pre-relleno automático de casillas, generador de PDF
 # ================================================================
 elif menu == "Fiscalidad":
-    st.markdown('<div class="brand-header">Escudo Fiscal — Modelo 100</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Pre-relleno IRPF · Rendimientos de capital inmobiliario</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-header">Escudo Fiscal — Modelo 100</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Pre-relleno IRPF · Rendimientos de capital inmobiliario</div>', unsafe_allow_html=True)
 
     inmueble_fiscal = st.selectbox("Selecciona inmueble:", df_inm["Nombre"].tolist(), key="fiscal_inmueble")
     año_fiscal = st.selectbox("Ejercicio fiscal:", [2025, 2024, 2023], index=0, key="año_fiscal")
@@ -1956,7 +1980,7 @@ elif menu == "Fiscalidad":
     k4.metric("Base Imponible", f"{modelo['0152']:,.0f} €", f"Reducción {modelo['reduccion_pct']}%")
 
     st.markdown("---")
-    st.markdown('<div class="section-title">📋 Casillas Modelo 100 — Verificar y Confirmar</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-section-title">📋 Casillas Modelo 100 — Verificar y Confirmar</div>', unsafe_allow_html=True)
     st.caption("Revisa cada casilla. Los valores están pre-rellenados desde tus datos.")
 
     # Tabla con DataFrame en lugar de HTML + checkboxes rotos
@@ -2004,7 +2028,7 @@ elif menu == "Fiscalidad":
         st.warning("⚠️ Añade `reportlab` a requirements.txt para generar PDFs.")
 
     # Notas
-    st.markdown('<div class="section-title">ℹ️ Información Importante</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-section-title">ℹ️ Información Importante</div>', unsafe_allow_html=True)
     cochera_txt = "Consolidada en arrendamiento principal" if f_fiscal.get("Cochera_Vinculada")=="S" else "Tributa independiente"
     st.markdown(f"""<div class="status-yellow"><b>⚠️ Antes de confirmar:</b><br>• Este pre-relleno es orientativo. Verifica con tu asesor fiscal.<br>• Cochera vinculada: {f_fiscal.get('Cochera_Vinculada','N')} — {cochera_txt}<br>• Modalidad: {f_fiscal.get('Tipo_Arrendamiento','Larga Duración')} — Reducción aplicable: {modelo['reduccion_pct']}%<br>• Los datos provienen de: Fichas de inmuebles + Diario Contable</div>""", unsafe_allow_html=True)
 
@@ -2013,13 +2037,13 @@ elif menu == "Fiscalidad":
 # Simulador amortización, stress test Euríbor, sensibilidad renta
 # ================================================================
 elif menu == "Macrofinanzas":
-    st.markdown('<div class="brand-header">Macrofinanzas</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Simulador hipoteca · Stress test Euríbor · Análisis sensibilidad</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-header">Macrofinanzas</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Simulador hipoteca · Stress test Euríbor · Análisis sensibilidad</div>', unsafe_allow_html=True)
 
     tab1, tab2, tab3 = st.tabs(["📊 Simulador Amortización", "⚠️ Stress Test Euríbor", "📈 Sensibilidad Rentabilidad"])
 
     with tab1:
-        st.markdown('<div class="section-title">Simulador de Amortización</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-section-title">Simulador de Amortización</div>', unsafe_allow_html=True)
         st.caption("Compara modalidades: cuota fija (método francés) vs capital fijo (método alemán)")
         inmuebles_con_hip = df_hip[df_hip["Principal"] > 0]["Inmueble"].tolist()
         if not inmuebles_con_hip:
@@ -2068,7 +2092,7 @@ elif menu == "Macrofinanzas":
                 }), use_container_width=True, hide_index=True)
 
     with tab2:
-        st.markdown('<div class="section-title">Stress Test Euríbor</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-section-title">Stress Test Euríbor</div>', unsafe_allow_html=True)
         st.caption("¿Cuánto sube tu cuota si el Euríbor sube 1%, 2% o 3%?")
         hips_variable = df_hip[(df_hip["Es_Variable"] == "S") & (df_hip["Principal"] > 0)]
         if hips_variable.empty:
@@ -2118,7 +2142,7 @@ elif menu == "Macrofinanzas":
             st.markdown(f'<div class="{cls_r}">{msg_r}</div>', unsafe_allow_html=True)
 
     with tab3:
-        st.markdown('<div class="section-title">Análisis de Sensibilidad</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-section-title">Análisis de Sensibilidad</div>', unsafe_allow_html=True)
         st.caption("Cómo cambia la rentabilidad si subes o bajas la renta")
         sel_sens = st.selectbox("Inmueble:", df_inm["Nombre"].tolist(), key="sens_inmueble")
         row_sens = df_inm[df_inm["Nombre"] == sel_sens].iloc[0]
@@ -2155,8 +2179,8 @@ elif menu == "Macrofinanzas":
 # Gestión de inmuebles con vista de cards + formulario organizado
 # ================================================================
 elif menu == "Datos de la Cartera":
-    st.markdown('<div class="brand-header">Datos de la Cartera</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-sub">Gestión de inmuebles · Backups · Configuración</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-header">Datos de la Cartera</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Gestión de inmuebles · Backups · Configuración</div>', unsafe_allow_html=True)
 
     # Inicializar estados de sesión
     if "modo_cartera" not in st.session_state:
@@ -2190,7 +2214,7 @@ elif menu == "Datos de la Cartera":
     # MODO: LISTA DE INMUEBLES (cards)
     # ═══════════════════════════════════════════════════════════
     if st.session_state.modo_cartera == "lista":
-        st.markdown(f'<div class="section-title">🏠 Mis Inmuebles ({len(df_inm)})</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="nc-section-title">🏠 Mis Inmuebles ({len(df_inm)})</div>', unsafe_allow_html=True)
         
         for idx, row in df_inm.iterrows():
             with st.container():
@@ -2236,7 +2260,7 @@ elif menu == "Datos de la Cartera":
         es_nuevo = st.session_state.modo_cartera == "nuevo"
         titulo = "➕ Añadir Inmueble Nuevo" if es_nuevo else f"✏️ Editar: {df_inm.iloc[st.session_state.inmueble_editando]['Nombre']}"
         
-        st.markdown(f'<div class="section-title">{titulo}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="nc-section-title">{titulo}</div>', unsafe_allow_html=True)
 
         # Obtener datos actuales si es edición
         if es_nuevo:
@@ -2398,7 +2422,7 @@ elif menu == "Datos de la Cartera":
     # MODO: TABLA COMPLETA (data_editor original)
     # ═══════════════════════════════════════════════════════════
     elif st.session_state.modo_cartera == "tabla":
-        st.markdown('<div class="section-title">📊 Tabla Completa de Datos</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-section-title">📊 Tabla Completa de Datos</div>', unsafe_allow_html=True)
         st.warning("⚠️ Vista avanzada — solo para usuarios experimentados")
         
         col_cfg = {
@@ -2423,7 +2447,7 @@ elif menu == "Datos de la Cartera":
     # MODO: BACKUPS
     # ═══════════════════════════════════════════════════════════
     elif st.session_state.modo_cartera == "backup":
-        st.markdown('<div class="section-title">💾 Copias de Seguridad</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-section-title">💾 Copias de Seguridad</div>', unsafe_allow_html=True)
         st.info("💡 Descarga tus datos regularmente para no perder información")
         
         col_b1, col_b2 = st.columns(2)
@@ -2499,7 +2523,7 @@ elif menu == "Privacidad y Consentimientos":
 # LEGAL — GENERADOR DE CONTRATOS
 # ================================================================
 elif menu == "Legal":
-    st.markdown('<div class="brand-header">⚖️ HERRAMIENTAS LEGALES</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-header">⚖️ HERRAMIENTAS LEGALES</div>', unsafe_allow_html=True)
     
     # Estilo CSS específico para Legal
     st.markdown("""
