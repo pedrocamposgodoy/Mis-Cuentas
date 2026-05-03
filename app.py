@@ -1667,7 +1667,7 @@ elif menu == "Diario Contable":
         l_con = ["Renta Mensual","Hipoteca (Intereses)","Hipoteca (Capital)","IBI","Comunidad Ordinaria","Seguro Hogar","Seguro Vida","Luz","Agua","Reparación","Sueldo Pedro"]
         config = {
             "Apartamento": st.column_config.SelectboxColumn("Inmueble",options=l_inm,required=True),
-            "Concepto": st.column_config.SelectboxColumn("Concepto",options=l_con,required=True),
+            "Concepto": st.column_config.TextColumn("Concepto"),
             "Categoría": st.column_config.SelectboxColumn("Categoría",options=l_cat,required=True),
             "Tipo": st.column_config.SelectboxColumn("Tipo",options=["Ingreso","Gasto"],required=True),
             "Deducible": st.column_config.SelectboxColumn("Fiscal",options=["S","N"],required=True),
