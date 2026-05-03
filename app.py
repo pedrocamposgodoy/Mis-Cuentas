@@ -57,7 +57,9 @@ from supabase_db import (
     leer_inmuebles, leer_movimientos,
     guardar_inmuebles, eliminar_inmueble, guardar_movimientos_completo,
     agregar_movimientos, generar_csv_backup,
-    login_usuario, registrar_usuario
+    login_usuario, registrar_usuario,
+    leer_gastos_recurrentes, guardar_gasto_recurrente,
+    actualizar_gasto_recurrente, eliminar_gasto_recurrente
 )
 
 COLS_INM = [
@@ -1663,7 +1665,7 @@ elif menu == "Fichas (Benchmark)":
 elif menu == "Diario Contable":
     st.markdown('<div class="nc-brand-header">Diario Contable</div>', unsafe_allow_html=True)
     st.markdown('<div class="nc-brand-sub">Registro de operaciones · Ingresos · Gastos</div>', unsafe_allow_html=True)
-    tab1, tab2, tab3 = st.tabs(["📋 Registro de Operaciones", "📥 Registrar Ingresos", "📤 Registrar Gastos"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 Registro de Operaciones", "📥 Registrar Ingresos", "📤 Registrar Gastos", "💳 Gastos Fijos"])
     with tab1:
         # Filtros de fecha
         col_f1, col_f2, col_f3 = st.columns([2, 2, 1])
@@ -1918,6 +1920,152 @@ elif menu == "Diario Contable":
                     st.session_state.df_mov_persistent = leer_movimientos(st.session_state.get("user_id",""))
                     st.session_state.gasto_guardado = True
                     st.rerun()
+
+    with tab4:
+        st.markdown('<div class="nc-section-title">💳 Gastos Fijos Mensuales</div>', unsafe_allow_html=True)
+
+        uid = st.session_state.get("user_id", "")
+
+        # Cargar gastos recurrentes desde Supabase
+        if "df_gf" not in st.session_state or st.session_state.get("reload_gf", False):
+            st.session_state.df_gf = leer_gastos_recurrentes(uid)
+            st.session_state.reload_gf = False
+
+        df_gf = st.session_state.df_gf
+        df_gf_activos = df_gf[df_gf["activo"] == True].reset_index(drop=True) if not df_gf.empty else pd.DataFrame()
+
+        # Sub-pestañas
+        sub1, sub2 = st.tabs(["📋 Registrar este mes", "⚙️ Gestionar gastos fijos"])
+
+        with sub1:
+            st.caption("Marca los gastos que quieres registrar este mes y pulsa Registrar.")
+
+            if df_gf_activos.empty:
+                st.info("No tienes gastos fijos configurados. Ve a ⚙️ Gestionar para añadirlos.")
+            else:
+                # Detectar qué gastos ya están registrados este mes
+                mes_actual = datetime.now().month
+                año_actual = datetime.now().year
+                df_mes = df_mov[
+                    (pd.to_datetime(df_mov["Fecha"], errors="coerce").dt.month == mes_actual) &
+                    (pd.to_datetime(df_mov["Fecha"], errors="coerce").dt.year  == año_actual) &
+                    (df_mov["Tipo"] == "Gasto")
+                ]
+                col_apt = "Inmueble" if "Inmueble" in df_mes.columns else "Apartamento"
+                conceptos_mes = set(df_mes[col_apt].astype(str) + "|" + df_mes["Concepto"].astype(str))
+
+                seleccionados = []
+                total_sel = 0.0
+
+                for i, row in df_gf_activos.iterrows():
+                    clave = f"{row['inmueble']}|{row['concepto']}"
+                    ya_registrado = clave in conceptos_mes
+
+                    c_check, c_info, c_imp, c_est = st.columns([0.5, 4, 1.5, 1.5])
+                    with c_check:
+                        if ya_registrado:
+                            st.checkbox("", value=False, disabled=True, key=f"gf_reg_{i}")
+                        else:
+                            if st.checkbox("", value=True, key=f"gf_reg_{i}"):
+                                seleccionados.append(row)
+                                total_sel += float(row["importe"])
+                    with c_info:
+                        st.markdown(f"**{row['concepto']}** — *{row['inmueble']}* · {row['categoria']}")
+                    with c_imp:
+                        st.markdown(f"<div style='text-align:right;font-weight:600;padding-top:0.5rem;'>{float(row['importe']):,.2f} €</div>", unsafe_allow_html=True)
+                    with c_est:
+                        if ya_registrado:
+                            st.markdown("<div style='color:#1a7a40;font-size:0.8rem;padding-top:0.6rem;'>✅ Registrado</div>", unsafe_allow_html=True)
+                        else:
+                            st.markdown("<div style='color:#5A7A9A;font-size:0.8rem;padding-top:0.6rem;'>Pendiente</div>", unsafe_allow_html=True)
+
+                st.divider()
+                cr1, cr2 = st.columns([3, 1])
+                with cr1:
+                    st.markdown(f"**{len(seleccionados)} seleccionados** · Total: **{total_sel:,.2f} €**")
+                with cr2:
+                    if st.button("💾 Registrar seleccionados", type="primary",
+                                 use_container_width=True, disabled=len(seleccionados) == 0,
+                                 key="btn_reg_gf"):
+                        nuevos = [{
+                            "Fecha":       datetime.now().strftime("%Y-%m-%d"),
+                            "Apartamento": r["inmueble"],
+                            "Concepto":    r["concepto"],
+                            "Categoría":   r["categoria"],
+                            "Tipo":        "Gasto",
+                            "Importe":     float(r["importe"]),
+                            "Deducible":   r.get("deducible", "S")
+                        } for r in seleccionados]
+                        guardar_movimientos(nuevos)
+                        st.session_state.df_mov_persistent = leer_movimientos(uid)
+                        st.success(f"✅ {len(nuevos)} gastos registrados por {total_sel:,.2f} €")
+                        st.rerun()
+
+        with sub2:
+            st.caption("Añade, edita o desactiva tus gastos fijos. Los cambios se guardan en la base de datos.")
+
+            # ── Formulario para añadir nuevo ──────────────────────
+            with st.expander("➕ Añadir nuevo gasto fijo"):
+                l_inm2 = df_inm["Nombre"].tolist()
+                l_cat2 = ["Comunidad","Financiero","Seguros","Mantenimiento","Suministros","Tributario","Otros"]
+                na1, na2 = st.columns(2)
+                with na1:
+                    nv_inm = st.selectbox("Inmueble", l_inm2, key="nv_inm")
+                    nv_con = st.text_input("Concepto", placeholder="Ej: Seguro hogar", key="nv_con")
+                with na2:
+                    nv_cat = st.selectbox("Categoría", l_cat2, key="nv_cat")
+                    nv_imp = st.number_input("Importe (€/mes)", min_value=0.01, step=0.01, format="%.2f", key="nv_imp")
+                nv_ded = st.selectbox("¿Deducible?", ["S", "N"], key="nv_ded")
+                if st.button("💾 Guardar nuevo gasto fijo", key="btn_add_gf"):
+                    if nv_con.strip() and nv_imp > 0:
+                        ok = guardar_gasto_recurrente(uid, nv_inm, nv_con.strip(), nv_cat, nv_imp, nv_ded)
+                        if ok:
+                            st.success(f"✅ Añadido: {nv_con} — {nv_imp:.2f} €/mes")
+                            st.session_state.reload_gf = True
+                            st.rerun()
+                        else:
+                            st.error("❌ Error al guardar. Revisa la conexión.")
+                    else:
+                        st.warning("⚠️ Completa concepto e importe.")
+
+            # ── Lista editable ────────────────────────────────────
+            if df_gf.empty:
+                st.info("No hay gastos fijos configurados.")
+            else:
+                st.markdown("**Gastos configurados:**")
+                for _, row in df_gf.iterrows():
+                    gid = int(row["id"])
+                    activo = bool(row["activo"])
+                    g1, g2, g3, g4, g5 = st.columns([2.5, 2, 1.2, 1, 1])
+                    with g1:
+                        nuevo_concepto = st.text_input("", value=row["concepto"],
+                                                        key=f"gf_con_{gid}", label_visibility="collapsed")
+                    with g2:
+                        st.markdown(f"<div style='padding-top:0.55rem;color:#5A7A9A;font-size:0.85rem;'>{row['inmueble']}</div>", unsafe_allow_html=True)
+                    with g3:
+                        nuevo_imp = st.number_input("", value=float(row["importe"]),
+                                                     min_value=0.01, step=0.01, format="%.2f",
+                                                     key=f"gf_imp_{gid}", label_visibility="collapsed")
+                    with g4:
+                        if st.button("💾" if activo else "🔄", key=f"gf_upd_{gid}",
+                                     help="Guardar cambios" if activo else "Reactivar"):
+                            actualizar_gasto_recurrente(gid, importe=nuevo_imp,
+                                                         concepto=nuevo_concepto,
+                                                         activo=True)
+                            st.session_state.reload_gf = True
+                            st.rerun()
+                    with g5:
+                        if activo:
+                            if st.button("⏸️", key=f"gf_des_{gid}", help="Desactivar"):
+                                actualizar_gasto_recurrente(gid, activo=False)
+                                st.session_state.reload_gf = True
+                                st.rerun()
+                        else:
+                            st.markdown("<div style='color:#C0392B;font-size:0.75rem;padding-top:0.6rem;'>Inactivo</div>", unsafe_allow_html=True)
+                            if st.button("🗑️", key=f"gf_del_{gid}", help="Eliminar permanentemente"):
+                                eliminar_gasto_recurrente(gid)
+                                st.session_state.reload_gf = True
+                                st.rerun()
 
 # ================================================================
 # PANTALLA 5 — SUMINISTROS
