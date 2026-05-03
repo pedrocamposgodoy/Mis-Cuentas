@@ -184,6 +184,34 @@ section[data-testid="stSidebar"] .stButton > button:hover {
 #MainMenu { visibility: hidden; }
 footer { visibility: hidden; }
 
+/* ── Radio button login (Iniciar Sesión / Registrarse) ───── */
+div[data-testid="stRadio"] > label { display: none; }
+div[data-testid="stRadio"] > div {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.2rem;
+}
+div[data-testid="stRadio"] > div > label {
+  display: flex !important;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #8ab4d4 !important;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  border: 1.5px solid transparent;
+}
+div[data-testid="stRadio"] > div > label:has(input:checked) {
+  color: white !important;
+  border-color: #185FA5;
+  background: rgba(24,95,165,0.2);
+}
+div[data-testid="stRadio"] > div > label > div:first-child {
+  display: none !important;
+}
+
 /* Plotly title font */
 .js-plotly-plot text { font-family: var(--nc-font-ui) !important; }
 </style>
