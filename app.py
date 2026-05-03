@@ -180,14 +180,13 @@ div.stButton > button:hover {
 </div>
 """, unsafe_allow_html=True)
 
-    # Centrar el formulario
+    # Formulario centrado
     _, col_center, _ = st.columns([1, 2, 1])
     with col_center:
-        modo = st.radio("", ["Iniciar Sesión", "Registrarse"],
-                        horizontal=True, label_visibility="collapsed",
-                        key="login_modo")
+        if "login_modo" not in st.session_state:
+            st.session_state.login_modo = "login"
 
-        if modo == "Iniciar Sesión":
+        if st.session_state.login_modo == "login":
             email_login    = st.text_input("Email", key="email_login", placeholder="tu@email.com")
             password_login = st.text_input("Contraseña", type="password", key="password_login", placeholder="••••••••")
             if st.button("🚀 Iniciar sesión", use_container_width=True):
@@ -207,17 +206,25 @@ div.stButton > button:hover {
                         st.error(f"❌ {result['error']}")
                 else:
                     st.warning("⚠️ Completa todos los campos")
+            st.markdown("<div style='text-align:center;margin-top:1rem;font-size:0.85rem;color:#8ab4d4;'>¿Sin cuenta?</div>", unsafe_allow_html=True)
+            if st.button("Regístrate gratis →", use_container_width=False, key="ir_registro"):
+                st.session_state.login_modo = "registro"
+                st.rerun()
+
         else:
-            email_reg    = st.text_input("Email", key="email_reg", placeholder="tu@email.com")
-            password_reg = st.text_input("Contraseña", type="password", key="password_reg", placeholder="••••••••")
+            st.markdown("<div style='font-size:1rem;font-weight:600;color:white;margin-bottom:1rem;'>Crear cuenta nueva</div>", unsafe_allow_html=True)
+            email_reg     = st.text_input("Email", key="email_reg", placeholder="tu@email.com")
+            password_reg  = st.text_input("Contraseña", type="password", key="password_reg", placeholder="••••••••")
             password_reg2 = st.text_input("Repetir Contraseña", type="password", key="password_reg2", placeholder="••••••••")
-            if st.button("📝 Registrarse gratis", use_container_width=True):
+            if st.button("Crear cuenta", use_container_width=True):
                 if email_reg and password_reg and password_reg2:
                     if password_reg == password_reg2:
                         if len(password_reg) >= 6:
                             result = registrar_usuario(email_reg, password_reg)
                             if result['success']:
                                 st.success("✅ Cuenta creada. Ahora inicia sesión.")
+                                st.session_state.login_modo = "login"
+                                st.rerun()
                             else:
                                 st.error(f"❌ {result['error']}")
                         else:
@@ -226,6 +233,9 @@ div.stButton > button:hover {
                         st.warning("⚠️ Las contraseñas no coinciden")
                 else:
                     st.warning("⚠️ Completa todos los campos")
+            if st.button("← Volver al login", use_container_width=False, key="ir_login"):
+                st.session_state.login_modo = "login"
+                st.rerun()
 
     st.stop()
 
