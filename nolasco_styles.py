@@ -94,7 +94,7 @@ section[data-testid="stSidebar"] * { color: var(--nc-sidebar-link); }
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3 { color: var(--nc-accent-soft) !important; font-family: var(--nc-font-display) !important; }
-.block-container { padding-top: 1.2rem !important; }
+.block-container { padding-top: 2.5rem !important; }
 
 /* ── Componentes del Design System ───────────────────────── */
 .nc-brand-header {
@@ -156,6 +156,33 @@ section[data-testid="stSidebar"] h3 { color: var(--nc-accent-soft) !important; f
 .nc-status--red   { background: var(--nc-red-bg);   border-left: 5px solid var(--nc-red); }
 .nc-status--amber { background: var(--nc-amber-bg); border-left: 5px solid var(--nc-amber-strong); }
 .nc-status--green { background: var(--nc-green-bg); border-left: 5px solid var(--nc-green); }
+
+/* ── Sidebar buttons ─────────────────────────────────────── */
+section[data-testid="stSidebar"] .stButton > button {
+  background: rgba(96,180,255,0.08) !important;
+  border: none !important;
+  border-left: 3px solid transparent !important;
+  border-radius: 0 6px 6px 0 !important;
+  color: #8ab4d4 !important;
+  font-family: var(--nc-font-ui) !important;
+  font-size: 0.88rem !important;
+  font-weight: 400 !important;
+  text-align: left !important;
+  padding: 0.55rem 1rem !important;
+  width: 100% !important;
+  margin-bottom: 2px !important;
+  box-shadow: none !important;
+  transition: all 0.15s ease !important;
+}
+section[data-testid="stSidebar"] .stButton > button:hover {
+  background: rgba(96,180,255,0.15) !important;
+  border-left: 3px solid rgba(96,180,255,0.5) !important;
+  color: #ffffff !important;
+}
+
+/* Ocultar menu Streamlit y footer */
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
 
 /* Plotly title font */
 .js-plotly-plot text { font-family: var(--nc-font-ui) !important; }
