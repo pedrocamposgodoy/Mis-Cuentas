@@ -3055,3 +3055,221 @@ elif menu == "Legal":
         El contenido generado es informativo y no vinculante.
     </div>
     """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown('<div class="nc-brand-header">🧮 Calculadoras de Renta</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Herramientas de negociación y actualización · Basadas en LAU y datos reales</div>', unsafe_allow_html=True)
+
+    calc1, calc2 = st.tabs(["📉 Renegociación (inquilino pide bajar)", "📈 Actualización al alza"])
+
+    # ══════════════════════════════════════════════════════════════
+    # CALCULADORA 1 — RENEGOCIACIÓN A LA BAJA
+    # ══════════════════════════════════════════════════════════════
+    with calc1:
+        st.markdown('<div class="nc-section-title">¿Cuánto puedo bajar sin perder dinero?</div>', unsafe_allow_html=True)
+        st.caption("Compara el coste de aceptar una bajada vs tener el piso vacío mientras buscas nuevo inquilino.")
+
+        c1a, c1b = st.columns(2)
+        with c1a:
+            inm_reneg = st.selectbox("Inmueble", df_inm["Nombre"].tolist(), key="reneg_inm")
+            f_reneg = df_inm[df_inm["Nombre"] == inm_reneg].iloc[0]
+            renta_actual_reneg = safe_float(f_reneg.get("Renta", 0))
+            st.markdown(f"**Renta actual:** {renta_actual_reneg:,.2f} €/mes")
+            renta_pedida = st.number_input("Renta que pide el inquilino (€/mes)",
+                                           min_value=0.0, max_value=float(renta_actual_reneg),
+                                           value=float(max(0, renta_actual_reneg - 100)),
+                                           step=10.0, format="%.2f", key="reneg_pedida")
+        with c1b:
+            meses_vacio = st.slider("Meses estimados que tardarías en alquilar de nuevo",
+                                    min_value=1, max_value=12, value=2, key="reneg_meses")
+            coste_busqueda = st.number_input("Coste búsqueda nuevo inquilino (€)",
+                                             min_value=0.0, value=float(renta_actual_reneg),
+                                             step=50.0, format="%.2f",
+                                             help="Honorarios inmobiliaria, anuncios, limpieza, etc.",
+                                             key="reneg_coste")
+
+        if st.button("🧮 Calcular", type="primary", key="btn_reneg"):
+            bajada_mensual = renta_actual_reneg - renta_pedida
+            perdida_anual_bajada = bajada_mensual * 12
+            perdida_vacio = (renta_actual_reneg * meses_vacio) + coste_busqueda
+            meses_recuperacion = perdida_vacio / bajada_mensual if bajada_mensual > 0 else 0
+            renta_min_equilibrio = renta_actual_reneg - (perdida_vacio / 12)
+
+            # KPIs resultado
+            r1, r2, r3 = st.columns(3)
+            r1.markdown(f"""<div class="nc-kpi">
+                <div class="nc-kpi__label">Bajada mensual</div>
+                <div class="nc-kpi__value" style="color:{RED};">−{bajada_mensual:,.0f} €</div>
+                <div class="nc-kpi__sub">Pérdida anual: {perdida_anual_bajada:,.0f} €</div>
+            </div>""", unsafe_allow_html=True)
+            r2.markdown(f"""<div class="nc-kpi">
+                <div class="nc-kpi__label">Coste piso vacío</div>
+                <div class="nc-kpi__value" style="color:{RED};">−{perdida_vacio:,.0f} €</div>
+                <div class="nc-kpi__sub">{meses_vacio} meses vacío + búsqueda</div>
+            </div>""", unsafe_allow_html=True)
+            r3.markdown(f"""<div class="nc-kpi is-highlight">
+                <div class="nc-kpi__label">Punto de equilibrio</div>
+                <div class="nc-kpi__value">{meses_recuperacion:.1f} meses</div>
+                <div class="nc-kpi__sub">para recuperar el coste del vacío</div>
+            </div>""", unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # Recomendación
+            if bajada_mensual <= 0:
+                cls_rec = "nc-status nc-status--green"
+                rec = "✅ El inquilino no pide bajada. No hay nada que negociar."
+            elif meses_recuperacion <= 6:
+                cls_rec = "nc-status nc-status--green"
+                rec = f"✅ ACEPTA LA BAJADA — Recuperas el coste del vacío en solo {meses_recuperacion:.1f} meses. Es más rentable retener al inquilino."
+            elif meses_recuperacion <= 18:
+                cls_rec = "nc-status nc-status--amber"
+                rec = f"🟡 NEGOCIA — El punto de equilibrio son {meses_recuperacion:.1f} meses. Contraoferta: {renta_min_equilibrio:,.0f} €/mes (bajada de {renta_actual_reneg - renta_min_equilibrio:,.0f} €)."
+            else:
+                cls_rec = "nc-status nc-status--red"
+                rec = f"🔴 NO ACEPTES — El punto de equilibrio son {meses_recuperacion:.1f} meses. Busca nuevo inquilino. Renta mínima aceptable: {renta_min_equilibrio:,.0f} €/mes."
+
+            st.markdown(f'<div class="{cls_rec}">{rec}</div>', unsafe_allow_html=True)
+
+            # Gráfico comparativo
+            st.markdown('<div class="nc-section-title">Comparativa acumulada (24 meses)</div>', unsafe_allow_html=True)
+            meses_graf = list(range(0, 25))
+            escenario_bajo = [-bajada_mensual * m for m in meses_graf]
+            escenario_vacio = [-perdida_vacio if m > 0 else 0 for m in meses_graf]
+            for i in range(1, 25):
+                escenario_vacio[i] = -perdida_vacio + (renta_actual_reneg * i)
+            escenario_bajo_acum  = [escenario_bajo[i] for i in meses_graf]
+            escenario_vacio_acum = [escenario_vacio[i] - escenario_vacio[0] for i in meses_graf]
+
+            fig_reneg = go.Figure()
+            fig_reneg.add_trace(go.Scatter(x=meses_graf, y=escenario_bajo_acum,
+                name="Acepto la bajada", line=dict(color=ACCENT, width=2)))
+            fig_reneg.add_trace(go.Scatter(x=meses_graf, y=escenario_vacio_acum,
+                name="Dejo que se vaya", line=dict(color=RED, width=2, dash="dash")))
+            fig_reneg.add_hline(y=0, line_dash="dot", line_color="gray")
+            fig_reneg.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=10, r=10, t=10, b=10), height=280,
+                legend=dict(orientation="h", y=-0.2),
+                xaxis_title="Meses", yaxis_title="€ acumulados",
+                font=dict(family="DM Sans", size=12)
+            )
+            st.plotly_chart(fig_reneg, use_container_width=True)
+
+    # ══════════════════════════════════════════════════════════════
+    # CALCULADORA 2 — ACTUALIZACIÓN AL ALZA
+    # ══════════════════════════════════════════════════════════════
+    with calc2:
+        st.markdown('<div class="nc-section-title">¿Cuánto puedo subir la renta?</div>', unsafe_allow_html=True)
+        st.caption("Calcula la subida máxima legal según el tipo de contrato y genera la carta de notificación.")
+
+        inm_sube = st.selectbox("Inmueble", df_inm["Nombre"].tolist(), key="sube_inm")
+        f_sube = df_inm[df_inm["Nombre"] == inm_sube].iloc[0]
+        renta_actual_sube = safe_float(f_sube.get("Renta", 0))
+        tipo_contrato_sube = str(f_sube.get("Tipo_Arrendamiento", "Larga Duración"))
+        zona_tens_sube = str(f_sube.get("Zona_Tensionada", "N")) == "S"
+        inquilino_sube = str(f_sube.get("Inquilino", "El inquilino"))
+
+        # Info del contrato
+        info_cols = st.columns(3)
+        info_cols[0].markdown(f"""<div class="nc-kpi">
+            <div class="nc-kpi__label">Renta actual</div>
+            <div class="nc-kpi__value">{renta_actual_sube:,.0f} €</div>
+            <div class="nc-kpi__sub">mensual</div>
+        </div>""", unsafe_allow_html=True)
+        info_cols[1].markdown(f"""<div class="nc-kpi">
+            <div class="nc-kpi__label">Tipo contrato</div>
+            <div class="nc-kpi__value" style="font-size:1.2rem;">{tipo_contrato_sube}</div>
+            <div class="nc-kpi__sub">{'⚠️ Zona tensionada' if zona_tens_sube else '✅ Zona libre'}</div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        s1, s2 = st.columns(2)
+        with s1:
+            ipc_aplicar = st.number_input("IPC a aplicar (%)",
+                                          min_value=0.0, max_value=20.0, value=3.5,
+                                          step=0.1, format="%.1f", key="sube_ipc",
+                                          help="IPC anual del INE. En 2024 fue 3.5%")
+            fecha_ultima_actualizacion = st.date_input("Fecha última actualización de renta",
+                                                        key="sube_fecha")
+        with s2:
+            if tipo_contrato_sube == "Larga Duración":
+                st.info("📋 **Larga duración:** Subida limitada al IPC anual. Solo puedes actualizar una vez al año.")
+            elif tipo_contrato_sube == "Temporada":
+                st.info("📋 **Temporada:** Al vencimiento puedes fijar la renta libremente.")
+            else:
+                st.info("📋 **Habitaciones:** Renta libre al vencimiento o renovación.")
+
+            if zona_tens_sube:
+                st.warning("⚠️ **Zona tensionada:** No puedes superar la renta del contrato anterior ni el índice de referencia.")
+
+        if st.button("🧮 Calcular subida", type="primary", key="btn_sube"):
+            if tipo_contrato_sube == "Larga Duración":
+                subida_euros = renta_actual_sube * (ipc_aplicar / 100)
+                nueva_renta = renta_actual_sube + subida_euros
+                subida_anual = subida_euros * 12
+                limite = "IPC anual"
+            else:
+                subida_euros = renta_actual_sube * (ipc_aplicar / 100)
+                nueva_renta = renta_actual_sube + subida_euros
+                subida_anual = subida_euros * 12
+                limite = "Libre al vencimiento"
+
+            # KPIs
+            sk1, sk2, sk3 = st.columns(3)
+            sk1.markdown(f"""<div class="nc-kpi">
+                <div class="nc-kpi__label">Subida mensual</div>
+                <div class="nc-kpi__value" style="color:{GREEN};">+{subida_euros:,.2f} €</div>
+                <div class="nc-kpi__sub">IPC {ipc_aplicar}%</div>
+            </div>""", unsafe_allow_html=True)
+            sk2.markdown(f"""<div class="nc-kpi">
+                <div class="nc-kpi__label">Nueva renta</div>
+                <div class="nc-kpi__value">{nueva_renta:,.2f} €</div>
+                <div class="nc-kpi__sub">vs {renta_actual_sube:,.2f} € actual</div>
+            </div>""", unsafe_allow_html=True)
+            sk3.markdown(f"""<div class="nc-kpi is-highlight">
+                <div class="nc-kpi__label">Ingreso extra anual</div>
+                <div class="nc-kpi__value">+{subida_anual:,.0f} €</div>
+                <div class="nc-kpi__sub">{limite}</div>
+            </div>""", unsafe_allow_html=True)
+
+            # Carta de notificación
+            st.markdown('<div class="nc-section-title">📄 Carta de notificación al inquilino</div>', unsafe_allow_html=True)
+            fecha_hoy = datetime.now().strftime("%d de %B de %Y")
+            carta = f"""Granada, {fecha_hoy}
+
+Estimado/a {inquilino_sube}:
+
+Por medio de la presente, le comunicamos que, de conformidad con lo establecido en el contrato de arrendamiento suscrito entre las partes y en virtud del artículo 18 de la Ley de Arrendamientos Urbanos (LAU 29/1994), procedemos a la actualización anual de la renta.
+
+DATOS DE LA ACTUALIZACIÓN:
+• Renta actual: {renta_actual_sube:,.2f} €/mes
+• Índice de actualización aplicado: IPC anual {ipc_aplicar}%
+• Incremento mensual: {subida_euros:,.2f} €
+• Nueva renta mensual: {nueva_renta:,.2f} €
+
+Esta actualización será efectiva a partir del próximo periodo de pago, siendo la nueva mensualidad de {nueva_renta:,.2f} euros (IVA incluido si procede).
+
+Le rogamos que tome nota de este cambio para sus transferencias bancarias. En caso de tener domiciliado el pago, deberá actualizar el importe en su entidad bancaria.
+
+Quedo a su disposición para cualquier consulta.
+
+Atentamente,
+
+Pedro Nolasco
+Propietario del inmueble
+"""
+            st.text_area("Carta lista para copiar y enviar:", value=carta, height=380, key="carta_notif")
+            st.download_button("📥 Descargar carta (.txt)",
+                               data=carta,
+                               file_name=f"notificacion_renta_{inm_sube.replace(' ','_')}.txt",
+                               mime="text/plain")
+
+    st.markdown("""
+    <div class="disclaimer">
+        <strong>⚠️ AVISO LEGAL</strong><br>
+        Estas calculadoras son orientativas. Los resultados dependen de las circunstancias específicas de cada contrato.<br>
+        <strong>Consulte siempre con un abogado especializado en arrendamientos antes de tomar decisiones.</strong>
+    </div>
+    """, unsafe_allow_html=True)
