@@ -3185,36 +3185,87 @@ elif menu == "Legal":
 
         st.markdown("<br>", unsafe_allow_html=True)
 
+        # Tabla IRAV 2026 oficial
+        IRAV_2026 = {
+            "Enero 2026": 2.14, "Febrero 2026": 2.16, "Marzo 2026": 2.47,
+        }
+        IRAV_ACTUAL = 2.47  # Último publicado — marzo 2026
+        TOPE_RDL = 2.0      # RDL 8/2026 vigente hasta dic 2027
+
+        st.markdown(f"""
+        <div class="nc-status nc-status--amber">
+        <strong>📊 Índices oficiales 2026 (INE)</strong><br>
+        IRAV enero: 2,14% · IRAV febrero: 2,16% · <strong>IRAV marzo (último): 2,47%</strong><br>
+        ⚠️ Tope RDL 8/2026: <strong>máximo 2%</strong> para contratos larga duración hasta dic 2027
+        </div>
+        """, unsafe_allow_html=True)
+
         s1, s2 = st.columns(2)
         with s1:
-            ipc_aplicar = st.number_input("IPC a aplicar (%)",
-                                          min_value=0.0, max_value=20.0, value=3.5,
+            ipc_aplicar = st.number_input("IPC a aplicar si contrato anterior a 26/05/2023 (%)",
+                                          min_value=0.0, max_value=20.0, value=2.47,
                                           step=0.1, format="%.1f", key="sube_ipc",
-                                          help="IPC anual del INE. En 2024 fue 3.5%")
+                                          help="Para contratos posteriores a la Ley de Vivienda se aplica IRAV automáticamente")
             fecha_ultima_actualizacion = st.date_input("Fecha última actualización de renta",
                                                         key="sube_fecha")
         with s2:
             if tipo_contrato_sube == "Larga Duración":
-                st.info("📋 **Larga duración:** Subida limitada al IPC anual. Solo puedes actualizar una vez al año.")
+                fecha_inicio_str2 = str(f_sube.get("Fecha_Inicio_Contrato", "2022-01-01"))
+                try:
+                    from datetime import date as dt_date
+                    fi2 = pd.to_datetime(fecha_inicio_str2).date()
+                    post_ley2 = fi2 >= dt_date(2023, 5, 26)
+                except:
+                    post_ley2 = False
+                if post_ley2:
+                    st.success(f"✅ Contrato posterior a Ley Vivienda → **IRAV {IRAV_ACTUAL}%** (tope 2% RDL 8/2026)")
+                else:
+                    st.info(f"📋 Contrato anterior a Ley Vivienda → **IPC topado al {TOPE_RDL}%** (RDL 8/2026)")
             elif tipo_contrato_sube == "Temporada":
-                st.info("📋 **Temporada:** Al vencimiento puedes fijar la renta libremente.")
+                st.info("📋 **Temporada:** Al vencimiento puedes fijar la renta libremente. Sin tope IRAV.")
             else:
-                st.info("📋 **Habitaciones:** Renta libre al vencimiento o renovación.")
+                st.info("📋 **Habitaciones:** Renta libre al vencimiento o renovación. Sin tope IRAV.")
 
             if zona_tens_sube:
-                st.warning("⚠️ **Zona tensionada:** No puedes superar la renta del contrato anterior ni el índice de referencia.")
+                st.warning("⚠️ **Zona tensionada:** No puedes superar la renta del contrato anterior.")
 
         if st.button("🧮 Calcular subida", type="primary", key="btn_sube"):
+            # Determinar índice legal según tipo contrato y fecha firma
+            fecha_inicio_str = str(f_sube.get("Fecha_Inicio_Contrato", "2022-01-01"))
+            try:
+                from datetime import date
+                fecha_inicio_dt = pd.to_datetime(fecha_inicio_str).date()
+                fecha_ley_vivienda = date(2023, 5, 26)
+                contrato_post_ley = fecha_inicio_dt >= fecha_ley_vivienda
+            except:
+                contrato_post_ley = False
+
             if tipo_contrato_sube == "Larga Duración":
-                subida_euros = renta_actual_sube * (ipc_aplicar / 100)
+                if contrato_post_ley:
+                    indice_nombre = "IRAV (Ley Vivienda 12/2023)"
+                    indice_valor = 2.47  # Marzo 2026 — último publicado INE
+                    tope_rdl = 2.0      # RDL 8/2026 tope 2% hasta dic 2027
+                    indice_aplicado = min(indice_valor, tope_rdl)
+                    nota_legal = f"IRAV marzo 2026: {indice_valor}% · Tope RDL 8/2026: {tope_rdl}% · Se aplica el mínimo: {indice_aplicado}%"
+                else:
+                    indice_nombre = "IPC (contrato anterior Ley Vivienda)"
+                    indice_aplicado = min(ipc_aplicar, 2.0)  # Tope 2% RDL 8/2026
+                    nota_legal = f"Contrato anterior a 26/05/2023 → IPC topado al 2% por RDL 8/2026"
+                subida_euros = renta_actual_sube * (indice_aplicado / 100)
                 nueva_renta = renta_actual_sube + subida_euros
                 subida_anual = subida_euros * 12
-                limite = "IPC anual"
+                limite = indice_nombre
             else:
-                subida_euros = renta_actual_sube * (ipc_aplicar / 100)
+                indice_aplicado = ipc_aplicar
+                indice_nombre = "Libre (no es vivienda habitual larga duración)"
+                nota_legal = "Contratos de temporada y habitaciones no están sujetos al IRAV ni a topes."
+                subida_euros = renta_actual_sube * (indice_aplicado / 100)
                 nueva_renta = renta_actual_sube + subida_euros
                 subida_anual = subida_euros * 12
-                limite = "Libre al vencimiento"
+                limite = "Renta libre"
+
+            st.markdown(f'<div class="nc-status nc-status--amber">📋 <strong>Índice aplicable:</strong> {nota_legal}</div>', unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
 
             # KPIs
             sk1, sk2, sk3 = st.columns(3)
