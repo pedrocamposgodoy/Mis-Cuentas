@@ -144,6 +144,10 @@ if "user_id" not in st.session_state:
     st.session_state.user_id = None
 if "user_email" not in st.session_state:
     st.session_state.user_email = None
+if "filtro_año" not in st.session_state:
+    st.session_state.filtro_año = "Todos"
+if "filtro_mes" not in st.session_state:
+    st.session_state.filtro_mes = "Todos"
 
 # Si no está logueado, mostrar formulario de login
 if not st.session_state.user_logged_in:
