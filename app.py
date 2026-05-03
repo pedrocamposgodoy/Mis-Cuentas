@@ -1817,6 +1817,8 @@ elif menu == "Diario Contable":
                         r.pop("Estado", None)
                     if a_guardar:
                         guardar_movimientos(a_guardar)
+                        # Recargar desde Supabase para obtener id real
+                        st.session_state.df_mov_persistent = leer_movimientos(st.session_state.get("user_id",""))
                         st.session_state.pop("ingresos_pendientes", None)
                         st.session_state.pop("ingresos_editados", None)
                         st.success(f"✅ {len(a_guardar)} ingreso(s) guardados correctamente")
@@ -1852,6 +1854,8 @@ elif menu == "Diario Contable":
             else:
                 nuevo = [{"Fecha":datetime.now().strftime("%Y-%m-%d"),"Apartamento":inmueble_g,"Concepto":concepto_gasto,"Categoría":categoria_g,"Tipo":"Gasto","Importe":importe_g,"Deducible":deducible_g}]
                 guardar_movimientos(nuevo)
+                # Recargar desde Supabase para obtener id real
+                st.session_state.df_mov_persistent = leer_movimientos(st.session_state.get("user_id",""))
                 st.success(f"✅ Gasto de {importe_g:.2f} € guardado en {inmueble_g}"); st.rerun()
 
 # ================================================================
