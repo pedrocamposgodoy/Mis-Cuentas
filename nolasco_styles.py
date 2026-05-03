@@ -196,17 +196,18 @@ div[data-testid="stRadio"] > div > label {
   align-items: center;
   gap: 0.4rem;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: #8ab4d4 !important;
-  padding: 0.4rem 0.8rem;
+  color: #ffffff !important;
+  padding: 0.4rem 1rem;
   border-radius: 6px;
-  border: 1.5px solid transparent;
+  border: 1.5px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.05);
 }
 div[data-testid="stRadio"] > div > label:has(input:checked) {
   color: white !important;
-  border-color: #185FA5;
-  background: rgba(24,95,165,0.2);
+  border-color: #185FA5 !important;
+  background: #185FA5 !important;
 }
 div[data-testid="stRadio"] > div > label > div:first-child {
   display: none !important;
