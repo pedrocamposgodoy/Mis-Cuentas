@@ -370,3 +370,86 @@ def _inmuebles_iniciales_df(user_id):
 def generar_csv_backup(df, nombre_archivo):
     """Genera CSV en memoria para descarga."""
     return df.to_csv(index=False).encode('utf-8')
+
+
+# ─── GASTOS RECURRENTES ──────────────────────────────────────────
+
+GASTOS_FIJOS_DEFAULT = [
+    {"inmueble": "Casa Abarqueros",  "concepto": "Comunidad",               "categoria": "Comunidad",    "importe": 193.76, "deducible": "S"},
+    {"inmueble": "Casa Abarqueros",  "concepto": "Hipoteca (Intereses)",    "categoria": "Financiero",   "importe": 554.73, "deducible": "S"},
+    {"inmueble": "Casa Abarqueros",  "concepto": "Seguro MyBox Hogar/Alarma","categoria": "Seguros",     "importe": 96.43,  "deducible": "S"},
+    {"inmueble": "Casa Abarqueros",  "concepto": "Seguro Seviam Vida",      "categoria": "Seguros",      "importe": 55.93,  "deducible": "S"},
+    {"inmueble": "Casa Abarqueros",  "concepto": "Mantenimiento Ascensor",  "categoria": "Mantenimiento","importe": 65.44,  "deducible": "S"},
+    {"inmueble": "Paseo del Salón",  "concepto": "Comunidad",               "categoria": "Comunidad",    "importe": 175.18, "deducible": "S"},
+    {"inmueble": "Huerto Unidad 1",  "concepto": "Comunidad (parte)",       "categoria": "Comunidad",    "importe": 74.62,  "deducible": "S"},
+    {"inmueble": "Huerto Unidad 2",  "concepto": "Comunidad (parte)",       "categoria": "Comunidad",    "importe": 74.62,  "deducible": "S"},
+    {"inmueble": "Huerto Unidad 3",  "concepto": "Comunidad (parte)",       "categoria": "Comunidad",    "importe": 74.63,  "deducible": "S"},
+]
+
+
+def leer_gastos_recurrentes(user_id: str) -> pd.DataFrame:
+    """Lee gastos recurrentes del usuario. Si no tiene, inserta los defaults."""
+    try:
+        resp = _get(f"gastos_recurrentes?user_id=eq.{user_id}&order=inmueble.asc,concepto.asc&select=*")
+        if resp and len(resp) > 0:
+            df = pd.DataFrame(resp)
+            df["importe"] = pd.to_numeric(df["importe"], errors="coerce").fillna(0)
+            return df
+        # Primera vez — insertar defaults
+        for g in GASTOS_FIJOS_DEFAULT:
+            row = {**g, "user_id": user_id, "activo": True}
+            _post("gastos_recurrentes", row)
+        resp2 = _get(f"gastos_recurrentes?user_id=eq.{user_id}&order=inmueble.asc,concepto.asc&select=*")
+        df = pd.DataFrame(resp2) if resp2 else pd.DataFrame()
+        if not df.empty:
+            df["importe"] = pd.to_numeric(df["importe"], errors="coerce").fillna(0)
+        return df
+    except Exception as e:
+        print(f"[leer_gastos_recurrentes] Error: {e}")
+        return pd.DataFrame()
+
+
+def guardar_gasto_recurrente(user_id: str, inmueble: str, concepto: str,
+                              categoria: str, importe: float, deducible: str = "S") -> bool:
+    """Inserta un nuevo gasto recurrente."""
+    try:
+        row = {
+            "user_id": user_id, "inmueble": inmueble, "concepto": concepto,
+            "categoria": categoria, "importe": importe,
+            "deducible": deducible, "activo": True
+        }
+        resp = _post("gastos_recurrentes", row)
+        return resp is not None
+    except Exception as e:
+        print(f"[guardar_gasto_recurrente] Error: {e}")
+        return False
+
+
+def actualizar_gasto_recurrente(id_gasto: int, importe: float = None,
+                                 activo: bool = None, concepto: str = None) -> bool:
+    """Actualiza importe, concepto o estado activo de un gasto recurrente."""
+    try:
+        payload = {}
+        if importe  is not None: payload["importe"]  = importe
+        if activo   is not None: payload["activo"]   = activo
+        if concepto is not None: payload["concepto"] = concepto
+        if not payload:
+            return False
+        url = f"{SUPABASE_URL}/rest/v1/gastos_recurrentes?id=eq.{id_gasto}"
+        headers = {**HEADERS, "Prefer": "return=representation"}
+        resp = requests.patch(url, json=payload, headers=headers, timeout=10)
+        return resp.status_code in (200, 204)
+    except Exception as e:
+        print(f"[actualizar_gasto_recurrente] Error: {e}")
+        return False
+
+
+def eliminar_gasto_recurrente(id_gasto: int) -> bool:
+    """Elimina permanentemente un gasto recurrente."""
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/gastos_recurrentes?id=eq.{id_gasto}"
+        resp = requests.delete(url, headers=HEADERS, timeout=10)
+        return resp.status_code in (200, 204)
+    except Exception as e:
+        print(f"[eliminar_gasto_recurrente] Error: {e}")
+        return False
