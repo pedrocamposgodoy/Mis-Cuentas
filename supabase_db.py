@@ -375,32 +375,37 @@ def generar_csv_backup(df, nombre_archivo):
 # ─── GASTOS RECURRENTES ──────────────────────────────────────────
 
 GASTOS_FIJOS_DEFAULT = [
-    {"inmueble": "Casa Abarqueros",  "concepto": "Comunidad",               "categoria": "Comunidad",    "importe": 193.76, "deducible": "S"},
-    {"inmueble": "Casa Abarqueros",  "concepto": "Hipoteca (Intereses)",    "categoria": "Financiero",   "importe": 554.73, "deducible": "S"},
-    {"inmueble": "Casa Abarqueros",  "concepto": "Seguro MyBox Hogar/Alarma","categoria": "Seguros",     "importe": 96.43,  "deducible": "S"},
-    {"inmueble": "Casa Abarqueros",  "concepto": "Seguro Seviam Vida",      "categoria": "Seguros",      "importe": 55.93,  "deducible": "S"},
-    {"inmueble": "Casa Abarqueros",  "concepto": "Mantenimiento Ascensor",  "categoria": "Mantenimiento","importe": 65.44,  "deducible": "S"},
-    {"inmueble": "Paseo del Salón",  "concepto": "Comunidad",               "categoria": "Comunidad",    "importe": 175.18, "deducible": "S"},
-    {"inmueble": "Huerto Unidad 1",  "concepto": "Comunidad (parte)",       "categoria": "Comunidad",    "importe": 74.62,  "deducible": "S"},
-    {"inmueble": "Huerto Unidad 2",  "concepto": "Comunidad (parte)",       "categoria": "Comunidad",    "importe": 74.62,  "deducible": "S"},
-    {"inmueble": "Huerto Unidad 3",  "concepto": "Comunidad (parte)",       "categoria": "Comunidad",    "importe": 74.63,  "deducible": "S"},
+    {"inmueble": "Casa Abarqueros",  "concepto": "Comunidad",                "categoria": "Comunidad",    "importe": 193.76, "deducible": "S"},
+    {"inmueble": "Casa Abarqueros",  "concepto": "Hipoteca (Intereses)",     "categoria": "Financiero",   "importe": 554.73, "deducible": "S"},
+    {"inmueble": "Casa Abarqueros",  "concepto": "Seguro MyBox Hogar/Alarma","categoria": "Seguros",      "importe": 96.43,  "deducible": "S"},
+    {"inmueble": "Casa Abarqueros",  "concepto": "Seguro Seviam Vida",       "categoria": "Seguros",      "importe": 55.93,  "deducible": "S"},
+    {"inmueble": "Casa Abarqueros",  "concepto": "Mantenimiento Ascensor",   "categoria": "Mantenimiento","importe": 65.44,  "deducible": "S"},
+    {"inmueble": "Paseo del Salón",  "concepto": "Comunidad",                "categoria": "Comunidad",    "importe": 175.18, "deducible": "S"},
+    {"inmueble": "Huerto Unidad 1",  "concepto": "Comunidad (parte)",        "categoria": "Comunidad",    "importe": 74.62,  "deducible": "S"},
+    {"inmueble": "Huerto Unidad 2",  "concepto": "Comunidad (parte)",        "categoria": "Comunidad",    "importe": 74.62,  "deducible": "S"},
+    {"inmueble": "Huerto Unidad 3",  "concepto": "Comunidad (parte)",        "categoria": "Comunidad",    "importe": 74.63,  "deducible": "S"},
 ]
+
+BASE_GR = f"{SUPABASE_URL}/rest/v1/gastos_recurrentes"
 
 
 def leer_gastos_recurrentes(user_id: str) -> pd.DataFrame:
     """Lee gastos recurrentes del usuario. Si no tiene, inserta los defaults."""
     try:
-        resp = _get(f"gastos_recurrentes?user_id=eq.{user_id}&order=inmueble.asc,concepto.asc&select=*")
-        if resp and len(resp) > 0:
-            df = pd.DataFrame(resp)
+        url = f"{BASE_GR}?user_id=eq.{user_id}&order=inmueble.asc,concepto.asc&select=*"
+        r = requests.get(url, headers=_headers(), timeout=10)
+        data = r.json() if r.status_code == 200 else []
+        if data:
+            df = pd.DataFrame(data)
             df["importe"] = pd.to_numeric(df["importe"], errors="coerce").fillna(0)
             return df
         # Primera vez — insertar defaults
         for g in GASTOS_FIJOS_DEFAULT:
             row = {**g, "user_id": user_id, "activo": True}
-            _post("gastos_recurrentes", row)
-        resp2 = _get(f"gastos_recurrentes?user_id=eq.{user_id}&order=inmueble.asc,concepto.asc&select=*")
-        df = pd.DataFrame(resp2) if resp2 else pd.DataFrame()
+            requests.post(BASE_GR, json=row, headers=_headers(), timeout=10)
+        r2 = requests.get(url, headers=_headers(), timeout=10)
+        data2 = r2.json() if r2.status_code == 200 else []
+        df = pd.DataFrame(data2) if data2 else pd.DataFrame()
         if not df.empty:
             df["importe"] = pd.to_numeric(df["importe"], errors="coerce").fillna(0)
         return df
@@ -418,8 +423,8 @@ def guardar_gasto_recurrente(user_id: str, inmueble: str, concepto: str,
             "categoria": categoria, "importe": importe,
             "deducible": deducible, "activo": True
         }
-        resp = _post("gastos_recurrentes", row)
-        return resp is not None
+        r = requests.post(BASE_GR, json=row, headers=_headers(), timeout=10)
+        return r.status_code in (200, 201)
     except Exception as e:
         print(f"[guardar_gasto_recurrente] Error: {e}")
         return False
@@ -435,10 +440,9 @@ def actualizar_gasto_recurrente(id_gasto: int, importe: float = None,
         if concepto is not None: payload["concepto"] = concepto
         if not payload:
             return False
-        url = f"{SUPABASE_URL}/rest/v1/gastos_recurrentes?id=eq.{id_gasto}"
-        headers = {**HEADERS, "Prefer": "return=representation"}
-        resp = requests.patch(url, json=payload, headers=headers, timeout=10)
-        return resp.status_code in (200, 204)
+        url = f"{BASE_GR}?id=eq.{id_gasto}"
+        r = requests.patch(url, json=payload, headers=_headers(), timeout=10)
+        return r.status_code in (200, 204)
     except Exception as e:
         print(f"[actualizar_gasto_recurrente] Error: {e}")
         return False
@@ -447,9 +451,9 @@ def actualizar_gasto_recurrente(id_gasto: int, importe: float = None,
 def eliminar_gasto_recurrente(id_gasto: int) -> bool:
     """Elimina permanentemente un gasto recurrente."""
     try:
-        url = f"{SUPABASE_URL}/rest/v1/gastos_recurrentes?id=eq.{id_gasto}"
-        resp = requests.delete(url, headers=HEADERS, timeout=10)
-        return resp.status_code in (200, 204)
+        url = f"{BASE_GR}?id=eq.{id_gasto}"
+        r = requests.delete(url, headers=_headers(), timeout=10)
+        return r.status_code in (200, 204)
     except Exception as e:
         print(f"[eliminar_gasto_recurrente] Error: {e}")
         return False
