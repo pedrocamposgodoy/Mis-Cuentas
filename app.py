@@ -1664,16 +1664,33 @@ elif menu == "Diario Contable":
         
         l_inm = df_inm["Nombre"].tolist()+["Global"]
         l_cat = ["Ingresos","Financiero","Tributario","Suministros","Seguros","Mantenimiento","Estructura","Comunidad","Otros"]
-        l_con = ["Renta Mensual","Hipoteca (Intereses)","Hipoteca (Capital)","IBI","Comunidad Ordinaria","Seguro Hogar","Seguro Vida","Luz","Agua","Reparación","Sueldo Pedro"]
+
+        # Ordenar por fecha descendente
+        df_filtrado["Fecha"] = pd.to_datetime(df_filtrado["Fecha"], errors="coerce")
+        df_filtrado = df_filtrado.sort_values("Fecha", ascending=False).reset_index(drop=True)
+
+        # Columnas visibles (ocultar id, user_id, created_at)
+        cols_visibles = ["Fecha", "Apartamento", "Concepto", "Categoría", "Tipo", "Importe", "Deducible"]
+        cols_visibles = [c for c in cols_visibles if c in df_filtrado.columns]
+        df_mostrar = df_filtrado[cols_visibles].copy()
+
         config = {
-            "Apartamento": st.column_config.SelectboxColumn("Inmueble",options=l_inm,required=True),
+            "Fecha": st.column_config.DateColumn("Fecha", format="DD/MM/YYYY"),
+            "Apartamento": st.column_config.SelectboxColumn("Inmueble", options=l_inm, required=True),
             "Concepto": st.column_config.TextColumn("Concepto"),
-            "Categoría": st.column_config.SelectboxColumn("Categoría",options=l_cat,required=True),
-            "Tipo": st.column_config.SelectboxColumn("Tipo",options=["Ingreso","Gasto"],required=True),
-            "Deducible": st.column_config.SelectboxColumn("Fiscal",options=["S","N"],required=True),
-            "Importe": st.column_config.NumberColumn("Importe (€)",format="%.2f",min_value=0),
+            "Categoría": st.column_config.SelectboxColumn("Categoría", options=l_cat, required=True),
+            "Tipo": st.column_config.SelectboxColumn("Tipo", options=["Ingreso","Gasto"], required=True),
+            "Deducible": st.column_config.SelectboxColumn("Fiscal", options=["S","N"], required=True),
+            "Importe": st.column_config.NumberColumn("Importe (€)", format="%.2f", min_value=0),
         }
-        df_ed = st.data_editor(df_filtrado,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=config)
+        df_ed = st.data_editor(
+            df_mostrar,
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            column_config=config,
+            key="tabla_diario"
+        )
         t_ing = df_ed[df_ed["Tipo"]=="Ingreso"]["Importe"].sum()
         t_gas = df_ed[df_ed["Tipo"]=="Gasto"]["Importe"].sum()
         m1,m2,m3 = st.columns(3)
@@ -1831,32 +1848,42 @@ elif menu == "Diario Contable":
                     st.session_state.pop("ingresos_editados", None)
                     st.rerun()
     with tab3:
-        st.markdown("### 📤 Registrar Gasto")
-        st.caption("Sube una factura (OCR próximamente) o describe el gasto manualmente")
-        archivo = st.file_uploader("Adjunta factura PDF o foto", type=["pdf","jpg","png","jpeg"])
-        if archivo:
-            st.info("📝 Lectura automática de facturas — próximamente disponible.")
-        concepto_gasto = st.text_input("Concepto", placeholder="Reparación lavadora Huerto 1...")
-        col_g1, col_g2 = st.columns(2)
-        with col_g1:
-            inmueble_g = st.selectbox("Inmueble", ["— Selecciona —"]+df_inm["Nombre"].tolist(), key="inmg")
-            importe_g = st.number_input("Importe (€)", min_value=0.0, step=0.01, format="%.2f")
-        with col_g2:
-            categoria_g = st.selectbox("Categoría", ["Mantenimiento","Suministros","Comunidad","Seguros","Tributario","Financiero","Otros"])
-            deducible_g = st.selectbox("¿Es deducible?", ["S","N"])
-        if st.button("💾 Guardar Gasto", type="primary", key="guardar_gasto"):
-            if inmueble_g == "— Selecciona —":
-                st.error("Selecciona un inmueble")
-            elif importe_g <= 0:
-                st.error("El importe debe ser mayor que 0")
-            elif not concepto_gasto.strip():
-                st.error("Escribe un concepto")
-            else:
-                nuevo = [{"Fecha":datetime.now().strftime("%Y-%m-%d"),"Apartamento":inmueble_g,"Concepto":concepto_gasto,"Categoría":categoria_g,"Tipo":"Gasto","Importe":importe_g,"Deducible":deducible_g}]
-                guardar_movimientos(nuevo)
-                # Recargar desde Supabase para obtener id real
-                st.session_state.df_mov_persistent = leer_movimientos(st.session_state.get("user_id",""))
-                st.success(f"✅ Gasto de {importe_g:.2f} € guardado en {inmueble_g}"); st.rerun()
+        # Control para mostrar formulario o confirmación
+        if "gasto_guardado" not in st.session_state:
+            st.session_state.gasto_guardado = False
+
+        if st.session_state.gasto_guardado:
+            st.success(f"✅ Gasto guardado correctamente.")
+            if st.button("➕ Registrar otro gasto", key="nuevo_gasto"):
+                st.session_state.gasto_guardado = False
+                st.rerun()
+        else:
+            st.markdown("### 📤 Registrar Gasto")
+            st.caption("Sube una factura (OCR próximamente) o describe el gasto manualmente")
+            archivo = st.file_uploader("Adjunta factura PDF o foto", type=["pdf","jpg","png","jpeg"])
+            if archivo:
+                st.info("📝 Lectura automática de facturas — próximamente disponible.")
+            concepto_gasto = st.text_input("Concepto", placeholder="Reparación lavadora Huerto 1...")
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                inmueble_g = st.selectbox("Inmueble", ["— Selecciona —"]+df_inm["Nombre"].tolist(), key="inmg")
+                importe_g = st.number_input("Importe (€)", min_value=0.0, step=0.01, format="%.2f")
+            with col_g2:
+                categoria_g = st.selectbox("Categoría", ["Mantenimiento","Suministros","Comunidad","Seguros","Tributario","Financiero","Otros"])
+                deducible_g = st.selectbox("¿Es deducible?", ["S","N"])
+            if st.button("💾 Guardar Gasto", type="primary", key="guardar_gasto"):
+                if inmueble_g == "— Selecciona —":
+                    st.error("Selecciona un inmueble")
+                elif importe_g <= 0:
+                    st.error("El importe debe ser mayor que 0")
+                elif not concepto_gasto.strip():
+                    st.error("Escribe un concepto")
+                else:
+                    nuevo = [{"Fecha":datetime.now().strftime("%Y-%m-%d"),"Apartamento":inmueble_g,"Concepto":concepto_gasto,"Categoría":categoria_g,"Tipo":"Gasto","Importe":importe_g,"Deducible":deducible_g}]
+                    guardar_movimientos(nuevo)
+                    st.session_state.df_mov_persistent = leer_movimientos(st.session_state.get("user_id",""))
+                    st.session_state.gasto_guardado = True
+                    st.rerun()
 
 # ================================================================
 # PANTALLA 5 — SUMINISTROS
