@@ -3066,94 +3066,133 @@ elif menu == "Legal":
     # CALCULADORA 1 — RENEGOCIACIÓN A LA BAJA
     # ══════════════════════════════════════════════════════════════
     with calc1:
-        st.markdown('<div class="nc-section-title">¿Cuánto puedo bajar sin perder dinero?</div>', unsafe_allow_html=True)
-        st.caption("Compara el coste de aceptar una bajada vs tener el piso vacío mientras buscas nuevo inquilino.")
+        st.markdown('<div class="nc-section-title">¿Cuánto puedo bajar la renta sin perder dinero?</div>', unsafe_allow_html=True)
+        st.caption("Calcula la bajada máxima que puedes asumir comparado con dejar el piso vacío y buscar nuevo inquilino.")
 
-        c1a, c1b = st.columns(2)
+        inm_reneg = st.selectbox("Inmueble", df_inm["Nombre"].tolist(), key="reneg_inm")
+        f_reneg = df_inm[df_inm["Nombre"] == inm_reneg].iloc[0]
+        renta_actual_reneg = safe_float(f_reneg.get("Renta", 0))
+
+        st.markdown(f"**Renta actual:** {renta_actual_reneg:,.2f} €/mes")
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        c1a, c1b, c1c = st.columns(3)
         with c1a:
-            inm_reneg = st.selectbox("Inmueble", df_inm["Nombre"].tolist(), key="reneg_inm")
-            f_reneg = df_inm[df_inm["Nombre"] == inm_reneg].iloc[0]
-            renta_actual_reneg = safe_float(f_reneg.get("Renta", 0))
-            st.markdown(f"**Renta actual:** {renta_actual_reneg:,.2f} €/mes")
-            renta_pedida = st.number_input("Renta que pide el inquilino (€/mes)",
-                                           min_value=0.0, max_value=float(renta_actual_reneg),
-                                           value=float(max(0, renta_actual_reneg - 100)),
-                                           step=10.0, format="%.2f", key="reneg_pedida")
+            renta_pedida = st.number_input(
+                "Renta que pide el inquilino (€/mes)",
+                min_value=0.0, max_value=float(renta_actual_reneg),
+                value=float(max(0, renta_actual_reneg - 60)),
+                step=10.0, format="%.2f", key="reneg_pedida")
         with c1b:
-            meses_vacio = st.slider("Meses estimados que tardarías en alquilar de nuevo",
-                                    min_value=1, max_value=12, value=2, key="reneg_meses")
-            coste_busqueda = st.number_input("Coste búsqueda nuevo inquilino (€)",
-                                             min_value=0.0, value=float(renta_actual_reneg),
-                                             step=50.0, format="%.2f",
-                                             help="Honorarios inmobiliaria, anuncios, limpieza, etc.",
-                                             key="reneg_coste")
+            meses_vacio = st.slider(
+                "Meses estimados que estaría vacío",
+                min_value=0, max_value=12, value=2, key="reneg_meses",
+                help="Tiempo estimado hasta encontrar nuevo inquilino")
+        with c1c:
+            meses_comision = st.slider(
+                "Meses de comisión inmobiliaria",
+                min_value=0, max_value=3, value=1, key="reneg_comision",
+                help="Normalmente 1 mes de renta. Pon 0 si lo alquilas tú mismo.")
 
         if st.button("🧮 Calcular", type="primary", key="btn_reneg"):
             bajada_mensual = renta_actual_reneg - renta_pedida
-            perdida_anual_bajada = bajada_mensual * 12
-            perdida_vacio = (renta_actual_reneg * meses_vacio) + coste_busqueda
-            meses_recuperacion = perdida_vacio / bajada_mensual if bajada_mensual > 0 else 0
-            renta_min_equilibrio = renta_actual_reneg - (perdida_vacio / 12)
 
-            # KPIs resultado
+            # Coste total si el inquilino se va
+            renta_perdida_vacio   = renta_actual_reneg * meses_vacio
+            coste_comision        = renta_actual_reneg * meses_comision
+            coste_total_si_se_va  = renta_perdida_vacio + coste_comision
+
+            # Renta mínima para no perder dinero en 12 meses
+            # En 12 meses cobras: renta_nueva × 12
+            # Con nuevo inquilino en 12 meses cobras: renta_actual × (12 - meses_vacio) - comision
+            cobro_nuevo_inquilino_12m = renta_actual_reneg * (12 - meses_vacio) - coste_comision
+            renta_min_equilibrio = cobro_nuevo_inquilino_12m / 12
+
+            # ¿La renta pedida es aceptable?
+            es_aceptable = renta_pedida >= renta_min_equilibrio
+
+            # Lo que cobras en 12 meses en cada escenario
+            cobro_si_acepto  = renta_pedida * 12
+            cobro_si_rechazo = cobro_nuevo_inquilino_12m
+            diferencia_12m   = cobro_si_acepto - cobro_si_rechazo
+
+            # KPIs
             r1, r2, r3 = st.columns(3)
             r1.markdown(f"""<div class="nc-kpi">
-                <div class="nc-kpi__label">Bajada mensual</div>
-                <div class="nc-kpi__value" style="color:{RED};">−{bajada_mensual:,.0f} €</div>
-                <div class="nc-kpi__sub">Pérdida anual: {perdida_anual_bajada:,.0f} €</div>
+                <div class="nc-kpi__label">Bajada solicitada</div>
+                <div class="nc-kpi__value" style="color:{RED};">−{bajada_mensual:,.0f} €/mes</div>
+                <div class="nc-kpi__sub">De {renta_actual_reneg:,.0f} € a {renta_pedida:,.0f} €</div>
             </div>""", unsafe_allow_html=True)
             r2.markdown(f"""<div class="nc-kpi">
-                <div class="nc-kpi__label">Coste piso vacío</div>
-                <div class="nc-kpi__value" style="color:{RED};">−{perdida_vacio:,.0f} €</div>
-                <div class="nc-kpi__sub">{meses_vacio} meses vacío + búsqueda</div>
+                <div class="nc-kpi__label">Coste si se va</div>
+                <div class="nc-kpi__value" style="color:{RED};">−{coste_total_si_se_va:,.0f} €</div>
+                <div class="nc-kpi__sub">{meses_vacio}m vacío + {meses_comision}m comisión</div>
             </div>""", unsafe_allow_html=True)
             r3.markdown(f"""<div class="nc-kpi is-highlight">
-                <div class="nc-kpi__label">Punto de equilibrio</div>
-                <div class="nc-kpi__value">{meses_recuperacion:.1f} meses</div>
-                <div class="nc-kpi__sub">para recuperar el coste del vacío</div>
+                <div class="nc-kpi__label">Renta mínima aceptable</div>
+                <div class="nc-kpi__value">{renta_min_equilibrio:,.0f} €/mes</div>
+                <div class="nc-kpi__sub">Para no perder en 12 meses</div>
             </div>""", unsafe_allow_html=True)
 
             st.markdown("<br>", unsafe_allow_html=True)
+
+            # Desglose del cálculo
+            st.markdown(f"""
+            <div style="background:#f8fafb; border-left:4px solid #185FA5; padding:1rem; border-radius:8px; margin-bottom:1rem;">
+            <strong>📊 Desglose del cálculo (horizonte 12 meses)</strong><br><br>
+            <b>Si aceptas {renta_pedida:,.0f} €/mes:</b><br>
+            → Cobras {renta_pedida:,.0f} × 12 = <b>{cobro_si_acepto:,.0f} €</b><br><br>
+            <b>Si rechazas y buscas nuevo inquilino:</b><br>
+            → {meses_vacio} meses vacío = −{renta_perdida_vacio:,.0f} €<br>
+            → {meses_comision} mes comisión = −{coste_comision:,.0f} €<br>
+            → {12 - meses_vacio} meses cobrando {renta_actual_reneg:,.0f} € = +{renta_actual_reneg * (12 - meses_vacio):,.0f} €<br>
+            → Total neto = <b>{cobro_si_rechazo:,.0f} €</b><br><br>
+            <b>Diferencia a tu favor si aceptas: {"+" if diferencia_12m >= 0 else ""}{diferencia_12m:,.0f} €</b>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Recomendación
             if bajada_mensual <= 0:
                 cls_rec = "nc-status nc-status--green"
                 rec = "✅ El inquilino no pide bajada. No hay nada que negociar."
-            elif meses_recuperacion <= 6:
+            elif es_aceptable:
                 cls_rec = "nc-status nc-status--green"
-                rec = f"✅ ACEPTA LA BAJADA — Recuperas el coste del vacío en solo {meses_recuperacion:.1f} meses. Es más rentable retener al inquilino."
-            elif meses_recuperacion <= 18:
-                cls_rec = "nc-status nc-status--amber"
-                rec = f"🟡 NEGOCIA — El punto de equilibrio son {meses_recuperacion:.1f} meses. Contraoferta: {renta_min_equilibrio:,.0f} €/mes (bajada de {renta_actual_reneg - renta_min_equilibrio:,.0f} €)."
+                rec = f"✅ ACEPTA — La renta pedida ({renta_pedida:,.0f} €) está por encima del mínimo ({renta_min_equilibrio:,.0f} €). En 12 meses ganas {diferencia_12m:,.0f} € más que si buscas nuevo inquilino."
             else:
                 cls_rec = "nc-status nc-status--red"
-                rec = f"🔴 NO ACEPTES — El punto de equilibrio son {meses_recuperacion:.1f} meses. Busca nuevo inquilino. Renta mínima aceptable: {renta_min_equilibrio:,.0f} €/mes."
+                rec = f"🔴 NO ACEPTES — La renta pedida ({renta_pedida:,.0f} €) está por debajo del mínimo ({renta_min_equilibrio:,.0f} €). Contraoferta: {renta_min_equilibrio:,.0f} €/mes."
 
             st.markdown(f'<div class="{cls_rec}">{rec}</div>', unsafe_allow_html=True)
 
-            # Gráfico comparativo
-            st.markdown('<div class="nc-section-title">Comparativa acumulada (24 meses)</div>', unsafe_allow_html=True)
-            meses_graf = list(range(0, 25))
-            escenario_bajo = [-bajada_mensual * m for m in meses_graf]
-            escenario_vacio = [-perdida_vacio if m > 0 else 0 for m in meses_graf]
-            for i in range(1, 25):
-                escenario_vacio[i] = -perdida_vacio + (renta_actual_reneg * i)
-            escenario_bajo_acum  = [escenario_bajo[i] for i in meses_graf]
-            escenario_vacio_acum = [escenario_vacio[i] - escenario_vacio[0] for i in meses_graf]
+            # Gráfico comparativo 12 meses
+            st.markdown('<br>', unsafe_allow_html=True)
+            st.markdown('<div class="nc-section-title">Comparativa mes a mes (12 meses)</div>', unsafe_allow_html=True)
+            meses_graf = list(range(0, 13))
+            acum_acepto  = [renta_pedida * m for m in meses_graf]
+            acum_rechazo = []
+            for m in meses_graf:
+                if m <= meses_vacio:
+                    acum_rechazo.append(-coste_comision)
+                else:
+                    acum_rechazo.append(-coste_comision + renta_actual_reneg * (m - meses_vacio))
 
             fig_reneg = go.Figure()
-            fig_reneg.add_trace(go.Scatter(x=meses_graf, y=escenario_bajo_acum,
-                name="Acepto la bajada", line=dict(color=ACCENT, width=2)))
-            fig_reneg.add_trace(go.Scatter(x=meses_graf, y=escenario_vacio_acum,
-                name="Dejo que se vaya", line=dict(color=RED, width=2, dash="dash")))
-            fig_reneg.add_hline(y=0, line_dash="dot", line_color="gray")
+            fig_reneg.add_trace(go.Scatter(
+                x=meses_graf, y=acum_acepto,
+                name=f"Acepto bajada ({renta_pedida:,.0f} €/mes)",
+                line=dict(color=ACCENT, width=3)))
+            fig_reneg.add_trace(go.Scatter(
+                x=meses_graf, y=acum_rechazo,
+                name=f"Busco nuevo inquilino ({renta_actual_reneg:,.0f} €/mes)",
+                line=dict(color=RED, width=3, dash="dash")))
             fig_reneg.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                margin=dict(l=10, r=10, t=10, b=10), height=280,
-                legend=dict(orientation="h", y=-0.2),
-                xaxis_title="Meses", yaxis_title="€ acumulados",
+                margin=dict(l=10, r=10, t=10, b=10), height=300,
+                legend=dict(orientation="h", y=-0.25),
+                xaxis_title="Mes", yaxis_title="€ acumulados cobrados",
                 font=dict(family="DM Sans", size=12)
             )
+            fig_reneg.update_xaxes(tickvals=list(range(0, 13)))
             st.plotly_chart(fig_reneg, use_container_width=True)
 
     # ══════════════════════════════════════════════════════════════
