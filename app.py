@@ -183,11 +183,11 @@ div.stButton > button:hover {
     # Centrar el formulario
     _, col_center, _ = st.columns([1, 2, 1])
     with col_center:
-        modo = st.radio("", ["🔐 Iniciar Sesión", "📝 Registrarse"],
+        modo = st.radio("", ["Iniciar Sesión", "Registrarse"],
                         horizontal=True, label_visibility="collapsed",
                         key="login_modo")
 
-        if modo == "🔐 Iniciar Sesión":
+        if modo == "Iniciar Sesión":
             email_login    = st.text_input("Email", key="email_login", placeholder="tu@email.com")
             password_login = st.text_input("Contraseña", type="password", key="password_login", placeholder="••••••••")
             if st.button("🚀 Iniciar sesión", use_container_width=True):
