@@ -689,13 +689,16 @@ def generar_pdf_modelo100(inmueble_data, modelo):
     w, h = A4
     azul_oscuro = HexColor("#0F2744")
     azul_acento = HexColor("#185FA5")
-    verde = HexColor("#1a7a40")
-    gris_claro = HexColor("#F4F7FB")
-    gris_borde = HexColor("#D0DFF0")
-    ref = f"NC-{datetime.now().strftime('%Y')}-{inmueble_data['Nombre'][:3].upper()}"
+    verde       = HexColor("#1a7a40")
+    naranja     = HexColor("#B45309")
+    gris_claro  = HexColor("#F4F7FB")
+    gris_borde  = HexColor("#D0DFF0")
+    amarillo    = HexColor("#FFF9E6")
+    ref      = f"NC-{datetime.now().strftime('%Y')}-{inmueble_data['Nombre'][:3].upper()}"
     tipo_arr = str(inmueble_data.get("Tipo_Arrendamiento", "Larga Duracion"))
+    dias_arr = int(safe_float(inmueble_data.get("Dias_Arrendados_Anio", 365)))
 
-    # PÁGINA 1
+    # ── CABECERA ─────────────────────────────────────────────────
     c.setFillColor(azul_oscuro)
     c.rect(0, h - 100, w, 100, fill=True, stroke=False)
     c.setFillColor(azul_acento)
@@ -705,7 +708,6 @@ def generar_pdf_modelo100(inmueble_data, modelo):
     c.drawCentredString(57.5, h - 65, "NC")
     c.setFont("Helvetica", 7)
     c.drawCentredString(57.5, h - 77, "CAPITAL")
-    c.setFillColor(white)
     c.setFont("Helvetica-Bold", 20)
     c.drawString(100, h - 50, "Nolasco Capital")
     c.setFont("Helvetica", 9)
@@ -718,115 +720,117 @@ def generar_pdf_modelo100(inmueble_data, modelo):
     c.setLineWidth(3)
     c.line(0, h - 103, w, h - 103)
 
-    y = h - 135
+    # ── TÍTULO ───────────────────────────────────────────────────
+    y = h - 130
     c.setFillColor(azul_oscuro)
-    c.setFont("Helvetica-Bold", 14)
+    c.setFont("Helvetica-Bold", 13)
     c.drawString(30, y, "Modelo 100 - Rendimientos del Capital Inmobiliario")
     c.setFont("Helvetica", 9)
     c.setFillColor(HexColor("#5A7A9A"))
-    c.drawString(30, y - 16, "Pre-relleno automatico IRPF  |  Verificado por propietario")
+    c.drawString(30, y - 15, "Datos informativos para el asesor fiscal | Pendiente validacion profesional")
 
-    y = y - 50
+    # ── DATOS INMUEBLE ───────────────────────────────────────────
+    y -= 45
     c.setFillColor(gris_claro)
-    c.roundRect(25, y - 75, w - 50, 75, 6, fill=True, stroke=False)
+    c.roundRect(25, y - 70, w - 50, 70, 6, fill=True, stroke=False)
     c.setStrokeColor(gris_borde)
-    c.roundRect(25, y - 75, w - 50, 75, 6, fill=False, stroke=True)
+    c.roundRect(25, y - 70, w - 50, 70, 6, fill=False, stroke=True)
     c.setFillColor(azul_oscuro)
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(35, y - 15, "Datos del Inmueble")
-    c.setFont("Helvetica", 9)
+    c.drawString(35, y - 14, "Datos del Inmueble")
+    labels1 = [("Inmueble:", 35, str(inmueble_data["Nombre"])),
+               ("Ref. Catastral:", 200, str(inmueble_data.get("Ref_Catastral","N/A"))),
+               ("Titular:", 390, str(inmueble_data.get("Titular","N/A")))]
+    labels2 = [("Modalidad:", 35, tipo_arr),
+               ("NIF Inquilino:", 200, str(inmueble_data.get("NIF_Inquilino","N/A"))),
+               ("Dias arrendados:", 390, f"{dias_arr} dias")]
+    c.setFont("Helvetica", 8)
     c.setFillColor(HexColor("#5A7A9A"))
-    c.drawString(35, y - 32, "Inmueble: ")
-    c.drawString(200, y - 32, "Ref. Catastral: ")
-    c.drawString(370, y - 32, "Titular: ")
+    for lbl, x, _ in labels1: c.drawString(x, y - 30, lbl)
+    for lbl, x, _ in labels2: c.drawString(x, y - 48, lbl)
     c.setFillColor(azul_oscuro)
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(87, y - 32, str(inmueble_data['Nombre']))
-    c.drawString(275, y - 32, str(inmueble_data.get('Ref_Catastral', 'N/A')))
-    c.drawString(408, y - 32, str(inmueble_data.get('Titular', 'Pedro Nolasco')))
-    c.setFillColor(HexColor("#5A7A9A"))
-    c.setFont("Helvetica", 9)
-    c.drawString(35, y - 50, "Modalidad: ")
-    c.drawString(200, y - 50, "NIF Inquilino: ")
-    c.drawString(370, y - 50, "Dias arrendado: ")
-    c.setFillColor(azul_oscuro)
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(93, y - 50, tipo_arr)
-    c.drawString(275, y - 50, str(inmueble_data.get('NIF_Inquilino', 'N/A')))
-    c.drawString(452, y - 50, str(modelo['0101']))
+    c.setFont("Helvetica-Bold", 8)
+    for lbl, x, val in labels1: c.drawString(x + 60, y - 30, val)
+    for lbl, x, val in labels2: c.drawString(x + 65, y - 48, val)
 
-    y = y - 100
+    # ── TABLA CASILLAS ───────────────────────────────────────────
+    y -= 95
     c.setFillColor(azul_oscuro)
-    c.setFont("Helvetica-Bold", 12)
+    c.setFont("Helvetica-Bold", 11)
     c.drawString(30, y, "Casillas del Modelo 100")
     c.setStrokeColor(azul_acento)
     c.setLineWidth(2)
-    c.line(30, y - 5, 220, y - 5)
-    y = y - 25
+    c.line(30, y - 4, 230, y - 4)
+    y -= 22
 
+    amort_detalle = modelo.get("0113_detalle", "")
     data = [
-        ["Casilla", "Descripcion", "Valor", "Estado"],
-        ["0062-0075", "Identificacion del inmueble", modelo["0062_0075"], "OK"],
-        ["0076", "Clave de uso", modelo["0076"], "OK"],
-        ["0100", "Reduccion vivienda habitual", modelo["0100"], "OK"],
-        ["0101", "Dias arrendado", f"{modelo['0101']} dias", "OK"],
-        ["0102", "Ingresos integros", f"{modelo['0102']:,.2f} EUR", "OK"],
-        ["0105", "Intereses y financiacion", f"{modelo['0105']:,.2f} EUR", "OK"],
-        ["0106", "Reparacion y conservacion", f"{modelo['0106']:,.2f} EUR", "OK"],
-        ["0107", "TOTAL GASTOS DEDUCIBLES", f"{modelo['0107']:,.2f} EUR", "OK"],
-        ["0108", "Tributos e IBI", f"{modelo['0108']:,.2f} EUR", "OK"],
-        ["0110", "Comunidad, seguros, formalizacion", f"{modelo['0110']:,.2f} EUR", "OK"],
-        ["0111", "Servicios y suministros", f"{modelo['0111']:,.2f} EUR", "OK"],
-        ["0112", "Gastos juridicos", f"{modelo['0112']:,.2f} EUR", "OK"],
-        ["0113", "Amortizacion (3%)", f"{modelo['0113']:,.2f} EUR", "OK"],
-        ["0149", "RENDIMIENTO NETO", f"{modelo['0149']:,.2f} EUR", "OK"],
-        ["0150", f"Reduccion {modelo['reduccion_pct']}%", f"-{modelo['0150']:,.2f} EUR", "OK"],
-        ["0153", "Retenciones practicadas", f"{modelo['0153']:,.2f} EUR", "OK"],
-        ["0152", "BASE IMPONIBLE FINAL", f"{modelo['0152']:,.2f} EUR", "OK"],
+        ["Casilla", "Descripcion", "Importe (EUR)", "Nota para asesor"],
+        ["0101", "Dias arrendado en el ano",        f"{modelo['0101']} dias",          ""],
+        ["0102", "Ingresos integros",                f"{modelo['0102']:,.2f}",           ""],
+        ["0105", "Intereses hipoteca/financiacion",  f"{modelo['0105']:,.2f}",           "Solo intereses, no capital"],
+        ["0106", "Reparacion y conservacion",        f"{modelo['0106']:,.2f}",           "Del diario contable"],
+        ["0108", "Tributos e IBI",                   f"{modelo['0108']:,.2f}",           ""],
+        ["0110", "Comunidad + Seguros + Ascensor",   f"{modelo['0110']:,.2f}",           "Hogar + vida + comunidad"],
+        ["0111", "Servicios y suministros",          f"{modelo['0111']:,.2f}",           ""],
+        ["0112", "Gastos juridicos",                 f"{modelo['0112']:,.2f}",           ""],
+        ["0113", "Amortizacion fiscal (3%)",         f"{modelo['0113']:,.2f}",           amort_detalle[:40] if amort_detalle else ""],
+        ["0107", "TOTAL GASTOS DEDUCIBLES",          f"{modelo['0107']:,.2f}",           ""],
+        ["0149", "RENDIMIENTO NETO",                 f"{modelo['0149']:,.2f}",           ""],
+        ["0150", f"Reduccion {modelo['reduccion_pct']}% (orientativa)",
+                                                     f"-{modelo['0150']:,.2f}",          "VALIDAR con asesor"],
+        ["0152", "RENDIMIENTO NETO REDUCIDO",        f"{modelo['0152']:,.2f}",           "VALIDAR con asesor"],
+        ["0153", "Retenciones practicadas",          f"{modelo['0153']:,.2f}",           ""],
     ]
-    t = Table(data, colWidths=[65, 230, 130, 50])
+
+    t = Table(data, colWidths=[58, 165, 90, 152])
     t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), azul_oscuro),
-        ('TEXTCOLOR', (0, 0), (-1, 0), white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
-        ('ALIGN', (2, 1), (2, -1), 'RIGHT'),
-        ('ALIGN', (3, 1), (3, -1), 'CENTER'),
-        ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),
-        ('GRID', (0, 0), (-1, -1), 0.5, gris_borde),
-        ('LINEBELOW', (0, 0), (-1, 0), 2, azul_acento),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -4), [white, gris_claro]),
-        ('BACKGROUND', (0, -4), (-1, -4), HexColor("#F0F8FF")),
-        ('FONTNAME', (0, -4), (-1, -4), 'Helvetica-Bold'),
-        ('BACKGROUND', (0, -3), (-1, -3), HexColor("#FFF9E6")),
-        ('FONTNAME', (0, -3), (-1, -3), 'Helvetica-Bold'),
-        ('BACKGROUND', (0, -1), (-1, -1), HexColor("#D5F4E6")),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('TEXTCOLOR', (2, -1), (2, -1), verde),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ("BACKGROUND",   (0, 0),  (-1, 0),  azul_oscuro),
+        ("TEXTCOLOR",    (0, 0),  (-1, 0),  white),
+        ("FONTNAME",     (0, 0),  (-1, 0),  "Helvetica-Bold"),
+        ("FONTSIZE",     (0, 0),  (-1, 0),  8),
+        ("FONTNAME",     (0, 1),  (-1, -1), "Helvetica"),
+        ("FONTSIZE",     (0, 1),  (-1, -1), 7.5),
+        ("ALIGN",        (2, 1),  (2, -1),  "RIGHT"),
+        ("FONTNAME",     (0, 1),  (0, -1),  "Helvetica-Bold"),
+        ("GRID",         (0, 0),  (-1, -1), 0.4, gris_borde),
+        ("LINEBELOW",    (0, 0),  (-1, 0),  2, azul_acento),
+        ("ROWBACKGROUNDS",(0,1),  (-1, -5), [white, gris_claro]),
+        ("BACKGROUND",   (0, -4), (-1, -4), HexColor("#F0F8FF")),
+        ("FONTNAME",     (0, -4), (-1, -4), "Helvetica-Bold"),
+        ("BACKGROUND",   (0, -3), (-1, -3), amarillo),
+        ("FONTNAME",     (0, -3), (-1, -3), "Helvetica-Bold"),
+        ("TEXTCOLOR",    (3, -3), (3, -3),  naranja),
+        ("BACKGROUND",   (0, -2), (-1, -2), HexColor("#FFF0DC")),
+        ("FONTNAME",     (0, -2), (-1, -2), "Helvetica-Bold"),
+        ("TEXTCOLOR",    (3, -2), (3, -2),  naranja),
+        ("BACKGROUND",   (0, -1), (-1, -1), gris_claro),
+        ("TOPPADDING",   (0, 0),  (-1, -1), 5),
+        ("BOTTOMPADDING",(0, 0),  (-1, -1), 5),
+        ("LEFTPADDING",  (0, 0),  (-1, -1), 6),
     ]))
     t.wrapOn(c, w, h)
-    t.drawOn(c, 30, y - len(data) * 20 - 10)
-    y_after = y - len(data) * 20 - 30
+    t.drawOn(c, 25, y - len(data) * 19 - 5)
+    y_after = y - len(data) * 19 - 20
 
-    y_res = y_after - 20
-    c.setFillColor(azul_acento)
-    c.roundRect(25, y_res - 65, w - 50, 65, 6, fill=True, stroke=False)
-    c.setFillColor(white)
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(40, y_res - 18, "RESUMEN FISCAL")
-    c.setFont("Helvetica", 9)
-    c.drawString(40, y_res - 35, f"Ingresos integros: {modelo['0102']:,.2f} EUR")
-    c.drawString(220, y_res - 35, f"Total gastos: {modelo['0102'] - modelo['0149']:,.2f} EUR")
-    c.drawString(430, y_res - 35, f"Reduccion: {modelo['reduccion_pct']}%")
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(40, y_res - 55, f"Base Imponible Final: {modelo['0152']:,.2f} EUR")
+    # ── AVISO PRINCIPAL ──────────────────────────────────────────
+    y_av = y_after - 15
+    c.setFillColor(amarillo)
+    c.roundRect(25, y_av - 55, w - 50, 55, 5, fill=True, stroke=False)
+    c.setStrokeColor(naranja)
+    c.setLineWidth(1)
+    c.roundRect(25, y_av - 55, w - 50, 55, 5, fill=False, stroke=True)
+    c.setFillColor(naranja)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(35, y_av - 14, "IMPORTANTE: Documento informativo — pendiente validacion por asesor fiscal")
+    c.setFont("Helvetica", 8)
+    c.setFillColor(HexColor("#5A4A00"))
+    c.drawString(35, y_av - 28, f"Reduccion 60% (cas. 0150): orientativa. Depende de los ingresos totales del contribuyente.")
+    c.drawString(35, y_av - 40, f"Amortizacion: MAX(precio compra, catastral) x % construccion x 3%. Verificar datos catastrales.")
+    if modelo.get("iva_aplicable"):
+        c.drawString(35, y_av - 52, "IVA: Este inmueble tributa por Modelo 303 (IVA). No incluido en este Modelo 100.")
 
-    # PÁGINA 2
+    # ── PÁGINA 2: VERIFICACIÓN Y FIRMA ───────────────────────────
     c.showPage()
     c.setFillColor(azul_oscuro)
     c.rect(0, h - 60, w, 60, fill=True, stroke=False)
@@ -840,76 +844,88 @@ def generar_pdf_modelo100(inmueble_data, modelo):
     c.setLineWidth(3)
     c.line(0, h - 63, w, h - 63)
 
-    # Firma digital
-    y_firma = h - 100
+    y_firma = h - 110
     c.setFillColor(azul_oscuro)
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(30, y_firma, "Verificacion y Firma Digital")
-    c.setStrokeColor(azul_acento)
-    c.setLineWidth(2)
-    c.line(30, y_firma - 5, 240, y_firma - 5)
-    y_firma -= 30
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(30, y_firma, "Verificacion y Firma")
+    c.setStrokeColor(gris_borde)
+    c.setLineWidth(1)
+
+    # Propietario
     c.setFillColor(gris_claro)
-    c.roundRect(25, y_firma - 90, (w - 50) / 2 - 10, 90, 6, fill=True, stroke=False)
-    c.roundRect((w / 2) + 5, y_firma - 90, (w - 50) / 2 - 10, 90, 6, fill=True, stroke=False)
+    c.roundRect(25, y_firma - 95, (w - 60) / 2, 80, 5, fill=True, stroke=False)
+    c.setStrokeColor(gris_borde)
+    c.roundRect(25, y_firma - 95, (w - 60) / 2, 80, 5, fill=False, stroke=True)
     c.setFillColor(azul_oscuro)
     c.setFont("Helvetica-Bold", 9)
-    c.drawString(35, y_firma - 15, "Propietario")
+    c.drawString(35, y_firma - 22, "Propietario")
     c.setFont("Helvetica", 8)
-    c.drawString(35, y_firma - 30, f"Nombre: {inmueble_data.get('Titular', 'Pedro Nolasco')}")
-    c.drawString(35, y_firma - 44, f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    c.drawString(35, y_firma - 38, f"Nombre: {inmueble_data.get('Titular', 'Pedro Nolasco')}")
+    c.drawString(35, y_firma - 52, f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
     c.setFillColor(verde)
-    c.setFont("Helvetica-Bold", 8)
-    c.drawString(35, y_firma - 62, "VERIFICADO DIGITALMENTE")
-    c.setFillColor(HexColor("#5A7A9A"))
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(35, y_firma - 68, "DATOS VERIFICADOS")
     c.setFont("Helvetica", 7)
-    c.drawString(35, y_firma - 75, f"Hash: NC{datetime.now().strftime('%Y%m%d%H%M')}{inmueble_data['Nombre'][:3].upper()}")
+    c.setFillColor(HexColor("#5A7A9A"))
+    c.drawString(35, y_firma - 80, f"Hash: NC{datetime.now().strftime('%Y%m%d%H%M')}{inmueble_data['Nombre'][:3].upper()}")
+
+    # Asesor
+    mid = 30 + (w - 60) / 2 + 10
+    c.setFillColor(HexColor("#FFFDF0"))
+    c.roundRect(mid, y_firma - 95, (w - 60) / 2, 80, 5, fill=True, stroke=False)
+    c.setStrokeColor(naranja)
+    c.roundRect(mid, y_firma - 95, (w - 60) / 2, 80, 5, fill=False, stroke=True)
     c.setFillColor(azul_oscuro)
     c.setFont("Helvetica-Bold", 9)
-    c.drawString(w / 2 + 15, y_firma - 15, "Asesor Fiscal")
+    c.drawString(mid + 10, y_firma - 22, "Asesor Fiscal")
     c.setFont("Helvetica", 8)
-    c.drawString(w / 2 + 15, y_firma - 30, "Nombre: ____________________________")
-    c.drawString(w / 2 + 15, y_firma - 44, "Fecha:  ____________________________")
-    c.drawString(w / 2 + 15, y_firma - 62, "Firma:  ____________________________")
+    c.setFillColor(naranja)
+    c.drawString(mid + 10, y_firma - 38, "PENDIENTE VALIDACION")
+    c.setFillColor(HexColor("#5A7A9A"))
+    c.drawString(mid + 10, y_firma - 52, "Nombre: ____________________________")
+    c.drawString(mid + 10, y_firma - 66, "Fecha:  ____________________________")
+    c.drawString(mid + 10, y_firma - 80, "Firma:  ____________________________")
 
     # Notas legales
-    y_notas = y_firma - 130
+    y_notas = y_firma - 120
     c.setFillColor(azul_oscuro)
     c.setFont("Helvetica-Bold", 10)
     c.drawString(30, y_notas, "Notas Legales")
     c.setStrokeColor(azul_acento)
-    c.setLineWidth(1)
-    c.line(30, y_notas - 5, 130, y_notas - 5)
-    notas = [
-        "1. Este documento es orientativo y no sustituye el asesoramiento fiscal profesional.",
-        "2. Los datos han sido pre-rellenados automaticamente desde la plataforma Nolasco Capital.",
-        "3. El propietario es responsable de verificar la exactitud de todos los importes.",
-        "4. Las reducciones aplicadas se basan en la normativa IRPF vigente (Ley 35/2006).",
-        f"5. Modalidad de arrendamiento declarada: {tipo_arr}. Reduccion aplicada: {modelo['reduccion_pct']}%.",
-        "6. La amortizacion se calcula al 3% sobre el valor de construccion (Art. 14 RIRPF).",
-        "7. Documento generado electronicamente. No requiere firma manuscrita del propietario.",
-        f"8. Referencia interna: {ref} | Generado: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}",
-    ]
-    c.setFont("Helvetica", 7)
-    c.setFillColor(HexColor("#5A7A9A"))
-    for i, nota in enumerate(notas):
-        c.drawString(30, y_notas - 20 - (i * 13), nota)
+    c.setLineWidth(1.5)
+    c.line(30, y_notas - 4, 140, y_notas - 4)
 
+    notas = [
+        "1. Este documento es INFORMATIVO y no sustituye el asesoramiento fiscal profesional.",
+        "2. Los datos han sido pre-rellenados automaticamente desde Nolasco Capital.",
+        "3. La reduccion del 60% (casilla 0150) es orientativa y depende de los ingresos totales",
+        "   del contribuyente. Debe ser validada y aplicada por el asesor fiscal.",
+        "4. La amortizacion fiscal se calcula como: MAX(precio compra total, valor catastral)",
+        "   x porcentaje de construccion x 3% x porcentaje de titularidad (Art. 14 RIRPF).",
+        "5. Los dias de arrendamiento (casilla 0101) afectan proporcionalmente a todos los gastos.",
+        f"6. Modalidad declarada: {tipo_arr}. Dias arrendados: {dias_arr}.",
+        "7. Si el inmueble esta arrendado a una empresa, el IVA tributa en Modelo 303.",
+        f"8. Referencia interna: {ref} | Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+    ]
+    c.setFont("Helvetica", 7.5)
+    yn = y_notas - 18
+    for nota in notas:
+        c.setFillColor(HexColor("#333333"))
+        c.drawString(30, yn, nota)
+        yn -= 13
+
+    # Footer
     c.setFillColor(azul_oscuro)
     c.rect(0, 0, w, 30, fill=True, stroke=False)
     c.setFillColor(white)
     c.setFont("Helvetica", 7)
-    c.drawString(30, 12, "Nolasco Capital  |  Granada  |  Gestion Patrimonial Inmobiliaria")
-    c.drawRightString(w - 30, 12, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    c.drawString(30, 11, "Nolasco Capital  |  Granada  |  Gestion Patrimonial Inmobiliaria")
+    c.drawRightString(w - 30, 11, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
     c.save()
     buffer.seek(0)
     return buffer
 
-# ================================================================
-# PANTALLA 1 — TORRE DE CONTROL
-# KPIs generales, rentabilidad por activo, lucro cesante, alertas
-# ================================================================
 def generar_contrato_larga_duracion(data):
     suministros_incluidos = []
     if data["incluye_luz"]: suministros_incluidos.append("electricidad")
