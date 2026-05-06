@@ -2609,14 +2609,12 @@ elif menu == "Datos de la Cartera":
             amortizacion_fiscal = base_amortizacion * 0.03 * pct_titular
             valor_real_construccion = max(base_compra, valor_catastral) * pct_construccion
 
-            st.markdown(f"""
-            <div style='background:#0F2744;border:1px solid #185FA5;border-radius:8px;padding:1rem;margin:0.5rem 0;'>
-                <b>📊 Amortización Fiscal Calculada:</b><br>
-                Base compra total: <b>{base_compra:,.0f} €</b> · Valor catastral: <b>{valor_catastral:,.0f} €</b><br>
-                Base amortización (mayor × % construcción): <b>{base_amortizacion:,.0f} €</b><br>
-                Amortización fiscal anual (3% × {pct_titular*100:.0f}% titularidad): <b style='color:#00C9A7;font-size:1.1rem;'>{amortizacion_fiscal:,.0f} €/año</b>
-            </div>
-            """, unsafe_allow_html=True)
+            st.success(f"""
+📊 **Amortización Fiscal Calculada**  
+Base compra total: **{base_compra:,.0f} €** · Valor catastral: **{valor_catastral:,.0f} €**  
+Base amortización (mayor × {pct_construccion*100:.0f}% construcción): **{base_amortizacion:,.0f} €**  
+✅ Amortización fiscal anual (3% × {pct_titular*100:.0f}% titularidad): **{amortizacion_fiscal:,.0f} €/año**
+            """)
 
             st.markdown("### 🅿️ Cochera / Garaje (si tributa independiente)")
             col_coch1, col_coch2, col_coch3 = st.columns(3)
