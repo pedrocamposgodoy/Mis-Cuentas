@@ -262,6 +262,9 @@ if "df_mov_persistent" not in st.session_state:
 df_inm = st.session_state.df_inm_persistent
 df_mov = st.session_state.df_mov_persistent
 
+# Guard para usuario nuevo sin inmuebles
+_sin_inmuebles = df_inm is None or len(df_inm) == 0
+
 # ================================================================
 # SECCIÓN 5 — DATOS DE HIPOTECAS
 # Para añadir/cambiar hipotecas, edita los "rows" de aquí
@@ -1520,6 +1523,9 @@ if menu == "Torre de Control":
 # Análisis de mercado, motor de tasación, simulador de renta
 # ================================================================
 elif menu == "Fichas (Benchmark)":
+    if _sin_inmuebles:
+        st.info("📭 Sin inmuebles registrados. Ve a **Datos de Cartera** para añadir el primero.")
+        st.stop()
     st.markdown('<div class="nc-brand-header">Benchmark y Análisis Fiscal</div>', unsafe_allow_html=True)
     st.markdown('<div class="nc-brand-sub">Análisis de mercado · Comparativa fiscal por modalidad</div>', unsafe_allow_html=True)
     
@@ -2206,6 +2212,9 @@ elif menu == "Suministros":
 # Pre-relleno automático de casillas, generador de PDF
 # ================================================================
 elif menu == "Fiscalidad":
+    if _sin_inmuebles:
+        st.info("📭 Sin inmuebles registrados. Ve a **Datos de Cartera** para añadir el primero.")
+        st.stop()
     st.markdown('<div class="nc-brand-header">Escudo Fiscal — Modelo 100</div>', unsafe_allow_html=True)
     st.markdown('<div class="nc-brand-sub">Pre-relleno IRPF · Rendimientos de capital inmobiliario</div>', unsafe_allow_html=True)
 
