@@ -74,7 +74,7 @@ COLS_INM = [
     "Valor_Catastral","Valor_Catastral_Piso","Pct_Suelo","Pct_Construccion",
     "Valor_Real_Construccion","Amortizacion_Fiscal","Seguro_Vida",
     "Gasto_Ascensor","Ref_Catastral_Cochera","IBI_Cocheras","Comunidad_Cocheras",
-    "IVA_Aplicable","Tipo_IVA","Retencion_IRPF_Pct",
+    "IVA_Aplicable","Tipo_IVA","Retencion_IRPF_Pct","Dias_Arrendados_Anio",
     "Gastos_Pendientes_Años_Ant","Servicios_Suministros"
 ]
 
@@ -87,7 +87,7 @@ DEFAULTS_FISCAL = {
     "Valor_Catastral":0,"Valor_Catastral_Piso":0,"Pct_Suelo":0.25,"Pct_Construccion":0.75,
     "Valor_Real_Construccion":0,"Amortizacion_Fiscal":0,"Seguro_Vida":0,
     "Gasto_Ascensor":0,"Ref_Catastral_Cochera":"","IBI_Cocheras":0,"Comunidad_Cocheras":0,
-    "IVA_Aplicable":False,"Tipo_IVA":21,"Retencion_IRPF_Pct":0,
+    "IVA_Aplicable":False,"Tipo_IVA":21,"Retencion_IRPF_Pct":0,"Dias_Arrendados_Anio":365,
     "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
 }
 
@@ -491,43 +491,101 @@ def calcular_dias_arrendado(row, año_fiscal=None):
         return 365
 
 def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
-    dias_arrendado = calcular_dias_arrendado(row, año_fiscal=año_fiscal)
+    import re as _re2
+    # ── Días arrendados (casilla 0101) ──────────────────────────
+    dias_arrendado = int(safe_float(row.get("Dias_Arrendados_Anio", 365)))
+    if dias_arrendado <= 0: dias_arrendado = 365
+    factor_dias = min(dias_arrendado, 365) / 365
+
+    # ── Ingresos (casilla 0102) ──────────────────────────────────
     renta_mensual = safe_float(row.get("Renta", 0))
-    ingresos_integros = renta_mensual * 12
-    intereses = safe_float(row.get("Intereses_Hipoteca", 0))
-    gastos_reparacion = df_mov_local[
+    ingresos_integros = round(renta_mensual * 12 * factor_dias, 2)
+
+    # ── Intereses hipoteca (casilla 0105) ────────────────────────
+    intereses = round(safe_float(row.get("Intereses_Hipoteca", 0)) * factor_dias, 2)
+
+    # ── Reparación y mantenimiento (casilla 0106) ────────────────
+    gastos_reparacion = round(df_mov_local[
         (df_mov_local["Apartamento"] == row["Nombre"]) &
         (df_mov_local["Tipo"] == "Gasto") &
         (df_mov_local["Categoría"].isin(["Mantenimiento", "Reparación"]))
-    ]["Importe"].sum()
-    ibi_anual = safe_float(row.get("IBI_Anual", 0))
+    ]["Importe"].sum() * factor_dias, 2)
+
+    # ── IBI (casilla 0108) ───────────────────────────────────────
+    ibi_anual = round(safe_float(row.get("IBI_Anual", 0)) * factor_dias, 2)
+
+    # ── Comunidad + Seguros + Ascensor + Formalización (casilla 0110) ──
     comunidad_anual = safe_float(row.get("Comunidad", 0)) * 12
-    seguro_anual = safe_float(row.get("Seguro_Anual", 0))
-    formalizacion = safe_float(row.get("Gastos_Formalizacion", 0))
-    casilla_0110 = comunidad_anual + seguro_anual + formalizacion
-    servicios = safe_float(row.get("Servicios_Suministros", 0))
-    gastos_juridicos = safe_float(row.get("Gastos_Juridicos", 0))
-    valor_construccion = safe_float(row.get("Valor_Construccion", 0))
-    amortizacion = valor_construccion * 0.03
-    gastos_años_ant = safe_float(row.get("Gastos_Pendientes_Años_Ant", 0))
-    total_gastos = intereses + gastos_reparacion + ibi_anual + casilla_0110 + servicios + gastos_juridicos + amortizacion + gastos_años_ant
-    rendimiento_neto = ingresos_integros - total_gastos
+    seguro_hogar    = safe_float(row.get("Seguro_Anual", 0))
+    seguro_vida     = safe_float(row.get("Seguro_Vida", 0))
+    gasto_ascensor  = safe_float(row.get("Gasto_Ascensor", 0))
+    formalizacion   = safe_float(row.get("Gastos_Formalizacion", 0))
+    casilla_0110 = round((comunidad_anual + seguro_hogar + seguro_vida + gasto_ascensor + formalizacion) * factor_dias, 2)
+
+    # ── Servicios suministros (casilla 0111) ─────────────────────
+    servicios = round(safe_float(row.get("Servicios_Suministros", 0)) * factor_dias, 2)
+
+    # ── Gastos jurídicos (casilla 0112) ──────────────────────────
+    gastos_juridicos = round(safe_float(row.get("Gastos_Juridicos", 0)) * factor_dias, 2)
+
+    # ── Amortización fiscal CORRECTA (casilla 0113) ──────────────
+    # MAX(precio compra + impuestos + gastos, valor catastral) × % construcción × 3% × % titularidad
+    precio_compra    = safe_float(row.get("Precio_Compra", 0))
+    impuestos_compra = safe_float(row.get("Impuestos_Compra", 0))
+    gastos_compra_v  = safe_float(row.get("Gastos_Compra", 0))
+    valor_catastral  = safe_float(row.get("Valor_Catastral", 0))
+    pct_construccion = safe_float(row.get("Pct_Construccion", 0.75))
+    titular_str      = str(row.get("Titular", "100"))
+    _m = _re2.search(r'(\d+(?:\.\d+)?)', titular_str)
+    pct_titular = float(_m.group(1)) / 100 if _m else 1.0
+    if pct_titular > 1: pct_titular = pct_titular / 100
+    base_compra = precio_compra + impuestos_compra + gastos_compra_v
+    # Si no hay datos de compra, usar valor_construccion como fallback
+    if base_compra == 0:
+        base_compra = safe_float(row.get("Valor_Construccion", 0))
+    base_amortizacion = max(base_compra, valor_catastral) * pct_construccion
+    amortizacion = round(base_amortizacion * 0.03 * pct_titular * factor_dias, 2)
+
+    # ── Gastos años anteriores ────────────────────────────────────
+    gastos_años_ant = round(safe_float(row.get("Gastos_Pendientes_Años_Ant", 0)), 2)
+
+    # ── Totales ───────────────────────────────────────────────────
+    total_gastos = round(intereses + gastos_reparacion + ibi_anual + casilla_0110 +
+                         servicios + gastos_juridicos + amortizacion + gastos_años_ant, 2)
+    rendimiento_neto = round(ingresos_integros - total_gastos, 2)
+
+    # ── Reducción (casilla 0150) — informativa, validar con asesor ──
     tipo_arrendamiento = str(row.get("Tipo_Arrendamiento", "Larga Duración"))
-    reduccion_pct = 0.60 if tipo_arrendamiento == "Larga Duración" else 0.00
-    reduccion_importe = rendimiento_neto * reduccion_pct
+    reduccion_pct      = 0.60 if tipo_arrendamiento == "Larga Duración" else 0.00
+    reduccion_importe  = round(rendimiento_neto * reduccion_pct, 2)
+    rendimiento_final  = round(rendimiento_neto - reduccion_importe, 2)
+
+    # ── Retenciones (casilla 0153) ────────────────────────────────
     retenciones = safe_float(row.get("Retenciones_IRPF", 0))
-    rendimiento_final = rendimiento_neto - reduccion_importe
+
     return {
-        "0062_0075": f"Ref: {row.get('Ref_Catastral', 'N/A')}",
-        "0076": "A (Arrendamiento)", "0100": "SÍ" if tipo_arrendamiento == "Larga Duración" else "NO",
-        "0101": dias_arrendado, "0102": round(ingresos_integros, 2),
-        "0105": round(intereses, 2), "0106": round(gastos_reparacion, 2),
-        "0107": round(total_gastos, 2),
-        "0108": round(ibi_anual, 2), "0110": round(casilla_0110, 2),
-        "0111": round(servicios, 2), "0112": round(gastos_juridicos, 2),
-        "0113": round(amortizacion, 2), "0149": round(rendimiento_neto, 2),
-        "0150": round(reduccion_importe, 2), "0153": round(retenciones, 2),
-        "0152": round(rendimiento_final, 2), "reduccion_pct": int(reduccion_pct * 100)
+        "0062_0075":    f"Ref: {row.get('Ref_Catastral', 'N/A')}",
+        "0076":         "A (Arrendamiento)",
+        "0100":         "SÍ" if tipo_arrendamiento == "Larga Duración" else "NO",
+        "0101":         dias_arrendado,
+        "0102":         ingresos_integros,
+        "0105":         intereses,
+        "0106":         gastos_reparacion,
+        "0107":         total_gastos,
+        "0108":         ibi_anual,
+        "0110":         casilla_0110,
+        "0111":         servicios,
+        "0112":         gastos_juridicos,
+        "0113":         amortizacion,
+        "0113_detalle": f"MAX({base_compra:,.0f}€ compra, {valor_catastral:,.0f}€ catastral) × {pct_construccion*100:.0f}% × 3% × {pct_titular*100:.0f}%",
+        "0149":         rendimiento_neto,
+        "0150":         reduccion_importe,
+        "0152":         rendimiento_final,
+        "0153":         round(retenciones, 2),
+        "reduccion_pct": int(reduccion_pct * 100),
+        "nota_reduccion": "⚠️ Reducción 60% orientativa — validar con asesor según ingresos totales contribuyente",
+        "iva_aplicable":  bool(row.get("IVA_Aplicable", False)),
+        "tipo_arrendamiento": tipo_arrendamiento,
     }
 
 # ================================================================
@@ -2151,29 +2209,33 @@ elif menu == "Fiscalidad":
     st.markdown('<div class="nc-section-title">📋 Casillas Modelo 100 — Verificar y Confirmar</div>', unsafe_allow_html=True)
     st.caption("Revisa cada casilla. Los valores están pre-rellenados desde tus datos.")
 
-    # Tabla con DataFrame en lugar de HTML + checkboxes rotos
+    # Tabla casillas Modelo 100 — datos informativos para el asesor
     casillas_data = [
-        {"Casilla": "0062-0075", "Descripción": "Identificación del inmueble", "Valor": modelo["0062_0075"]},
-        {"Casilla": "0076", "Descripción": "Clave de uso", "Valor": modelo["0076"]},
-        {"Casilla": "0100", "Descripción": "Reducción vivienda habitual", "Valor": modelo["0100"]},
-        {"Casilla": "0101", "Descripción": "Días arrendado", "Valor": f"{modelo['0101']} días"},
-        {"Casilla": "0102", "Descripción": "Ingresos íntegros", "Valor": f"{modelo['0102']:,.2f} €"},
-        {"Casilla": "0105", "Descripción": "Intereses y financiación", "Valor": f"{modelo['0105']:,.2f} €"},
-        {"Casilla": "0106", "Descripción": "Reparación y conservación", "Valor": f"{modelo['0106']:,.2f} €"},
-        {"Casilla": "0107", "Descripción": "TOTAL GASTOS DEDUCIBLES", "Valor": f"{modelo['0107']:,.2f} €"},
-        {"Casilla": "0108", "Descripción": "Tributos e IBI", "Valor": f"{modelo['0108']:,.2f} €"},
-        {"Casilla": "0110", "Descripción": "Comunidad, seguros, formalización", "Valor": f"{modelo['0110']:,.2f} €"},
-        {"Casilla": "0111", "Descripción": "Servicios y suministros", "Valor": f"{modelo['0111']:,.2f} €"},
-        {"Casilla": "0112", "Descripción": "Gastos jurídicos", "Valor": f"{modelo['0112']:,.2f} €"},
-        {"Casilla": "0113", "Descripción": "Amortización (3%)", "Valor": f"{modelo['0113']:,.2f} €"},
-        {"Casilla": "0149", "Descripción": "RENDIMIENTO NETO", "Valor": f"{modelo['0149']:,.2f} €"},
-        {"Casilla": "0150", "Descripción": f"Reducción {modelo['reduccion_pct']}%", "Valor": f"-{modelo['0150']:,.2f} €"},
-        {"Casilla": "0153", "Descripción": "Retenciones practicadas", "Valor": f"{modelo['0153']:,.2f} €"},
-        {"Casilla": "0152", "Descripción": "BASE IMPONIBLE FINAL", "Valor": f"{modelo['0152']:,.2f} €"},
+        {"Casilla": "0062-0075", "Descripción": "Identificación del inmueble", "Valor": modelo["0062_0075"], "Nota": ""},
+        {"Casilla": "0076",      "Descripción": "Clave de uso", "Valor": modelo["0076"], "Nota": ""},
+        {"Casilla": "0100",      "Descripción": "Reducción vivienda habitual", "Valor": modelo["0100"], "Nota": ""},
+        {"Casilla": "0101",      "Descripción": "Días arrendado en el año", "Valor": f"{modelo['0101']} días", "Nota": ""},
+        {"Casilla": "0102",      "Descripción": "Ingresos íntegros", "Valor": f"{modelo['0102']:,.2f} €", "Nota": ""},
+        {"Casilla": "0105",      "Descripción": "Intereses hipoteca/financiación", "Valor": f"{modelo['0105']:,.2f} €", "Nota": "Solo intereses, no capital"},
+        {"Casilla": "0106",      "Descripción": "Reparación y conservación", "Valor": f"{modelo['0106']:,.2f} €", "Nota": "Del diario contable"},
+        {"Casilla": "0108",      "Descripción": "Tributos e IBI", "Valor": f"{modelo['0108']:,.2f} €", "Nota": ""},
+        {"Casilla": "0110",      "Descripción": "Comunidad + Seguros + Ascensor", "Valor": f"{modelo['0110']:,.2f} €", "Nota": "Seguro hogar + vida + comunidad"},
+        {"Casilla": "0111",      "Descripción": "Servicios y suministros", "Valor": f"{modelo['0111']:,.2f} €", "Nota": ""},
+        {"Casilla": "0112",      "Descripción": "Gastos jurídicos y administrativos", "Valor": f"{modelo['0112']:,.2f} €", "Nota": ""},
+        {"Casilla": "0113",      "Descripción": "Amortización fiscal (3%)", "Valor": f"{modelo['0113']:,.2f} €", "Nota": modelo.get("0113_detalle","")},
+        {"Casilla": "0107",      "Descripción": "TOTAL GASTOS DEDUCIBLES", "Valor": f"{modelo['0107']:,.2f} €", "Nota": ""},
+        {"Casilla": "0149",      "Descripción": "RENDIMIENTO NETO", "Valor": f"{modelo['0149']:,.2f} €", "Nota": ""},
+        {"Casilla": "0150",      "Descripción": f"Reducción {modelo['reduccion_pct']}% (orientativa)", "Valor": f"-{modelo['0150']:,.2f} €", "Nota": "⚠️ Validar con asesor"},
+        {"Casilla": "0152",      "Descripción": "RENDIMIENTO NETO REDUCIDO", "Valor": f"{modelo['0152']:,.2f} €", "Nota": "⚠️ Pendiente validación asesor"},
+        {"Casilla": "0153",      "Descripción": "Retenciones practicadas", "Valor": f"{modelo['0153']:,.2f} €", "Nota": ""},
     ]
 
     df_casillas = pd.DataFrame(casillas_data)
-    st.dataframe(df_casillas, use_container_width=True, hide_index=True, height=600)
+    st.dataframe(df_casillas, use_container_width=True, hide_index=True, height=620)
+
+    # Aviso IVA si aplica
+    if modelo.get("iva_aplicable"):
+        st.warning("⚠️ Este inmueble tiene IVA aplicable (arrendamiento a empresa). El IVA tributa por Modelo 303 — no en este Modelo 100.")
 
     # Botón generar PDF
     st.markdown("---")
@@ -2198,7 +2260,17 @@ elif menu == "Fiscalidad":
     # Notas
     st.markdown('<div class="nc-section-title">ℹ️ Información Importante</div>', unsafe_allow_html=True)
     cochera_txt = "Consolidada en arrendamiento principal" if f_fiscal.get("Cochera_Vinculada")=="S" else "Tributa independiente"
-    st.markdown(f"""<div class="status-yellow"><b>⚠️ Antes de confirmar:</b><br>• Este pre-relleno es orientativo. Verifica con tu asesor fiscal.<br>• Cochera vinculada: {f_fiscal.get('Cochera_Vinculada','N')} — {cochera_txt}<br>• Modalidad: {f_fiscal.get('Tipo_Arrendamiento','Larga Duración')} — Reducción aplicable: {modelo['reduccion_pct']}%<br>• Los datos provienen de: Fichas de inmuebles + Diario Contable</div>""", unsafe_allow_html=True)
+    dias_arr = int(safe_float(f_fiscal.get("Dias_Arrendados_Anio", 365)))
+    st.markdown(f"""<div class="status-yellow">
+        <b>⚠️ Datos orientativos — validar con asesor fiscal antes de presentar</b><br>
+        • Días arrendados: <b>{dias_arr} días</b> (casilla 0101) — gastos proporcionados a este período<br>
+        • Modalidad: <b>{f_fiscal.get('Tipo_Arrendamiento','Larga Duración')}</b> — Reducción 60% aplica si larga duración y vivienda habitual<br>
+        • Reducción 60% (casilla 0150): <b>pendiente validación según ingresos totales del contribuyente</b><br>
+        • Cochera vinculada: {f_fiscal.get('Cochera_Vinculada','N')} — {cochera_txt}<br>
+        • Amortización calculada: MAX(precio compra total, catastral) × % construcción × 3%<br>
+        • Si arrendamiento a empresa: IVA tributa en Modelo 303, no aquí<br>
+        • Fuente datos: Fichas de inmuebles + Diario Contable Nolasco Capital
+    </div>""", unsafe_allow_html=True)
 
 # ================================================================
 # PANTALLA 7 — MACROFINANZAS (BLOQUE 5)
@@ -2514,7 +2586,7 @@ elif menu == "Datos de la Cartera":
                     value=pd.to_datetime(datos.get("Fecha_Inicio_Contrato", "2024-01-01")).date()
                     if pd.notna(datos.get("Fecha_Inicio_Contrato")) else date(2024, 1, 1))
             with col12:
-                tipo_arrendamiento_emp = st.checkbox("¿Arrendamiento a empresa?",
+                iva_aplicable = st.checkbox("¿Arrendamiento a empresa (IVA)?",
                     value=bool(datos.get("IVA_Aplicable", False)))
                 fecha_vencimiento = st.date_input("Fecha Vencimiento Contrato",
                     value=pd.to_datetime(datos.get("Fecha_Vencimiento_Contrato", "2025-12-31")).date()
@@ -2523,14 +2595,22 @@ elif menu == "Datos de la Cartera":
                 retencion_irpf_pct = st.number_input("Retención IRPF (%)",
                     value=safe_float(datos.get("Retencion_IRPF_Pct"), 0.0),
                     min_value=0.0, max_value=25.0, step=1.0,
-                    help="19% para arrendamientos a empresas. 0% para particulares.")
-                if tipo_arrendamiento_emp:
-                    tipo_iva = st.number_input("Tipo IVA (%)",
-                        value=safe_float(datos.get("Tipo_IVA"), 21.0),
-                        min_value=0.0, max_value=21.0, step=1.0)
-                else:
-                    tipo_iva = 0.0
-                iva_aplicable = tipo_arrendamiento_emp
+                    help="19% arrendamientos a empresas · 0% particulares")
+                tipo_iva = st.number_input("Tipo IVA (%)",
+                    value=safe_float(datos.get("Tipo_IVA"), 21.0),
+                    min_value=0.0, max_value=21.0, step=1.0,
+                    disabled=not iva_aplicable)
+
+            col_dias1, col_dias2 = st.columns(2)
+            with col_dias1:
+                dias_arrendados = st.number_input(
+                    "Días arrendados en el año fiscal (casilla 0101)",
+                    value=safe_float(datos.get("Dias_Arrendados_Anio"), 365.0),
+                    min_value=0.0, max_value=366.0, step=1.0,
+                    help="365 = larga duración todo el año · Menos si temporada o hubo vacíos")
+            with col_dias2:
+                gastos_formalizacion = st.number_input("Gastos Formalización (€)",
+                    value=safe_float(datos.get("Gastos_Formalizacion"), 0.0), min_value=0.0, step=10.0)
 
             st.markdown("### 💰 Gastos Deducibles IRPF")
             col8, col9, col10 = st.columns(3)
@@ -2544,32 +2624,27 @@ elif menu == "Datos de la Cartera":
             with col9:
                 intereses_hipoteca = st.number_input("Intereses Hipoteca (€)",
                     value=safe_float(datos.get("Intereses_Hipoteca"), 0.0), min_value=0.0, step=100.0,
-                    help="Solo intereses, NO amortización de capital")
+                    help="Solo intereses · NO amortización de capital")
                 gastos_juridicos = st.number_input("Gastos Jurídicos (€)",
                     value=safe_float(datos.get("Gastos_Juridicos"), 0.0), min_value=0.0, step=10.0)
-                gasto_ascensor = st.number_input("Ascensor/Comunidad extra (€)",
+                gasto_ascensor = st.number_input("Ascensor / Comunidad extra (€)",
                     value=safe_float(datos.get("Gasto_Ascensor"), 0.0), min_value=0.0, step=10.0)
             with col10:
                 retenciones_irpf = st.number_input("Retenciones IRPF año (€)",
                     value=safe_float(datos.get("Retenciones_IRPF"), 0.0), min_value=0.0, step=10.0,
-                    help="Total retenido por el inquilino empresa en el año para la declaración")
-                gastos_formalizacion = st.number_input("Gastos Formalización (€)",
-                    value=safe_float(datos.get("Gastos_Formalizacion"), 0.0), min_value=0.0, step=10.0)
+                    help="Total retenido por inquilino empresa en el año · Para declaración")
                 gastos_pend_años_ant = st.number_input("Gastos Pend. Años Ant. (€)",
                     value=safe_float(datos.get("Gastos_Pendientes_Años_Ant"), 0.0), min_value=0.0, step=10.0)
-
-            col_ss1, col_ss2 = st.columns(2)
-            with col_ss1:
                 servicios_suministros = st.number_input("Servicios y Suministros (€)",
                     value=safe_float(datos.get("Servicios_Suministros"), 0.0), min_value=0.0, step=10.0)
 
             st.markdown("### 🏛️ Datos para Amortización Fiscal")
-            st.info("La amortización fiscal se calculará automáticamente: MAX(Precio compra total, Valor catastral) × % construcción × 3% × % titularidad")
+            st.info("Amortización = MAX(precio compra total, valor catastral) × % construcción × 3% × % titularidad")
             col_am1, col_am2, col_am3 = st.columns(3)
             with col_am1:
-                fecha_adquisicion_raw = datos.get("Fecha_Adquisicion")
                 try:
-                    fecha_adq_val = pd.to_datetime(fecha_adquisicion_raw).date() if fecha_adquisicion_raw and pd.notna(fecha_adquisicion_raw) else date(2010, 1, 1)
+                    fecha_adq_raw = datos.get("Fecha_Adquisicion")
+                    fecha_adq_val = pd.to_datetime(fecha_adq_raw).date() if fecha_adq_raw and str(fecha_adq_raw) not in ["nan","None",""] else date(2010, 1, 1)
                 except:
                     fecha_adq_val = date(2010, 1, 1)
                 fecha_adquisicion = st.date_input("Fecha Adquisición Inmueble", value=fecha_adq_val)
@@ -2578,7 +2653,7 @@ elif menu == "Datos de la Cartera":
             with col_am2:
                 impuestos_compra = st.number_input("Impuestos Compra ITP/IVA (€)",
                     value=safe_float(datos.get("Impuestos_Compra"), 0.0), min_value=0.0, step=100.0)
-                gastos_compra = st.number_input("Gastos Compra Notaría/Registro (€)",
+                gastos_compra = st.number_input("Gastos Notaría/Registro (€)",
                     value=safe_float(datos.get("Gastos_Compra"), 0.0), min_value=0.0, step=100.0)
             with col_am3:
                 valor_catastral = st.number_input("Valor Catastral Total (€)",
@@ -2591,28 +2666,27 @@ elif menu == "Datos de la Cartera":
                 pct_suelo = st.slider("% Suelo (catastral)",
                     min_value=0.0, max_value=1.0,
                     value=safe_float(datos.get("Pct_Suelo"), 0.25), step=0.01,
-                    format="%.0f%%",
+                    format="%.2f",
                     help="Porcentaje del valor catastral correspondiente al suelo")
             with col_pct2:
-                pct_construccion = 1.0 - pct_suelo
+                pct_construccion = round(1.0 - pct_suelo, 2)
                 st.metric("% Construcción (calculado)", f"{pct_construccion*100:.0f}%")
 
             # Cálculo automático amortización fiscal
+            import re as _re
             base_compra = precio_compra + impuestos_compra + gastos_compra
             base_amortizacion = max(base_compra, valor_catastral) * pct_construccion
-            # % titular (extraer número de "50%", "100%", "Pedro 50%", etc.)
             titular_str = str(datos.get("Titular", "100"))
-            import re
-            pct_titular_match = re.search(r'(\d+(?:\.\d+)?)\s*%?', titular_str)
-            pct_titular = float(pct_titular_match.group(1)) / 100 if pct_titular_match else 1.0
+            _match = _re.search(r'(\d+(?:\.\d+)?)', titular_str)
+            pct_titular = float(_match.group(1)) / 100 if _match else 1.0
             if pct_titular > 1: pct_titular = pct_titular / 100
-            amortizacion_fiscal = base_amortizacion * 0.03 * pct_titular
-            valor_real_construccion = max(base_compra, valor_catastral) * pct_construccion
+            amortizacion_fiscal = round(base_amortizacion * 0.03 * pct_titular, 2)
+            valor_real_construccion = round(max(base_compra, valor_catastral) * pct_construccion, 2)
 
             st.success(f"""
-📊 **Amortización Fiscal Calculada**  
-Base compra total: **{base_compra:,.0f} €** · Valor catastral: **{valor_catastral:,.0f} €**  
-Base amortización (mayor × {pct_construccion*100:.0f}% construcción): **{base_amortizacion:,.0f} €**  
+📊 **Amortización Fiscal Calculada**
+Base compra total: **{base_compra:,.0f} €** · Valor catastral: **{valor_catastral:,.0f} €**
+Base amortización (mayor × {pct_construccion*100:.0f}% construcción): **{base_amortizacion:,.0f} €**
 ✅ Amortización fiscal anual (3% × {pct_titular*100:.0f}% titularidad): **{amortizacion_fiscal:,.0f} €/año**
             """)
 
@@ -2654,9 +2728,11 @@ Base amortización (mayor × {pct_construccion*100:.0f}% construcción): **{base
                         "Fecha_Inicio_Contrato": fecha_inicio.strftime("%Y-%m-%d"),
                         "Fecha_Vencimiento_Contrato": fecha_vencimiento.strftime("%Y-%m-%d"),
                         "Fecha_Adquisicion": fecha_adquisicion.strftime("%Y-%m-%d"),
-                        "NIF_Inquilino": nif_inquilino, "Intereses_Hipoteca": intereses_hipoteca,
+                        "Dias_Arrendados_Anio": int(dias_arrendados),
+                        "NIF_Inquilino": nif_inquilino,
                         "IBI_Anual": ibi_anual, "Seguro_Anual": seguro_anual, "Seguro_Vida": seguro_vida,
-                        "Gastos_Juridicos": gastos_juridicos, "Gasto_Ascensor": gasto_ascensor,
+                        "Intereses_Hipoteca": intereses_hipoteca, "Gasto_Ascensor": gasto_ascensor,
+                        "Gastos_Juridicos": gastos_juridicos,
                         "Retenciones_IRPF": retenciones_irpf, "Retencion_IRPF_Pct": retencion_irpf_pct,
                         "IVA_Aplicable": iva_aplicable, "Tipo_IVA": tipo_iva,
                         "Gastos_Formalizacion": gastos_formalizacion,
@@ -2666,8 +2742,8 @@ Base amortización (mayor × {pct_construccion*100:.0f}% construcción): **{base
                         "Gastos_Compra": gastos_compra, "Valor_Catastral": valor_catastral,
                         "Valor_Catastral_Piso": valor_catastral_piso, "Pct_Suelo": pct_suelo,
                         "Pct_Construccion": pct_construccion,
-                        "Valor_Real_Construccion": round(valor_real_construccion, 2),
-                        "Amortizacion_Fiscal": round(amortizacion_fiscal, 2),
+                        "Valor_Real_Construccion": valor_real_construccion,
+                        "Amortizacion_Fiscal": amortizacion_fiscal,
                         "Ref_Catastral_Cochera": ref_catastral_cochera,
                         "IBI_Cocheras": ibi_cocheras, "Comunidad_Cocheras": comunidad_cocheras,
                     }
