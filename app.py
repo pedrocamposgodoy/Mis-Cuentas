@@ -70,6 +70,11 @@ COLS_INM = [
     "Fecha_Inicio_Contrato","Fecha_Vencimiento_Contrato",
     "NIF_Inquilino","Intereses_Hipoteca","IBI_Anual","Seguro_Anual",
     "Gastos_Juridicos","Retenciones_IRPF","Gastos_Formalizacion",
+    "Fecha_Adquisicion","Precio_Compra","Impuestos_Compra","Gastos_Compra",
+    "Valor_Catastral","Valor_Catastral_Piso","Pct_Suelo","Pct_Construccion",
+    "Valor_Real_Construccion","Amortizacion_Fiscal","Seguro_Vida",
+    "Gasto_Ascensor","Ref_Catastral_Cochera","IBI_Cocheras","Comunidad_Cocheras",
+    "IVA_Aplicable","Tipo_IVA","Retencion_IRPF_Pct",
     "Gastos_Pendientes_Años_Ant","Servicios_Suministros"
 ]
 
@@ -78,6 +83,11 @@ DEFAULTS_FISCAL = {
     "Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01",
     "NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":0,"Seguro_Anual":0,
     "Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,
+    "Fecha_Adquisicion":None,"Precio_Compra":0,"Impuestos_Compra":0,"Gastos_Compra":0,
+    "Valor_Catastral":0,"Valor_Catastral_Piso":0,"Pct_Suelo":0.25,"Pct_Construccion":0.75,
+    "Valor_Real_Construccion":0,"Amortizacion_Fiscal":0,"Seguro_Vida":0,
+    "Gasto_Ascensor":0,"Ref_Catastral_Cochera":"","IBI_Cocheras":0,"Comunidad_Cocheras":0,
+    "IVA_Aplicable":False,"Tipo_IVA":21,"Retencion_IRPF_Pct":0,
     "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
 }
 
@@ -2496,32 +2506,129 @@ elif menu == "Datos de la Cartera":
                 cochera_vinculada = st.selectbox("Cochera Vinculada", ["N", "S"], index=0 if datos.get("Cochera_Vinculada") == "N" else 1)
                 zona_tensionada = st.selectbox("Zona Tensionada", ["N", "S"], index=0 if datos.get("Zona_Tensionada") == "N" else 1)
 
-            st.markdown("### 💰 Datos Fiscales")
+            st.markdown("### 📅 Contrato e Inquilino")
+            col11, col12, col13 = st.columns(3)
+            with col11:
+                nif_inquilino = st.text_input("NIF Inquilino", value=datos.get("NIF_Inquilino", ""), placeholder="12345678A")
+                fecha_inicio = st.date_input("Fecha Inicio Contrato",
+                    value=pd.to_datetime(datos.get("Fecha_Inicio_Contrato", "2024-01-01")).date()
+                    if pd.notna(datos.get("Fecha_Inicio_Contrato")) else date(2024, 1, 1))
+            with col12:
+                tipo_arrendamiento_emp = st.checkbox("¿Arrendamiento a empresa?",
+                    value=bool(datos.get("IVA_Aplicable", False)))
+                fecha_vencimiento = st.date_input("Fecha Vencimiento Contrato",
+                    value=pd.to_datetime(datos.get("Fecha_Vencimiento_Contrato", "2025-12-31")).date()
+                    if pd.notna(datos.get("Fecha_Vencimiento_Contrato")) else date(2025, 12, 31))
+            with col13:
+                retencion_irpf_pct = st.number_input("Retención IRPF (%)",
+                    value=safe_float(datos.get("Retencion_IRPF_Pct"), 0.0),
+                    min_value=0.0, max_value=25.0, step=1.0,
+                    help="19% para arrendamientos a empresas. 0% para particulares.")
+                if tipo_arrendamiento_emp:
+                    tipo_iva = st.number_input("Tipo IVA (%)",
+                        value=safe_float(datos.get("Tipo_IVA"), 21.0),
+                        min_value=0.0, max_value=21.0, step=1.0)
+                else:
+                    tipo_iva = 0.0
+                iva_aplicable = tipo_arrendamiento_emp
+
+            st.markdown("### 💰 Gastos Deducibles IRPF")
             col8, col9, col10 = st.columns(3)
             with col8:
-                nif_inquilino = st.text_input("NIF Inquilino", value=datos.get("NIF_Inquilino", ""), placeholder="12345678A")
-                ibi_anual = st.number_input("IBI Anual (€)", value=safe_float(datos.get("IBI_Anual"), 0.0), min_value=0.0, step=10.0)
+                ibi_anual = st.number_input("IBI Anual (€)",
+                    value=safe_float(datos.get("IBI_Anual"), 0.0), min_value=0.0, step=10.0)
+                seguro_anual = st.number_input("Seguro Hogar Anual (€)",
+                    value=safe_float(datos.get("Seguro_Anual"), 0.0), min_value=0.0, step=10.0)
+                seguro_vida = st.number_input("Seguro Vida Anual (€)",
+                    value=safe_float(datos.get("Seguro_Vida"), 0.0), min_value=0.0, step=10.0)
             with col9:
-                seguro_anual = st.number_input("Seguro Anual (€)", value=safe_float(datos.get("Seguro_Anual"), 0.0), min_value=0.0, step=10.0)
-                intereses_hipoteca = st.number_input("Intereses Hipoteca (€)", value=safe_float(datos.get("Intereses_Hipoteca"), 0.0), min_value=0.0, step=100.0)
+                intereses_hipoteca = st.number_input("Intereses Hipoteca (€)",
+                    value=safe_float(datos.get("Intereses_Hipoteca"), 0.0), min_value=0.0, step=100.0,
+                    help="Solo intereses, NO amortización de capital")
+                gastos_juridicos = st.number_input("Gastos Jurídicos (€)",
+                    value=safe_float(datos.get("Gastos_Juridicos"), 0.0), min_value=0.0, step=10.0)
+                gasto_ascensor = st.number_input("Ascensor/Comunidad extra (€)",
+                    value=safe_float(datos.get("Gasto_Ascensor"), 0.0), min_value=0.0, step=10.0)
             with col10:
-                gastos_juridicos = st.number_input("Gastos Jurídicos (€)", value=safe_float(datos.get("Gastos_Juridicos"), 0.0), min_value=0.0, step=10.0)
-                retenciones_irpf = st.number_input("Retenciones IRPF (€)", value=safe_float(datos.get("Retenciones_IRPF"), 0.0), min_value=0.0, step=10.0)
+                retenciones_irpf = st.number_input("Retenciones IRPF año (€)",
+                    value=safe_float(datos.get("Retenciones_IRPF"), 0.0), min_value=0.0, step=10.0,
+                    help="Total retenido por el inquilino empresa en el año para la declaración")
+                gastos_formalizacion = st.number_input("Gastos Formalización (€)",
+                    value=safe_float(datos.get("Gastos_Formalizacion"), 0.0), min_value=0.0, step=10.0)
+                gastos_pend_años_ant = st.number_input("Gastos Pend. Años Ant. (€)",
+                    value=safe_float(datos.get("Gastos_Pendientes_Años_Ant"), 0.0), min_value=0.0, step=10.0)
 
-            st.markdown("### 📅 Contrato")
-            col11, col12 = st.columns(2)
-            with col11:
-                fecha_inicio = st.date_input("Fecha Inicio Contrato", value=pd.to_datetime(datos.get("Fecha_Inicio_Contrato", "2024-01-01")).date() if pd.notna(datos.get("Fecha_Inicio_Contrato")) else date(2024, 1, 1))
-            with col12:
-                fecha_vencimiento = st.date_input("Fecha Vencimiento Contrato", value=pd.to_datetime(datos.get("Fecha_Vencimiento_Contrato", "2025-12-31")).date() if pd.notna(datos.get("Fecha_Vencimiento_Contrato")) else date(2025, 12, 31))
+            col_ss1, col_ss2 = st.columns(2)
+            with col_ss1:
+                servicios_suministros = st.number_input("Servicios y Suministros (€)",
+                    value=safe_float(datos.get("Servicios_Suministros"), 0.0), min_value=0.0, step=10.0)
 
-            col_otros1, col_otros2 = st.columns(2)
-            with col_otros1:
-                gastos_formalizacion = st.number_input("Gastos Formalización (€)", value=safe_float(datos.get("Gastos_Formalizacion"), 0.0), min_value=0.0, step=10.0)
-            with col_otros2:
-                gastos_pend_años_ant = st.number_input("Gastos Pend. Años Ant. (€)", value=safe_float(datos.get("Gastos_Pendientes_Años_Ant"), 0.0), min_value=0.0, step=10.0)
+            st.markdown("### 🏛️ Datos para Amortización Fiscal")
+            st.info("La amortización fiscal se calculará automáticamente: MAX(Precio compra total, Valor catastral) × % construcción × 3% × % titularidad")
+            col_am1, col_am2, col_am3 = st.columns(3)
+            with col_am1:
+                fecha_adquisicion_raw = datos.get("Fecha_Adquisicion")
+                try:
+                    fecha_adq_val = pd.to_datetime(fecha_adquisicion_raw).date() if fecha_adquisicion_raw and pd.notna(fecha_adquisicion_raw) else date(2010, 1, 1)
+                except:
+                    fecha_adq_val = date(2010, 1, 1)
+                fecha_adquisicion = st.date_input("Fecha Adquisición Inmueble", value=fecha_adq_val)
+                precio_compra = st.number_input("Precio Compra (€)",
+                    value=safe_float(datos.get("Precio_Compra"), 0.0), min_value=0.0, step=1000.0)
+            with col_am2:
+                impuestos_compra = st.number_input("Impuestos Compra ITP/IVA (€)",
+                    value=safe_float(datos.get("Impuestos_Compra"), 0.0), min_value=0.0, step=100.0)
+                gastos_compra = st.number_input("Gastos Compra Notaría/Registro (€)",
+                    value=safe_float(datos.get("Gastos_Compra"), 0.0), min_value=0.0, step=100.0)
+            with col_am3:
+                valor_catastral = st.number_input("Valor Catastral Total (€)",
+                    value=safe_float(datos.get("Valor_Catastral"), 0.0), min_value=0.0, step=100.0)
+                valor_catastral_piso = st.number_input("Valor Catastral Construcción (€)",
+                    value=safe_float(datos.get("Valor_Catastral_Piso"), 0.0), min_value=0.0, step=100.0)
 
-            servicios_suministros = st.number_input("Servicios y Suministros (€)", value=safe_float(datos.get("Servicios_Suministros"), 0.0), min_value=0.0, step=10.0)
+            col_pct1, col_pct2 = st.columns(2)
+            with col_pct1:
+                pct_suelo = st.slider("% Suelo (catastral)",
+                    min_value=0.0, max_value=1.0,
+                    value=safe_float(datos.get("Pct_Suelo"), 0.25), step=0.01,
+                    format="%.0f%%",
+                    help="Porcentaje del valor catastral correspondiente al suelo")
+            with col_pct2:
+                pct_construccion = 1.0 - pct_suelo
+                st.metric("% Construcción (calculado)", f"{pct_construccion*100:.0f}%")
+
+            # Cálculo automático amortización fiscal
+            base_compra = precio_compra + impuestos_compra + gastos_compra
+            base_amortizacion = max(base_compra, valor_catastral) * pct_construccion
+            # % titular (extraer número de "50%", "100%", "Pedro 50%", etc.)
+            titular_str = str(datos.get("Titular", "100"))
+            import re
+            pct_titular_match = re.search(r'(\d+(?:\.\d+)?)\s*%?', titular_str)
+            pct_titular = float(pct_titular_match.group(1)) / 100 if pct_titular_match else 1.0
+            if pct_titular > 1: pct_titular = pct_titular / 100
+            amortizacion_fiscal = base_amortizacion * 0.03 * pct_titular
+            valor_real_construccion = max(base_compra, valor_catastral) * pct_construccion
+
+            st.markdown(f"""
+            <div style='background:#0F2744;border:1px solid #185FA5;border-radius:8px;padding:1rem;margin:0.5rem 0;'>
+                <b>📊 Amortización Fiscal Calculada:</b><br>
+                Base compra total: <b>{base_compra:,.0f} €</b> · Valor catastral: <b>{valor_catastral:,.0f} €</b><br>
+                Base amortización (mayor × % construcción): <b>{base_amortizacion:,.0f} €</b><br>
+                Amortización fiscal anual (3% × {pct_titular*100:.0f}% titularidad): <b style='color:#00C9A7;font-size:1.1rem;'>{amortizacion_fiscal:,.0f} €/año</b>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown("### 🅿️ Cochera / Garaje (si tributa independiente)")
+            col_coch1, col_coch2, col_coch3 = st.columns(3)
+            with col_coch1:
+                ref_catastral_cochera = st.text_input("Ref. Catastral Cochera",
+                    value=datos.get("Ref_Catastral_Cochera", ""), placeholder="00XX00000")
+            with col_coch2:
+                ibi_cocheras = st.number_input("IBI Cochera (€)",
+                    value=safe_float(datos.get("IBI_Cocheras"), 0.0), min_value=0.0, step=10.0)
+            with col_coch3:
+                comunidad_cocheras = st.number_input("Comunidad Cochera (€)",
+                    value=safe_float(datos.get("Comunidad_Cocheras"), 0.0), min_value=0.0, step=10.0)
 
             st.markdown("---")
             col_submit, col_cancel = st.columns(2)
@@ -2548,10 +2655,23 @@ elif menu == "Datos de la Cartera":
                         "Cochera_Vinculada": cochera_vinculada, "Zona_Tensionada": zona_tensionada,
                         "Fecha_Inicio_Contrato": fecha_inicio.strftime("%Y-%m-%d"),
                         "Fecha_Vencimiento_Contrato": fecha_vencimiento.strftime("%Y-%m-%d"),
+                        "Fecha_Adquisicion": fecha_adquisicion.strftime("%Y-%m-%d"),
                         "NIF_Inquilino": nif_inquilino, "Intereses_Hipoteca": intereses_hipoteca,
-                        "IBI_Anual": ibi_anual, "Seguro_Anual": seguro_anual, "Gastos_Juridicos": gastos_juridicos,
-                        "Retenciones_IRPF": retenciones_irpf, "Gastos_Formalizacion": gastos_formalizacion,
-                        "Gastos_Pendientes_Años_Ant": gastos_pend_años_ant, "Servicios_Suministros": servicios_suministros
+                        "IBI_Anual": ibi_anual, "Seguro_Anual": seguro_anual, "Seguro_Vida": seguro_vida,
+                        "Gastos_Juridicos": gastos_juridicos, "Gasto_Ascensor": gasto_ascensor,
+                        "Retenciones_IRPF": retenciones_irpf, "Retencion_IRPF_Pct": retencion_irpf_pct,
+                        "IVA_Aplicable": iva_aplicable, "Tipo_IVA": tipo_iva,
+                        "Gastos_Formalizacion": gastos_formalizacion,
+                        "Gastos_Pendientes_Años_Ant": gastos_pend_años_ant,
+                        "Servicios_Suministros": servicios_suministros,
+                        "Precio_Compra": precio_compra, "Impuestos_Compra": impuestos_compra,
+                        "Gastos_Compra": gastos_compra, "Valor_Catastral": valor_catastral,
+                        "Valor_Catastral_Piso": valor_catastral_piso, "Pct_Suelo": pct_suelo,
+                        "Pct_Construccion": pct_construccion,
+                        "Valor_Real_Construccion": round(valor_real_construccion, 2),
+                        "Amortizacion_Fiscal": round(amortizacion_fiscal, 2),
+                        "Ref_Catastral_Cochera": ref_catastral_cochera,
+                        "IBI_Cocheras": ibi_cocheras, "Comunidad_Cocheras": comunidad_cocheras,
                     }
 
                     if es_nuevo:
