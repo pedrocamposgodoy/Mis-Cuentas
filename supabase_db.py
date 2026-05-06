@@ -168,12 +168,13 @@ def leer_inmuebles(user_id=None):
                 _limpiar_numericos_inm(df)
                 return df
             else:
-                return _inmuebles_iniciales_df(user_id)
+                # Usuario nuevo sin inmuebles — devolver DataFrame vacío
+                return pd.DataFrame(columns=COLS_INM)
         else:
-            return _inmuebles_iniciales_df(user_id)
+            return pd.DataFrame(columns=COLS_INM)
     except Exception as e:
         st.error(f"Error leyendo inmuebles: {e}")
-        return _inmuebles_iniciales_df(user_id)
+        return pd.DataFrame(columns=COLS_INM)
 
 
 def leer_movimientos(user_id=None):
