@@ -19,7 +19,12 @@ COLS_INM = [
     "Fecha_Inicio_Contrato","Fecha_Vencimiento_Contrato",
     "NIF_Inquilino","Intereses_Hipoteca","IBI_Anual","Seguro_Anual",
     "Gastos_Juridicos","Retenciones_IRPF","Gastos_Formalizacion",
-    "Gastos_Pendientes_Años_Ant","Servicios_Suministros"
+    "Gastos_Pendientes_Años_Ant","Servicios_Suministros",
+    "Fecha_Adquisicion","Precio_Compra","Impuestos_Compra","Gastos_Compra",
+    "Valor_Catastral","Valor_Catastral_Piso","Pct_Suelo","Pct_Construccion",
+    "Valor_Real_Construccion","Amortizacion_Fiscal","Seguro_Vida",
+    "Gasto_Ascensor","Ref_Catastral_Cochera","IBI_Cocheras","Comunidad_Cocheras",
+    "IVA_Aplicable","Tipo_IVA","Retencion_IRPF_Pct","Dias_Arrendados_Anio"
 ]
 
 COLS_MOV = ["Fecha","Apartamento","Concepto","Categoría","Tipo","Importe","Deducible"]
@@ -29,7 +34,12 @@ DEFAULTS_FISCAL = {
     "Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01",
     "NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":0,"Seguro_Anual":0,
     "Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,
-    "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
+    "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0,
+    "Fecha_Adquisicion":None,"Precio_Compra":0,"Impuestos_Compra":0,"Gastos_Compra":0,
+    "Valor_Catastral":0,"Valor_Catastral_Piso":0,"Pct_Suelo":0.25,"Pct_Construccion":0.75,
+    "Valor_Real_Construccion":0,"Amortizacion_Fiscal":0,"Seguro_Vida":0,
+    "Gasto_Ascensor":0,"Ref_Catastral_Cochera":"","IBI_Cocheras":0,"Comunidad_Cocheras":0,
+    "IVA_Aplicable":False,"Tipo_IVA":21,"Retencion_IRPF_Pct":0,"Dias_Arrendados_Anio":365
 }
 
 # ─── HELPER: CABECERAS CON TOKEN DE USUARIO ──────────────────────
@@ -115,7 +125,17 @@ RENAME_INM_TO_APP = {
     'seguro_anual': 'Seguro_Anual', 'gastos_juridicos': 'Gastos_Juridicos',
     'retenciones_irpf': 'Retenciones_IRPF', 'gastos_formalizacion': 'Gastos_Formalizacion',
     'gastos_pendientes_anos_ant': 'Gastos_Pendientes_Años_Ant',
-    'servicios_suministros': 'Servicios_Suministros', 'direccion': 'Direccion'
+    'servicios_suministros': 'Servicios_Suministros', 'direccion': 'Direccion',
+    'fecha_adquisicion': 'Fecha_Adquisicion', 'precio_compra': 'Precio_Compra',
+    'impuestos_compra': 'Impuestos_Compra', 'gastos_compra': 'Gastos_Compra',
+    'valor_catastral': 'Valor_Catastral', 'valor_catastral_piso': 'Valor_Catastral_Piso',
+    'pct_suelo': 'Pct_Suelo', 'pct_construccion': 'Pct_Construccion',
+    'valor_real_construccion': 'Valor_Real_Construccion',
+    'amortizacion_fiscal': 'Amortizacion_Fiscal', 'seguro_vida': 'Seguro_Vida',
+    'gasto_ascensor': 'Gasto_Ascensor', 'ref_catastral_cochera': 'Ref_Catastral_Cochera',
+    'ibi_cocheras': 'IBI_Cocheras', 'comunidad_cocheras': 'Comunidad_Cocheras',
+    'iva_aplicable': 'IVA_Aplicable', 'tipo_iva': 'Tipo_IVA',
+    'retencion_irpf_pct': 'Retencion_IRPF_Pct', 'dias_arrendados_anio': 'Dias_Arrendados_Anio'
 }
 
 RENAME_INM_TO_DB = {v: k for k, v in RENAME_INM_TO_APP.items()}
@@ -345,7 +365,12 @@ def _limpiar_numericos_inm(df):
         "Año_Reforma", "Año_Construccion", "M2_Construidos", "Habitaciones",
         "Planta", "Intereses_Hipoteca", "IBI_Anual", "Seguro_Anual",
         "Gastos_Juridicos", "Retenciones_IRPF", "Gastos_Formalizacion",
-        "Gastos_Pendientes_Años_Ant", "Servicios_Suministros"
+        "Gastos_Pendientes_Años_Ant", "Servicios_Suministros",
+        "Precio_Compra", "Impuestos_Compra", "Gastos_Compra",
+        "Valor_Catastral", "Valor_Catastral_Piso", "Pct_Suelo", "Pct_Construccion",
+        "Valor_Real_Construccion", "Amortizacion_Fiscal", "Seguro_Vida",
+        "Gasto_Ascensor", "IBI_Cocheras", "Comunidad_Cocheras",
+        "Tipo_IVA", "Retencion_IRPF_Pct", "Dias_Arrendados_Anio"
     ]
     for col in cols_num:
         if col in df.columns:
