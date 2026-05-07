@@ -59,7 +59,8 @@ from supabase_db import (
     agregar_movimientos, generar_csv_backup,
     login_usuario, registrar_usuario,
     leer_gastos_recurrentes, guardar_gasto_recurrente,
-    actualizar_gasto_recurrente, eliminar_gasto_recurrente
+    actualizar_gasto_recurrente, eliminar_gasto_recurrente,
+    generar_codigo_acceso, obtener_codigo_activo, revocar_codigo_acceso
 )
 
 COLS_INM = [
@@ -303,6 +304,7 @@ PAGES = [
     ("💎", "Macrofinanzas",                 "Core"),
     ("🧠", "Asesor Patrimonial IA",         "B2B2C"),
     ("🔒", "Privacidad y Consentimientos",  "B2B2C"),
+    ("🔗", "Compartir con Asesor",           "B2B2C"),
     ("⚖️", "Legal",                         "Tools"),
     ("📂", "Datos de la Cartera",           "Config"),
 ]
@@ -3580,5 +3582,80 @@ Propietario del inmueble
         <strong>⚠️ AVISO LEGAL</strong><br>
         Estas calculadoras son orientativas. Los resultados dependen de las circunstancias específicas de cada contrato.<br>
         <strong>Consulte siempre con un abogado especializado en arrendamientos antes de tomar decisiones.</strong>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ================================================================
+# SECCIÓN — COMPARTIR CON ASESOR
+# ================================================================
+elif menu == "Compartir con Asesor":
+    st.markdown('<div class="nc-brand-header">🔗 Compartir con Asesor</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Permite a tu asesor fiscal o inmobiliaria ver tu patrimonio</div>', unsafe_allow_html=True)
+
+    user_id = st.session_state.user_id
+    codigo_activo = obtener_codigo_activo(user_id)
+
+    st.markdown("### ¿Cómo funciona?")
+    st.info("""
+1. Genera un código de 6 dígitos
+2. Compártelo con tu asesor o inmobiliaria por WhatsApp o email
+3. Ellos lo introducen en su plataforma y acceden a tu Torre de Control y Fichas
+4. Solo lectura — no pueden modificar nada
+5. Puedes revocar el acceso en cualquier momento
+    """)
+
+    st.markdown("---")
+
+    if codigo_activo:
+        st.markdown("### ✅ Tu código de acceso activo")
+        st.markdown(f"""
+        <div style='background:#0F2744;border:2px solid #185FA5;border-radius:12px;
+            padding:2rem;text-align:center;margin:1rem 0;'>
+            <div style='font-size:0.85rem;color:#8899AA;margin-bottom:0.5rem;'>
+                Comparte este código con tu asesor
+            </div>
+            <div style='font-size:3rem;font-weight:700;color:#60B4FF;
+                letter-spacing:0.5rem;font-family:monospace;'>
+                {codigo_activo}
+            </div>
+            <div style='font-size:0.75rem;color:#8899AA;margin-top:0.5rem;'>
+                El asesor lo introduce en su plataforma para acceder a tu patrimonio
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Regenerar código", use_container_width=True):
+                result = generar_codigo_acceso(user_id)
+                if result["success"]:
+                    st.success(f"Nuevo código generado: {result['codigo']}")
+                    st.rerun()
+                else:
+                    st.error("Error al generar código")
+        with col2:
+            if st.button("❌ Revocar acceso", use_container_width=True, type="secondary"):
+                if revocar_codigo_acceso(user_id):
+                    st.success("Acceso revocado. Tu asesor ya no puede ver tus datos.")
+                    st.rerun()
+                else:
+                    st.error("Error al revocar acceso")
+    else:
+        st.markdown("### Sin código activo")
+        st.warning("No tienes ningún código de acceso activo. Tu patrimonio no es visible para ningún asesor.")
+        if st.button("🔗 Generar código de acceso", use_container_width=True, type="primary"):
+            result = generar_codigo_acceso(user_id)
+            if result["success"]:
+                st.success(f"✅ Código generado: **{result['codigo']}**")
+                st.rerun()
+            else:
+                st.error(f"Error: {result.get('error', 'desconocido')}")
+
+    st.markdown("---")
+    st.markdown("""
+    <div style='font-size:0.8rem;color:#8899AA;'>
+    🔒 <strong>Privacidad:</strong> Tu asesor solo puede ver Torre de Control y Fichas de Rentabilidad.
+    No tiene acceso al Diario Contable, datos fiscales sensibles ni movimientos detallados.
+    Puedes revocar el acceso en cualquier momento.
     </div>
     """, unsafe_allow_html=True)
