@@ -495,14 +495,14 @@ def generar_codigo_acceso(propietario_id: str) -> dict:
     try:
         # Desactivar código anterior si existe
         requests.patch(
-            f"{SUPA_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}",
+            f"{SUPABASE_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}",
             headers={**_headers(), "Prefer": "return=minimal"},
             json={"activo": False}, timeout=8
         )
         # Generar nuevo código único
         codigo = ''.join(random.choices(string.digits, k=6))
         r = requests.post(
-            f"{SUPA_URL}/rest/v1/accesos_asesor",
+            f"{SUPABASE_URL}/rest/v1/accesos_asesor",
             headers={**_headers(), "Prefer": "return=representation"},
             json={"propietario_id": propietario_id, "codigo": codigo, "activo": True},
             timeout=8
@@ -518,7 +518,7 @@ def obtener_codigo_activo(propietario_id: str) -> str | None:
     """Devuelve el código activo del propietario o None."""
     try:
         r = requests.get(
-            f"{SUPA_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}&activo=eq.true&select=codigo",
+            f"{SUPABASE_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}&activo=eq.true&select=codigo",
             headers=_headers(), timeout=8
         )
         data = r.json()
@@ -531,7 +531,7 @@ def revocar_codigo_acceso(propietario_id: str) -> bool:
     """Revoca el código activo del propietario."""
     try:
         r = requests.patch(
-            f"{SUPA_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}",
+            f"{SUPABASE_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}",
             headers={**_headers(), "Prefer": "return=minimal"},
             json={"activo": False}, timeout=8
         )
@@ -544,7 +544,7 @@ def buscar_propietario_por_codigo(codigo: str) -> dict | None:
     """Busca el propietario asociado a un código de acceso activo."""
     try:
         r = requests.get(
-            f"{SUPA_URL}/rest/v1/accesos_asesor?codigo=eq.{codigo}&activo=eq.true&select=propietario_id",
+            f"{SUPABASE_URL}/rest/v1/accesos_asesor?codigo=eq.{codigo}&activo=eq.true&select=propietario_id",
             headers=_headers(), timeout=8
         )
         data = r.json()
@@ -556,7 +556,7 @@ def buscar_propietario_por_codigo(codigo: str) -> dict | None:
         movimientos = leer_movimientos(user_id=propietario_id)
         # Obtener nombre del propietario desde tabla usuarios
         ru = requests.get(
-            f"{SUPA_URL}/rest/v1/usuarios?user_id=eq.{propietario_id}&select=nombre,email",
+            f"{SUPABASE_URL}/rest/v1/usuarios?user_id=eq.{propietario_id}&select=nombre,email",
             headers=_headers(), timeout=8
         )
         usuario = ru.json()
