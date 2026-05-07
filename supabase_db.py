@@ -483,3 +483,91 @@ def eliminar_gasto_recurrente(id_gasto: int) -> bool:
     except Exception as e:
         print(f"[eliminar_gasto_recurrente] Error: {e}")
         return False
+
+
+# ================================================================
+# ACCESOS ASESOR — Compartir patrimonio con asesor/inmobiliaria
+# ================================================================
+
+def generar_codigo_acceso(propietario_id: str) -> dict:
+    """Genera un código de 6 dígitos para compartir patrimonio."""
+    import random, string
+    try:
+        # Desactivar código anterior si existe
+        requests.patch(
+            f"{SUPA_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}",
+            headers={**_headers(), "Prefer": "return=minimal"},
+            json={"activo": False}, timeout=8
+        )
+        # Generar nuevo código único
+        codigo = ''.join(random.choices(string.digits, k=6))
+        r = requests.post(
+            f"{SUPA_URL}/rest/v1/accesos_asesor",
+            headers={**_headers(), "Prefer": "return=representation"},
+            json={"propietario_id": propietario_id, "codigo": codigo, "activo": True},
+            timeout=8
+        )
+        if r.status_code in (200, 201):
+            return {"success": True, "codigo": codigo}
+        return {"success": False, "error": f"Error {r.status_code}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def obtener_codigo_activo(propietario_id: str) -> str | None:
+    """Devuelve el código activo del propietario o None."""
+    try:
+        r = requests.get(
+            f"{SUPA_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}&activo=eq.true&select=codigo",
+            headers=_headers(), timeout=8
+        )
+        data = r.json()
+        return data[0]["codigo"] if data else None
+    except:
+        return None
+
+
+def revocar_codigo_acceso(propietario_id: str) -> bool:
+    """Revoca el código activo del propietario."""
+    try:
+        r = requests.patch(
+            f"{SUPA_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}",
+            headers={**_headers(), "Prefer": "return=minimal"},
+            json={"activo": False}, timeout=8
+        )
+        return r.status_code in (200, 204)
+    except:
+        return False
+
+
+def buscar_propietario_por_codigo(codigo: str) -> dict | None:
+    """Busca el propietario asociado a un código de acceso activo."""
+    try:
+        r = requests.get(
+            f"{SUPA_URL}/rest/v1/accesos_asesor?codigo=eq.{codigo}&activo=eq.true&select=propietario_id",
+            headers=_headers(), timeout=8
+        )
+        data = r.json()
+        if not data:
+            return None
+        propietario_id = data[0]["propietario_id"]
+        # Leer datos del propietario
+        inmuebles = leer_inmuebles(user_id=propietario_id)
+        movimientos = leer_movimientos(user_id=propietario_id)
+        # Obtener nombre del propietario desde tabla usuarios
+        ru = requests.get(
+            f"{SUPA_URL}/rest/v1/usuarios?user_id=eq.{propietario_id}&select=nombre,email",
+            headers=_headers(), timeout=8
+        )
+        usuario = ru.json()
+        nombre = usuario[0].get("nombre", "Propietario") if usuario else "Propietario"
+        email  = usuario[0].get("email", "") if usuario else ""
+        return {
+            "propietario_id": propietario_id,
+            "nombre": nombre,
+            "email": email,
+            "inmuebles": inmuebles,
+            "movimientos": movimientos
+        }
+    except Exception as e:
+        return None
