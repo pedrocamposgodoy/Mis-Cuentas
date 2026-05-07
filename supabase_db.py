@@ -493,6 +493,10 @@ def generar_codigo_acceso(propietario_id: str) -> dict:
     """Genera un código de 6 dígitos para compartir patrimonio."""
     import random, string
     try:
+        # Obtener email del usuario logueado
+        email = st.session_state.get("user_email", "")
+        nombre = email.split("@")[0].title() if email else "Propietario"
+
         # Desactivar código anterior si existe
         requests.patch(
             f"{SUPABASE_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}",
@@ -504,12 +508,13 @@ def generar_codigo_acceso(propietario_id: str) -> dict:
         r = requests.post(
             f"{SUPABASE_URL}/rest/v1/accesos_asesor",
             headers={**_headers(), "Prefer": "return=representation"},
-            json={"propietario_id": propietario_id, "codigo": codigo, "activo": True},
+            json={"propietario_id": propietario_id, "codigo": codigo,
+                  "activo": True, "email": email, "nombre": nombre},
             timeout=8
         )
         if r.status_code in (200, 201):
             return {"success": True, "codigo": codigo}
-        return {"success": False, "error": f"Error {r.status_code}"}
+        return {"success": False, "error": f"Error {r.status_code}: {r.text[:100]}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
