@@ -2211,93 +2211,15 @@ elif menu == "Suministros":
 
 # ================================================================
 # PANTALLA 6 — FISCALIDAD (MODELO 100 IRPF)
-# Pre-relleno automático de casillas, generador de PDF
+# Módulo completo en fiscal_export.py
+# Por inmueble + Resumen Global + Export Excel y PDF profesional
 # ================================================================
 elif menu == "Fiscalidad":
     if _sin_inmuebles:
         st.info("📭 Sin inmuebles registrados. Ve a **Datos de Cartera** para añadir el primero.")
         st.stop()
-    st.markdown('<div class="nc-brand-header">Escudo Fiscal — Modelo 100</div>', unsafe_allow_html=True)
-    st.markdown('<div class="nc-brand-sub">Pre-relleno IRPF · Rendimientos de capital inmobiliario</div>', unsafe_allow_html=True)
-
-    inmueble_fiscal = st.selectbox("Selecciona inmueble:", df_inm["Nombre"].tolist(), key="fiscal_inmueble")
-    año_fiscal = st.selectbox("Ejercicio fiscal:", [2025, 2024, 2023], index=0, key="año_fiscal")
-    f_fiscal = df_inm[df_inm["Nombre"] == inmueble_fiscal].iloc[0]
-    modelo = calcular_modelo_100(f_fiscal, df_mov, año_fiscal=año_fiscal)
-
-    # KPIs
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Ingresos Íntegros", f"{modelo['0102']:,.0f} €", "Casilla 0102")
-    k2.metric("Total Gastos", f"{modelo['0102'] - modelo['0149']:,.0f} €", "Deducibles")
-    k3.metric("Rendimiento Neto", f"{modelo['0149']:,.0f} €", "Casilla 0149")
-    k4.metric("Base Imponible", f"{modelo['0152']:,.0f} €", f"Reducción {modelo['reduccion_pct']}%")
-
-    st.markdown("---")
-    st.markdown('<div class="nc-section-title">📋 Casillas Modelo 100 — Verificar y Confirmar</div>', unsafe_allow_html=True)
-    st.caption("Revisa cada casilla. Los valores están pre-rellenados desde tus datos.")
-
-    # Tabla casillas Modelo 100 — datos informativos para el asesor
-    casillas_data = [
-        {"Casilla": "0062-0075", "Descripción": "Identificación del inmueble", "Valor": modelo["0062_0075"], "Nota": ""},
-        {"Casilla": "0076",      "Descripción": "Clave de uso", "Valor": modelo["0076"], "Nota": ""},
-        {"Casilla": "0100",      "Descripción": "Reducción vivienda habitual", "Valor": modelo["0100"], "Nota": ""},
-        {"Casilla": "0101",      "Descripción": "Días arrendado en el año", "Valor": f"{modelo['0101']} días", "Nota": ""},
-        {"Casilla": "0102",      "Descripción": "Ingresos íntegros", "Valor": f"{modelo['0102']:,.2f} €", "Nota": ""},
-        {"Casilla": "0105",      "Descripción": "Intereses hipoteca/financiación", "Valor": f"{modelo['0105']:,.2f} €", "Nota": "Solo intereses, no capital"},
-        {"Casilla": "0106",      "Descripción": "Reparación y conservación", "Valor": f"{modelo['0106']:,.2f} €", "Nota": "Del diario contable"},
-        {"Casilla": "0108",      "Descripción": "Tributos e IBI", "Valor": f"{modelo['0108']:,.2f} €", "Nota": ""},
-        {"Casilla": "0110",      "Descripción": "Comunidad + Seguros + Ascensor", "Valor": f"{modelo['0110']:,.2f} €", "Nota": "Seguro hogar + vida + comunidad"},
-        {"Casilla": "0111",      "Descripción": "Servicios y suministros", "Valor": f"{modelo['0111']:,.2f} €", "Nota": ""},
-        {"Casilla": "0112",      "Descripción": "Gastos jurídicos y administrativos", "Valor": f"{modelo['0112']:,.2f} €", "Nota": ""},
-        {"Casilla": "0113",      "Descripción": "Amortización fiscal (3%)", "Valor": f"{modelo['0113']:,.2f} €", "Nota": modelo.get("0113_detalle","")},
-        {"Casilla": "0107",      "Descripción": "TOTAL GASTOS DEDUCIBLES", "Valor": f"{modelo['0107']:,.2f} €", "Nota": ""},
-        {"Casilla": "0149",      "Descripción": "RENDIMIENTO NETO", "Valor": f"{modelo['0149']:,.2f} €", "Nota": ""},
-        {"Casilla": "0150",      "Descripción": f"Reducción {modelo['reduccion_pct']}% (orientativa)", "Valor": f"-{modelo['0150']:,.2f} €", "Nota": "⚠️ Validar con asesor"},
-        {"Casilla": "0152",      "Descripción": "RENDIMIENTO NETO REDUCIDO", "Valor": f"{modelo['0152']:,.2f} €", "Nota": "⚠️ Pendiente validación asesor"},
-        {"Casilla": "0153",      "Descripción": "Retenciones practicadas", "Valor": f"{modelo['0153']:,.2f} €", "Nota": ""},
-    ]
-
-    df_casillas = pd.DataFrame(casillas_data)
-    st.dataframe(df_casillas, use_container_width=True, hide_index=True, height=620)
-
-    # Aviso IVA si aplica
-    if modelo.get("iva_aplicable"):
-        st.warning("⚠️ Este inmueble tiene IVA aplicable (arrendamiento a empresa). El IVA tributa por Modelo 303 — no en este Modelo 100.")
-
-    # Botón generar PDF
-    st.markdown("---")
-    if REPORTLAB_OK:
-        if st.button("✅ Confirmar y Generar PDF", type="primary", use_container_width=True):
-            pdf_buffer = generar_pdf_modelo100(f_fiscal, modelo)
-            st.session_state["pdf_generado"] = pdf_buffer
-            st.session_state["pdf_nombre"] = f"Modelo100_{inmueble_fiscal.replace(' ','_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
-            st.success(f"✓ Modelo 100 confirmado para {inmueble_fiscal}")
-
-        if "pdf_generado" in st.session_state and st.session_state.get("pdf_generado"):
-            st.download_button(
-                label="📥 Descargar PDF Modelo 100",
-                data=st.session_state["pdf_generado"],
-                file_name=st.session_state.get("pdf_nombre", "modelo100.pdf"),
-                mime="application/pdf",
-                use_container_width=True
-            )
-    else:
-        st.warning("⚠️ Añade `reportlab` a requirements.txt para generar PDFs.")
-
-    # Notas
-    st.markdown('<div class="nc-section-title">ℹ️ Información Importante</div>', unsafe_allow_html=True)
-    cochera_txt = "Consolidada en arrendamiento principal" if f_fiscal.get("Cochera_Vinculada")=="S" else "Tributa independiente"
-    dias_arr = int(safe_float(f_fiscal.get("Dias_Arrendados_Anio", 365)))
-    st.markdown(f"""<div class="status-yellow">
-        <b>⚠️ Datos orientativos — validar con asesor fiscal antes de presentar</b><br>
-        • Días arrendados: <b>{dias_arr} días</b> (casilla 0101) — gastos proporcionados a este período<br>
-        • Modalidad: <b>{f_fiscal.get('Tipo_Arrendamiento','Larga Duración')}</b> — Reducción 60% aplica si larga duración y vivienda habitual<br>
-        • Reducción 60% (casilla 0150): <b>pendiente validación según ingresos totales del contribuyente</b><br>
-        • Cochera vinculada: {f_fiscal.get('Cochera_Vinculada','N')} — {cochera_txt}<br>
-        • Amortización calculada: MAX(precio compra total, catastral) × % construcción × 3%<br>
-        • Si arrendamiento a empresa: IVA tributa en Modelo 303, no aquí<br>
-        • Fuente datos: Fichas de inmuebles + Diario Contable Nolasco Capital
-    </div>""", unsafe_allow_html=True)
+    from fiscal_export import render_seccion_fiscal
+    render_seccion_fiscal(df_inm, df_mov, safe_float, calcular_modelo_100)
 
 # ================================================================
 # PANTALLA 7 — MACROFINANZAS (BLOQUE 5)
