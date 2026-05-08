@@ -825,18 +825,268 @@ def generar_pdf_global(filas, totales, nombre_propietario="Propietario",
 def importar_excel_asesor(archivo_excel, user_id, upsert_inmueble_fn,
                            agregar_movimientos_fn, leer_inmuebles_fn):
     """
-    Lee el Excel exportado por Nolasco (formato Álvaro):
-      - Hoja CONTABILIDAD: filas = conceptos, columnas = inmuebles
-      - Transpone y mapea a la estructura de Supabase
+    Lee el Excel de Álvaro (formato real):
+      - Hoja CONTABILIDAD: fila 1 = nombres inmuebles, col A = conceptos
+      - Hojas individuales por inmueble: facturas de mantenimiento
+      - Hoja Amortiz: datos catastrales y amortización
       - Usa upsert_inmueble → NUNCA borra, solo crea o actualiza
-      - Devuelve dict con resumen de lo que hizo
-
-    Uso en app.py:
-        from fiscal_export import importar_excel_asesor
-        from supabase_db import upsert_inmueble
-        resultado = importar_excel_asesor(archivo, user_id, upsert_inmueble,
-                                          agregar_movimientos, leer_inmuebles)
     """
+    if not OPENPYXL_OK:
+        return {"error": "Instala openpyxl: pip install openpyxl"}
+
+    try:
+        wb = openpyxl.load_workbook(archivo_excel, data_only=True)
+    except Exception as e:
+        return {"error": f"No se pudo leer el Excel: {e}"}
+
+    if "CONTABILIDAD" not in wb.sheetnames:
+        return {"error": "El Excel no tiene hoja CONTABILIDAD."}
+
+    ws = wb["CONTABILIDAD"]
+    filas_raw = list(ws.iter_rows(min_row=1, values_only=True))
+
+    if not filas_raw:
+        return {"error": "La hoja CONTABILIDAD está vacía."}
+
+    # ── Fila 1 = nombres de inmuebles (col A = None, cols B... = nombres) ──
+    cabecera = filas_raw[0]
+    nombres_inmuebles = []
+    col_indices = []
+    for j, val in enumerate(cabecera):
+        if j == 0:
+            continue  # columna de conceptos
+        if val and str(val).strip() not in ("TOTALES", "MENSUAL", "", "None"):
+            nombres_inmuebles.append(str(val).strip())
+            col_indices.append(j)
+
+    if not nombres_inmuebles:
+        return {"error": "No se encontraron inmuebles en la fila 1 de CONTABILIDAD."}
+
+    # ── Mapeo concepto → campo Supabase ─────────────────────────
+    MAPA = {
+        "Referencia catastral":       "Ref_Catastral",
+        "Superficie":                 "M2_Construidos",
+        "Valor catastral":            "Valor_Catastral",
+        "Titular":                    "Titular",
+        "Nombre inquilino":           "Inquilino",
+        "DNI inquilino":              "NIF_Inquilino",
+        "Fecha contrato":             "Fecha_Inicio_Contrato",
+        "Fecha adquisicion vivienda": "Fecha_Adquisicion",
+        "INGRESOS":                   "_ingresos_anuales",
+        "Mensuales":                  "Renta",
+        "IBI":                        "IBI_Anual",
+        "Comunidad":                  "_comunidad_anual",
+        "Seguro vida":                "Seguro_Vida",
+        "Seguro hogar":               "Seguro_Anual",
+        "Amortizacion prestamo":      "Intereses_Hipoteca",
+        "Ascensor":                   "Gasto_Ascensor",
+        "Alarma":                     "_alarma",
+        "Gastos Mantenimiento":       "_reparaciones",
+        "IBI Cocheras":               "IBI_Cocheras",
+        "Comunidad Cocheras":         "Comunidad_Cocheras",
+        "Inmueble accesorio (garaje)":"Ref_Catastral_Cochera",
+    }
+
+    # ── Extraer datos por inmueble ───────────────────────────────
+    datos = {nombre: {} for nombre in nombres_inmuebles}
+
+    for fila in filas_raw[1:]:
+        if not fila or not fila[0]:
+            continue
+        concepto = str(fila[0]).strip()
+        if concepto not in MAPA:
+            continue
+        campo = MAPA[concepto]
+        for idx, col_j in enumerate(col_indices):
+            if col_j < len(fila):
+                val = fila[col_j]
+                if val is not None and str(val).strip() not in ("", "None"):
+                    # Solo guardar si no tenemos ya un valor para este campo
+                    if campo not in datos[nombres_inmuebles[idx]]:
+                        datos[nombres_inmuebles[idx]][campo] = val
+
+    # ── Leer hojas individuales de mantenimiento ─────────────────
+    reparaciones_por_inmueble = {}
+    for sheet_name in wb.sheetnames:
+        if sheet_name in ("CONTABILIDAD", "RESULTADOS", "Amortiz"):
+            continue
+        ws_inm = wb[sheet_name]
+        filas_inm = list(ws_inm.iter_rows(min_row=1, values_only=True))
+        if not filas_inm:
+            continue
+        # Buscar a qué inmueble pertenece esta hoja
+        inm_match = None
+        sheet_clean = sheet_name.upper().replace(" ", "").replace("Nº", "")
+        for nombre in nombres_inmuebles:
+            nom_clean = nombre.upper().replace(" ", "")
+            if nom_clean in sheet_clean or sheet_clean in nom_clean:
+                inm_match = nombre
+                break
+        if not inm_match:
+            continue
+        # Leer facturas (fila 1 = cabecera, resto = facturas)
+        movs = []
+        for fila in filas_inm[1:]:
+            if not fila or not fila[0]:
+                continue
+            concepto_fac = str(fila[0]).strip()
+            if concepto_fac.upper().startswith("TOTAL"):
+                continue
+            importe = fila[3] if len(fila) > 3 else None
+            proveedor = fila[1] if len(fila) > 1 else ""
+            if importe and float(importe) > 0:
+                movs.append({
+                    "concepto": concepto_fac,
+                    "proveedor": str(proveedor) if proveedor else "",
+                    "importe": float(importe),
+                })
+        if movs:
+            reparaciones_por_inmueble[inm_match] = movs
+
+    # ── Leer hoja Amortiz si existe ──────────────────────────────
+    amortiz_por_inmueble = {}
+    if "Amortiz" in wb.sheetnames:
+        ws_am = wb["Amortiz"]
+        filas_am = list(ws_am.iter_rows(min_row=1, values_only=True))
+        for fila in filas_am:
+            if not fila or not fila[0]:
+                continue
+            concepto_am = str(fila[0]).strip()
+            for idx, nombre in enumerate(nombres_inmuebles):
+                col_am = idx + 1
+                if col_am < len(fila) and fila[col_am] is not None:
+                    if nombre not in amortiz_por_inmueble:
+                        amortiz_por_inmueble[nombre] = {}
+                    if "precio compra" in concepto_am.lower() or "precio de compra" in concepto_am.lower():
+                        amortiz_por_inmueble[nombre]["Precio_Compra"] = fila[col_am]
+                    elif "valor catastral construccion" in concepto_am.lower():
+                        amortiz_por_inmueble[nombre]["Valor_Real_Construccion"] = fila[col_am]
+                    elif "% construccion" in concepto_am.lower() or "porcentaje construccion" in concepto_am.lower():
+                        val = float(fila[col_am])
+                        amortiz_por_inmueble[nombre]["Pct_Construccion"] = val if val <= 1 else val / 100
+                    elif "amortizacion" in concepto_am.lower() and "%" not in concepto_am.lower():
+                        amortiz_por_inmueble[nombre]["Amortizacion_Fiscal"] = fila[col_am]
+
+    # ── Procesar cada inmueble ───────────────────────────────────
+    import pandas as _pd
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    creados      = []
+    actualizados = []
+    movimientos_nuevos = []
+
+    for nombre in nombres_inmuebles:
+        d = datos[nombre]
+        registro = {"Nombre": nombre}
+
+        # Campos directos
+        for campo in [
+            "Ref_Catastral", "M2_Construidos", "Valor_Catastral", "Titular",
+            "Inquilino", "NIF_Inquilino", "Renta",
+            "IBI_Anual", "Seguro_Vida", "Seguro_Anual", "Intereses_Hipoteca",
+            "Gasto_Ascensor", "IBI_Cocheras", "Comunidad_Cocheras",
+            "Ref_Catastral_Cochera",
+        ]:
+            if campo in d and d[campo] is not None:
+                registro[campo] = d[campo]
+
+        # Fecha contrato → string
+        if "Fecha_Inicio_Contrato" in d:
+            try:
+                from datetime import datetime as _dt
+                val = d["Fecha_Inicio_Contrato"]
+                if hasattr(val, "strftime"):
+                    registro["Fecha_Inicio_Contrato"] = val.strftime("%Y-%m-%d")
+                else:
+                    registro["Fecha_Inicio_Contrato"] = str(val)[:10]
+            except:
+                pass
+
+        # Fecha adquisicion → string
+        if "Fecha_Adquisicion" in d:
+            try:
+                val = d["Fecha_Adquisicion"]
+                if hasattr(val, "strftime"):
+                    registro["Fecha_Adquisicion"] = val.strftime("%Y-%m-%d")
+                else:
+                    registro["Fecha_Adquisicion"] = str(val)[:10]
+            except:
+                pass
+
+        # Comunidad anual → mensual
+        if "_comunidad_anual" in d:
+            try:
+                registro["Comunidad"] = round(float(d["_comunidad_anual"]) / 12, 2)
+            except:
+                pass
+
+        # Alarma → sumarla a Gasto_Ascensor si existe
+        if "_alarma" in d:
+            try:
+                alarma = float(d["_alarma"])
+                actual = float(registro.get("Gasto_Ascensor", 0) or 0)
+                registro["Gasto_Ascensor"] = round(actual + alarma, 2)
+            except:
+                pass
+
+        # Datos de amortización
+        if nombre in amortiz_por_inmueble:
+            for k, v in amortiz_por_inmueble[nombre].items():
+                registro[k] = v
+
+        # Upsert en Supabase
+        try:
+            res = upsert_inmueble_fn(registro, user_id)
+            if res.get("accion") == "creado":
+                creados.append(nombre)
+            else:
+                actualizados.append(nombre)
+        except Exception as e:
+            actualizados.append(nombre)
+
+        # Movimientos de reparación desde hojas individuales
+        if nombre in reparaciones_por_inmueble:
+            for rep in reparaciones_por_inmueble[nombre]:
+                movimientos_nuevos.append({
+                    "Fecha":       hoy,
+                    "Apartamento": nombre,
+                    "Concepto":    rep["concepto"],
+                    "Categoría":   "Mantenimiento",
+                    "Tipo":        "Gasto",
+                    "Importe":     rep["importe"],
+                    "Deducible":   "S",
+                })
+
+        # Movimiento de reparación desde CONTABILIDAD si no hay hoja individual
+        elif "_reparaciones" in d:
+            try:
+                importe_rep = float(d["_reparaciones"])
+                if importe_rep > 0:
+                    movimientos_nuevos.append({
+                        "Fecha":       hoy,
+                        "Apartamento": nombre,
+                        "Concepto":    "Gastos Mantenimiento (importado Excel)",
+                        "Categoría":   "Mantenimiento",
+                        "Tipo":        "Gasto",
+                        "Importe":     importe_rep,
+                        "Deducible":   "S",
+                    })
+            except:
+                pass
+
+    # Guardar movimientos
+    if movimientos_nuevos:
+        try:
+            agregar_movimientos_fn(movimientos_nuevos, user_id)
+        except:
+            pass
+
+    return {
+        "ok":           True,
+        "creados":      creados,
+        "actualizados": actualizados,
+        "movimientos":  len(movimientos_nuevos),
+        "total":        len(creados) + len(actualizados),
+    }
     if not OPENPYXL_OK:
         return {"error": "Instala openpyxl: pip install openpyxl"}
 
