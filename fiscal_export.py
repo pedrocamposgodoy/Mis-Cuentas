@@ -822,18 +822,19 @@ def generar_pdf_global(filas, totales, nombre_propietario="Propietario",
 # 4. IMPORT EXCEL ASESOR — lee formato Álvaro y puebla Supabase
 # ────────────────────────────────────────────────────────────────
 
-def importar_excel_asesor(archivo_excel, user_id, guardar_inmuebles_fn,
+def importar_excel_asesor(archivo_excel, user_id, upsert_inmueble_fn,
                            agregar_movimientos_fn, leer_inmuebles_fn):
     """
     Lee el Excel exportado por Nolasco (formato Álvaro):
       - Hoja CONTABILIDAD: filas = conceptos, columnas = inmuebles
       - Transpone y mapea a la estructura de Supabase
-      - Crea o actualiza inmuebles en Supabase
+      - Usa upsert_inmueble → NUNCA borra, solo crea o actualiza
       - Devuelve dict con resumen de lo que hizo
 
     Uso en app.py:
         from fiscal_export import importar_excel_asesor
-        resultado = importar_excel_asesor(archivo, user_id, guardar_inmuebles,
+        from supabase_db import upsert_inmueble
+        resultado = importar_excel_asesor(archivo, user_id, upsert_inmueble,
                                           agregar_movimientos, leer_inmuebles)
     """
     if not OPENPYXL_OK:
@@ -976,12 +977,13 @@ def importar_excel_asesor(archivo_excel, user_id, guardar_inmuebles_fn,
         else:
             creados.append(nombre)
 
-        # Guardar en Supabase — upsert por Nombre + user_id
+        # Upsert en Supabase — NUNCA borra, solo crea o actualiza este inmueble
         try:
-            df_registro = _pd.DataFrame([registro])
-            guardar_inmuebles_fn(df_registro, user_id=user_id)
+            res = upsert_inmueble_fn(registro, user_id)
+            if not res.get("ok"):
+                pass  # Si falla uno, continuar con el resto
         except Exception as e:
-            pass  # Si falla uno, continuar con el resto
+            pass
 
         # Reparaciones → movimiento en diario contable
         if "_reparaciones" in datos:
