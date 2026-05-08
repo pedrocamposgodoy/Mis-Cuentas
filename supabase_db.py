@@ -381,6 +381,9 @@ def upsert_inmueble(registro: dict, user_id: str) -> dict:
                 return {"ok": True, "accion": "creado"}
             return {"ok": False, "error": f"POST {r.status_code}: {r.text[:200]}"}
 
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 
 # ─── HELPERS INTERNOS ────────────────────────────────────────────
 
