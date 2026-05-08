@@ -2758,8 +2758,58 @@ Base amortización (mayor × {pct_construccion*100:.0f}% construcción): **{base
             st.download_button("📥 Descargar Movimientos (CSV)", generar_csv_backup(st.session_state.df_mov_persistent, "movimientos"), "nolasco_movimientos_backup.csv", "text/csv", use_container_width=True)
 
         st.markdown("---")
-        st.markdown("### 📤 Restaurar desde Backup")
-        st.caption("Próximamente: podrás subir CSVs para restaurar datos")
+        st.markdown("### 📥 Importar Excel Asesor Fiscal")
+        st.caption("Sube el Excel generado por Nolasco Capital para importar todos los inmuebles automáticamente")
+
+        uploaded_excel = st.file_uploader(
+            "Sube el Excel de Nolasco Capital (.xlsx)",
+            type=["xlsx"],
+            key="upload_excel_asesor",
+            help="El Excel debe ser el generado por Nolasco Capital (hoja CONTABILIDAD con inmuebles por columnas)"
+        )
+
+        if uploaded_excel:
+            st.info(f"📄 Archivo: **{uploaded_excel.name}** — listo para importar")
+
+            if st.button("📥 Importar inmuebles del Excel", type="primary",
+                          use_container_width=True, key="btn_import_excel"):
+                from fiscal_export import importar_excel_asesor
+                with st.spinner("Importando datos del Excel..."):
+                    resultado = importar_excel_asesor(
+                        archivo_excel=uploaded_excel,
+                        user_id=st.session_state.user_id,
+                        guardar_inmuebles_fn=guardar_inmuebles,
+                        agregar_movimientos_fn=agregar_movimientos,
+                        leer_inmuebles_fn=leer_inmuebles,
+                    )
+
+                if "error" in resultado:
+                    st.error(f"❌ {resultado['error']}")
+                else:
+                    st.success(f"✅ Import completado — {resultado['total']} inmuebles procesados")
+
+                    col_r1, col_r2, col_r3 = st.columns(3)
+                    col_r1.metric("Creados nuevos",     len(resultado["creados"]))
+                    col_r2.metric("Actualizados",        len(resultado["actualizados"]))
+                    col_r3.metric("Movimientos añadidos", resultado["movimientos"])
+
+                    if resultado["creados"]:
+                        st.markdown("**Inmuebles creados:**")
+                        for n in resultado["creados"]:
+                            st.markdown(f"  ✅ {n}")
+                    if resultado["actualizados"]:
+                        st.markdown("**Inmuebles actualizados:**")
+                        for n in resultado["actualizados"]:
+                            st.markdown(f"  🔄 {n}")
+
+                    # Recargar datos
+                    st.session_state.df_inm_persistent = leer_inmuebles(
+                        user_id=st.session_state.user_id)
+                    st.rerun()
+
+        st.markdown("---")
+        st.markdown("### 📤 Restaurar desde Backup CSV")
+        st.caption("Restaura datos desde un backup CSV anterior")
         uploaded_inm = st.file_uploader("Subir Inmuebles (CSV)", type=["csv"], key="upload_inm")
         if uploaded_inm:
             st.info("📝 Función de restauración — disponible en Bloque 6")
