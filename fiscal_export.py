@@ -819,7 +819,205 @@ def generar_pdf_global(filas, totales, nombre_propietario="Propietario",
 
 
 # ────────────────────────────────────────────────────────────────
-# 4. RENDER STREAMLIT — sección Fiscalidad completa
+# 4. IMPORT EXCEL ASESOR — lee formato Álvaro y puebla Supabase
+# ────────────────────────────────────────────────────────────────
+
+def importar_excel_asesor(archivo_excel, user_id, guardar_inmuebles_fn,
+                           agregar_movimientos_fn, leer_inmuebles_fn):
+    """
+    Lee el Excel exportado por Nolasco (formato Álvaro):
+      - Hoja CONTABILIDAD: filas = conceptos, columnas = inmuebles
+      - Transpone y mapea a la estructura de Supabase
+      - Crea o actualiza inmuebles en Supabase
+      - Devuelve dict con resumen de lo que hizo
+
+    Uso en app.py:
+        from fiscal_export import importar_excel_asesor
+        resultado = importar_excel_asesor(archivo, user_id, guardar_inmuebles,
+                                          agregar_movimientos, leer_inmuebles)
+    """
+    if not OPENPYXL_OK:
+        return {"error": "Instala openpyxl: pip install openpyxl"}
+
+    try:
+        wb = openpyxl.load_workbook(archivo_excel, data_only=True)
+    except Exception as e:
+        return {"error": f"No se pudo leer el Excel: {e}"}
+
+    if "CONTABILIDAD" not in wb.sheetnames:
+        return {"error": "El Excel no tiene hoja CONTABILIDAD. "
+                         "Asegúrate de usar el Excel generado por Nolasco Capital."}
+
+    ws = wb["CONTABILIDAD"]
+
+    # ── Leer filas y columnas ────────────────────────────────────
+    # Fila 3 = cabecera: col A = "CONCEPTO", cols B... = nombres inmuebles
+    # Última columna = "TOTALES" — ignorar
+    filas_raw = list(ws.iter_rows(min_row=1, values_only=True))
+
+    # Encontrar fila de cabecera (la que tiene "CONCEPTO")
+    fila_cab = None
+    for i, fila in enumerate(filas_raw):
+        if fila and str(fila[0]).strip() == "CONCEPTO":
+            fila_cab = i
+            break
+
+    if fila_cab is None:
+        return {"error": "No se encontró la fila de cabecera 'CONCEPTO' en la hoja CONTABILIDAD."}
+
+    cabecera = filas_raw[fila_cab]
+    # Nombres de inmuebles — desde col B hasta penúltima (última = TOTALES)
+    nombres_inmuebles = []
+    col_indices = []
+    for j, val in enumerate(cabecera):
+        if j == 0:
+            continue  # columna CONCEPTO
+        if val and str(val).strip() not in ("TOTALES", "", "None"):
+            nombres_inmuebles.append(str(val).strip())
+            col_indices.append(j)
+
+    if not nombres_inmuebles:
+        return {"error": "No se encontraron inmuebles en el Excel."}
+
+    # ── Mapeo concepto → campo Supabase ─────────────────────────
+    MAPA_CAMPOS = {
+        "Ref. Catastral":            "Ref_Catastral",
+        "Inquilino":                 "Inquilino",
+        "NIF Inquilino":             "NIF_Inquilino",
+        "Tipo Arrendamiento":        "Tipo_Arrendamiento",
+        "Días arrendados (0101)":    "Dias_Arrendados_Anio",
+        "Ingresos íntegros (0102)":  "_ingresos_anuales",   # especial → renta
+        "Intereses hipoteca (0105)": "Intereses_Hipoteca",
+        "Reparación/conserv. (0106)":"_reparaciones",        # especial → movimientos
+        "IBI y tributos (0108)":     "IBI_Anual",
+        "Comunidad+Seguros (0110)":  "_comunidad_seguros",   # especial → desglosar
+        "Suministros (0111)":        "Servicios_Suministros",
+        "Gastos jurídicos (0112)":   "Gastos_Juridicos",
+        "Amortización 3% (0113)":    "Amortizacion_Fiscal",
+        "Retenciones (0153)":        "Retenciones_IRPF",
+    }
+
+    # ── Extraer datos por inmueble ───────────────────────────────
+    datos_por_inmueble = {nombre: {} for nombre in nombres_inmuebles}
+
+    for fila in filas_raw[fila_cab + 1:]:
+        if not fila or not fila[0]:
+            continue
+        concepto = str(fila[0]).strip()
+        if concepto not in MAPA_CAMPOS:
+            continue
+        campo = MAPA_CAMPOS[concepto]
+        for idx, col_j in enumerate(col_indices):
+            if col_j < len(fila):
+                val = fila[col_j]
+                if val is not None and str(val).strip() not in ("", "None"):
+                    datos_por_inmueble[nombres_inmuebles[idx]][campo] = val
+
+    # ── Leer inmuebles actuales de Supabase ─────────────────────
+    import pandas as _pd
+    df_actual = leer_inmuebles_fn(user_id=user_id)
+    nombres_actuales = {}
+    if df_actual is not None and len(df_actual) > 0:
+        for _, row in df_actual.iterrows():
+            nombres_actuales[str(row.get("Nombre", "")).strip()] = row
+
+    # ── Procesar cada inmueble ───────────────────────────────────
+    creados     = []
+    actualizados = []
+    movimientos_nuevos = []
+    hoy = datetime.now().strftime("%Y-%m-%d")
+
+    for nombre, datos in datos_por_inmueble.items():
+        # Construir registro base
+        registro = {"Nombre": nombre}
+
+        # Campos directos
+        for campo_excel, campo_sup in [
+            ("Ref_Catastral",        "Ref_Catastral"),
+            ("Inquilino",            "Inquilino"),
+            ("NIF_Inquilino",        "NIF_Inquilino"),
+            ("Tipo_Arrendamiento",   "Tipo_Arrendamiento"),
+            ("Dias_Arrendados_Anio", "Dias_Arrendados_Anio"),
+            ("Intereses_Hipoteca",   "Intereses_Hipoteca"),
+            ("IBI_Anual",            "IBI_Anual"),
+            ("Servicios_Suministros","Servicios_Suministros"),
+            ("Gastos_Juridicos",     "Gastos_Juridicos"),
+            ("Amortizacion_Fiscal",  "Amortizacion_Fiscal"),
+            ("Retenciones_IRPF",     "Retenciones_IRPF"),
+        ]:
+            if campo_excel in datos:
+                registro[campo_sup] = datos[campo_excel]
+
+        # Ingresos anuales → Renta mensual
+        if "_ingresos_anuales" in datos:
+            try:
+                registro["Renta"] = round(float(datos["_ingresos_anuales"]) / 12, 2)
+            except:
+                pass
+
+        # Comunidad+Seguros → Comunidad mensual (estimación)
+        if "_comunidad_seguros" in datos:
+            try:
+                total_cs = float(datos["_comunidad_seguros"])
+                # Aproximación: 60% comunidad, 40% seguro
+                registro["Comunidad"] = round(total_cs * 0.60 / 12, 2)
+                registro["Seguro_Anual"] = round(total_cs * 0.40, 2)
+            except:
+                pass
+
+        # Si existe en Supabase → actualizar
+        if nombre in nombres_actuales:
+            fila_actual = nombres_actuales[nombre]
+            # Mezclar: mantener datos actuales, añadir los que faltan
+            for k, v in fila_actual.items():
+                if k not in registro and v is not None and str(v) not in ("", "nan", "0"):
+                    registro[k] = v
+            actualizados.append(nombre)
+        else:
+            creados.append(nombre)
+
+        # Guardar en Supabase — upsert por Nombre + user_id
+        try:
+            df_registro = _pd.DataFrame([registro])
+            guardar_inmuebles_fn(df_registro, user_id=user_id)
+        except Exception as e:
+            pass  # Si falla uno, continuar con el resto
+
+        # Reparaciones → movimiento en diario contable
+        if "_reparaciones" in datos:
+            try:
+                importe_rep = float(datos["_reparaciones"])
+                if importe_rep > 0:
+                    movimientos_nuevos.append({
+                        "Fecha":      hoy,
+                        "Apartamento": nombre,
+                        "Concepto":   "Reparación y conservación (importado Excel)",
+                        "Categoría":  "Mantenimiento",
+                        "Tipo":       "Gasto",
+                        "Importe":    importe_rep,
+                        "Deducible":  "S",
+                    })
+            except:
+                pass
+
+    # Guardar movimientos de reparaciones
+    if movimientos_nuevos:
+        try:
+            agregar_movimientos_fn(movimientos_nuevos, user_id)
+        except:
+            pass
+
+    return {
+        "ok":          True,
+        "creados":     creados,
+        "actualizados": actualizados,
+        "movimientos": len(movimientos_nuevos),
+        "total":       len(creados) + len(actualizados),
+    }
+
+
+# ────────────────────────────────────────────────────────────────
+# 5. RENDER STREAMLIT — sección Fiscalidad completa
 # ────────────────────────────────────────────────────────────────
 
 def render_seccion_fiscal(df_inm, df_mov, safe_float_fn, calcular_modelo_100_fn):
