@@ -60,7 +60,8 @@ from supabase_db import (
     login_usuario, registrar_usuario,
     leer_gastos_recurrentes, guardar_gasto_recurrente,
     actualizar_gasto_recurrente, eliminar_gasto_recurrente,
-    generar_codigo_acceso, obtener_codigo_activo, revocar_codigo_acceso
+    generar_codigo_acceso, obtener_codigo_activo, revocar_codigo_acceso,
+    upsert_inmueble
 )
 
 COLS_INM = [
@@ -2774,11 +2775,12 @@ Base amortización (mayor × {pct_construccion*100:.0f}% construcción): **{base
             if st.button("📥 Importar inmuebles del Excel", type="primary",
                           use_container_width=True, key="btn_import_excel"):
                 from fiscal_export import importar_excel_asesor
+                from supabase_db import upsert_inmueble
                 with st.spinner("Importando datos del Excel..."):
                     resultado = importar_excel_asesor(
                         archivo_excel=uploaded_excel,
                         user_id=st.session_state.user_id,
-                        guardar_inmuebles_fn=guardar_inmuebles,
+                        upsert_inmueble_fn=upsert_inmueble,
                         agregar_movimientos_fn=agregar_movimientos,
                         leer_inmuebles_fn=leer_inmuebles,
                     )
