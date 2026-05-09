@@ -1479,10 +1479,10 @@ if menu == "Torre de Control":
         inmuebles_list = list(df_inm.iterrows())
         n = len(inmuebles_list)
 
-        # Dividir en filas de MAX_COLS
+        # Dividir en filas de MAX_COLS — siempre MAX_COLS columnas aunque la fila esté incompleta
         for fila_start in range(0, n, MAX_COLS):
             fila_rows = inmuebles_list[fila_start:fila_start + MAX_COLS]
-            cols = st.columns(len(fila_rows))
+            cols = st.columns(MAX_COLS)  # siempre MAX_COLS, no len(fila_rows)
             for col_idx, (i, row) in enumerate(fila_rows):
                 g_esp     = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
                 comunidad = safe_float(row.get("Comunidad", 0)) if pd.notna(row.get("Comunidad", 0)) else 0
