@@ -380,32 +380,24 @@ def _df_inm_to_records(df, user_id):
 
 
 def guardar_inmuebles(df, user_id):
-    """Borra inmuebles del usuario y los reinserta."""
+    """Guarda inmuebles usando upsert — nunca borra, solo crea o actualiza."""
     try:
-        # Usar anon key para saltar posibles problemas de RLS
         h = {
             'apikey': SUPABASE_KEY,
             'Authorization': f'Bearer {SUPABASE_KEY}',
             'Content-Type': 'application/json',
-            'Prefer': 'return=representation'
+            'Prefer': 'resolution=merge-duplicates,return=minimal'
         }
-
-        # 1. Borrar
-        r_del = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/inmuebles?user_id=eq.{user_id}",
-            headers=h, timeout=10
-        )
 
         if df is None or len(df) == 0:
             return True
 
-        # 2. Preparar registros
         records = _df_inm_to_records(df, user_id)
         if not records:
-            st.error("❌ No se generaron registros para guardar. Verifica el formato del DataFrame.")
+            st.error("❌ No se generaron registros para guardar.")
             return False
 
-        # 3. Insertar en lotes de 20 para evitar timeouts
+        # Insertar en lotes de 20
         lote = 20
         for i in range(0, len(records), lote):
             batch = records[i:i+lote]
@@ -415,8 +407,8 @@ def guardar_inmuebles(df, user_id):
                 json=batch,
                 timeout=15
             )
-            if r.status_code not in [200, 201]:
-                st.error(f"❌ Error insertando inmuebles (lote {i//lote+1}): {r.status_code} — {r.text[:300]}")
+            if r.status_code not in [200, 201, 204]:
+                st.error(f"❌ Error guardando inmuebles: {r.status_code} — {r.text[:300]}")
                 return False
         return True
     except Exception as e:
