@@ -1438,27 +1438,105 @@ if menu == "Torre de Control":
         <span style="font-size:0.78rem;font-weight:600;color:{_color_desv(bal_desv)};">{_flecha(bal_desv)} {abs(bal_desv):,.0f} €</span>
       </div></div>""", unsafe_allow_html=True)
 
-    # ── Activos (compactos) ─────────────────────────────────────
+    # ── Activos — tarjetas casita ────────────────────────────────
     st.markdown('<div class="nc-section-title">Rentabilidad por Activo</div>', unsafe_allow_html=True)
     if df_inm.empty:
         st.info("📭 No tienes inmuebles registrados. Ve a **Cartera** para añadir tu primer inmueble.")
     else:
-        cols = st.columns(len(df_inm))
-        for i, row in df_inm.iterrows():
-            g_esp     = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
-            comunidad = safe_float(row.get("Comunidad", 0)) if pd.notna(row.get("Comunidad", 0)) else 0
-            gastos_u  = comunidad + g_esp
-            neto_u    = safe_float(row.get("Renta", 0)) - gastos_u
-            rm        = tasacion(row)
-            desv      = (safe_float(row.get("Renta", 0)) - rm) / rm * 100 if rm else 0
-            pill_cls, _ = bench_pill(desv)
-            zt = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
-            with cols[i]:
-                st.markdown(f"""<div class="asset-card"><div class="asset-top" style="background:{COLOR_TOPS[i%len(COLOR_TOPS)]};"></div><div class="asset-body" style="padding:0.7rem 1rem 0.5rem 1rem;"><div class="asset-name">{row["Nombre"]}{zt}</div><div class="asset-tenant">{row["Inquilino"]}</div><div class="asset-row"><span class="asset-ml">Renta</span><span class="asset-mv" style="color:{GREEN};">+{safe_float(row.get("Renta",0)):,.0f}€</span></div><div class="asset-row"><span class="asset-ml">Gastos</span><span class="asset-mv" style="color:{RED};">−{gastos_u:,.0f}€</span></div><div class="asset-div"></div><div class="asset-row"><span class="asset-ml">Neto</span><span class="asset-neto">{neto_u:,.0f}€</span></div><span class="pill {pill_cls}">{desv:+.1f}% mercado</span></div></div>""", unsafe_allow_html=True)
-                if st.button("→ Ver ficha", key=f"card_{i}", use_container_width=True):
-                    st.session_state.menu = "Fichas (Benchmark)"
-                    st.session_state.ficha_sel = row["Nombre"]
-                    st.rerun()
+        # Color tejado por tipo de inmueble
+        def _roof_color(tipo):
+            t = str(tipo).lower()
+            if any(x in t for x in ["despacho","oficina","comercial","local"]):
+                return "#185FA5"   # azul — despachos
+            if any(x in t for x in ["casa","chalet","adosado","unifamiliar"]):
+                return "#6B2737"   # rojo vino — casas
+            return "#B8924A"       # mostaza — apartamentos (default)
+
+        # CSS casita — inyectar una sola vez
+        st.markdown("""<style>
+        .casita-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:16px;margin-bottom:1.5rem;}
+        .casita-body{background:var(--background-color,#fff);border:0.5px solid rgba(0,0,0,0.1);border-top:none;border-radius:0 0 12px 12px;padding:12px 12px 10px;box-sizing:border-box;}
+        .c-name{font-size:13px;font-weight:600;margin:0 0 2px;line-height:1.3;}
+        .c-tenant{font-size:11px;color:#888;margin:0 0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .c-row{display:flex;justify-content:space-between;margin-bottom:4px;}
+        .c-lbl{font-size:11px;color:#888;}
+        .c-div{height:0.5px;background:rgba(0,0,0,0.08);margin:7px 0;}
+        .c-pill{border-radius:6px;padding:3px 8px;text-align:center;font-size:11px;margin:8px 0 10px;display:block;}
+        .c-pos{color:#1a7a40;font-size:12px;font-weight:600;}
+        .c-neg{color:#a32d2d;font-size:12px;font-weight:600;}
+        .c-neu{font-size:13px;font-weight:600;}
+        .pill-pos{background:#eaf3de;color:#3b6d11;}
+        .pill-neg{background:#ffebeb;color:#a32d2d;}
+        .pill-neu{background:#f4f4f4;color:#666;}
+        </style>""", unsafe_allow_html=True)
+
+        # Grid de casitas — máx 4 por fila visual, auto-wrap
+        MAX_COLS = 4
+        inmuebles_list = list(df_inm.iterrows())
+        n = len(inmuebles_list)
+
+        # Dividir en filas de MAX_COLS
+        for fila_start in range(0, n, MAX_COLS):
+            fila_rows = inmuebles_list[fila_start:fila_start + MAX_COLS]
+            cols = st.columns(len(fila_rows))
+            for col_idx, (i, row) in enumerate(fila_rows):
+                g_esp     = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
+                comunidad = safe_float(row.get("Comunidad", 0)) if pd.notna(row.get("Comunidad", 0)) else 0
+                gastos_u  = comunidad + g_esp
+                neto_u    = safe_float(row.get("Renta", 0)) - gastos_u
+                rm        = tasacion(row)
+                desv      = (safe_float(row.get("Renta", 0)) - rm) / rm * 100 if rm else 0
+                zt        = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
+                tipo_inm  = str(row.get("Tipo", row.get("Tipo_Arrendamiento", "Apartamento")))
+                roof_col  = _roof_color(tipo_inm)
+                tipo_label = ("Despacho" if "#185FA5" in roof_col
+                              else "Casa" if "#6B2737" in roof_col
+                              else "Apartamento")
+                # Pill mercado
+                if desv > 5:
+                    pill_cls = "pill-pos"; desv_txt = f"+{desv:.1f}% mercado"
+                elif desv < -5:
+                    pill_cls = "pill-neg"; desv_txt = f"{desv:.1f}% mercado"
+                else:
+                    pill_cls = "pill-neu"; desv_txt = f"{desv:+.1f}% mercado"
+                # Color neto
+                neto_col = "#1a7a40" if neto_u >= 0 else "#a32d2d"
+
+                with cols[col_idx]:
+                    st.markdown(f"""
+                    <svg viewBox="0 0 200 76" xmlns="http://www.w3.org/2000/svg"
+                         style="display:block;width:100%;" preserveAspectRatio="none">
+                      <polygon points="100,5 196,76 4,76" fill="{roof_col}"/>
+                      <text x="100" y="57" text-anchor="middle"
+                            font-family="sans-serif" font-size="13"
+                            font-weight="500" fill="white" opacity="0.92">{tipo_label}</text>
+                      <text x="100" y="28" text-anchor="middle"
+                            font-family="sans-serif" font-size="17"
+                            fill="white" opacity="0.65">⌂</text>
+                    </svg>
+                    <div class="casita-body">
+                      <p class="c-name">{row["Nombre"]}{zt}</p>
+                      <p class="c-tenant">{row.get("Inquilino","—")}</p>
+                      <div class="c-row">
+                        <span class="c-lbl">Renta</span>
+                        <span class="c-pos">+{safe_float(row.get("Renta",0)):,.0f}€</span>
+                      </div>
+                      <div class="c-row">
+                        <span class="c-lbl">Gastos</span>
+                        <span class="c-neg">−{gastos_u:,.0f}€</span>
+                      </div>
+                      <div class="c-div"></div>
+                      <div class="c-row">
+                        <span class="c-lbl">Neto</span>
+                        <span class="c-neu" style="color:{neto_col};">{neto_u:,.0f}€</span>
+                      </div>
+                      <span class="c-pill {pill_cls}">{desv_txt}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button("→ Ver ficha", key=f"card_{fila_start}_{col_idx}", use_container_width=True):
+                        st.session_state.menu = "Fichas (Benchmark)"
+                        st.session_state.ficha_sel = row["Nombre"]
+                        st.rerun()
     col_l,col_r = st.columns(2)
     with col_l:
         st.markdown('<div class="nc-section-title">Composición de Rentas</div>', unsafe_allow_html=True)
