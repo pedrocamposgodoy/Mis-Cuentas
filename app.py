@@ -1450,7 +1450,7 @@ if menu == "Torre de Control":
             gastos_u  = comunidad + g_esp
             neto_u    = safe_float(row.get("Renta", 0)) - gastos_u
             rm        = tasacion(row)
-            desv      = (safe_float(row.get("Renta", 0)) - rm) / rm * 100
+            desv      = (safe_float(row.get("Renta", 0)) - rm) / rm * 100 if rm else 0
             pill_cls, _ = bench_pill(desv)
             zt = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
             with cols[i]:
@@ -1471,7 +1471,7 @@ if menu == "Torre de Control":
         for _,row in df_inm.iterrows():
             rm=tasacion(row); pa=max(0,rm-safe_float(row.get("Renta",0)))*12; total_lc+=pa
             if pa>0:
-                dv=(safe_float(row.get("Renta",0))-rm)/rm*100; cv=RED if dv<-15 else AMBER
+                dv=(safe_float(row.get("Renta",0))-rm)/rm*100 if rm else 0; cv=RED if dv<-15 else AMBER
                 st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:{CARD_BG};border:1px solid {BORDER};border-radius:8px;margin-bottom:6px;"><span style="font-size:0.8rem;color:{TEXT_SEC};">{row["Nombre"]}</span><span style="font-size:0.9rem;font-weight:600;color:{cv};">−{pa:,.0f} €/año</span></div>', unsafe_allow_html=True)
         st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:{ACCENT};border-radius:8px;margin-top:4px;"><span style="font-size:0.72rem;font-weight:500;color:#B5D4F4;text-transform:uppercase;letter-spacing:0.06em;">Total pérdida anual</span><span style="font-size:1.3rem;font-weight:600;color:#fff;">−{total_lc:,.0f} €</span></div>', unsafe_allow_html=True)
     
