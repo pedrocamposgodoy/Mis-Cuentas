@@ -1362,7 +1362,7 @@ def render_seccion_fiscal(df_inm, df_mov, safe_float_fn, calcular_modelo_100_fn)
         if REPORTLAB_OK:
             if st.button("✅ Generar PDF este inmueble", type="primary",
                           use_container_width=True, key="pdf_inm"):
-                from app__18_ import generar_pdf_modelo100
+                from app import generar_pdf_modelo100
                 pdf_buf = generar_pdf_modelo100(fila, modelo)
                 if pdf_buf:
                     st.download_button(
