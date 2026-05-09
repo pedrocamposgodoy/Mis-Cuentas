@@ -1443,14 +1443,18 @@ if menu == "Torre de Control":
     if df_inm.empty:
         st.info("📭 No tienes inmuebles registrados. Ve a **Cartera** para añadir tu primer inmueble.")
     else:
-        # Color tejado por tipo de inmueble
-        def _roof_color(tipo):
-            t = str(tipo).lower()
-            if any(x in t for x in ["despacho","oficina","comercial","local"]):
-                return "#185FA5"   # azul — despachos
-            if any(x in t for x in ["casa","chalet","adosado","unifamiliar"]):
-                return "#6B2737"   # rojo vino — casas
-            return "#B8924A"       # mostaza — apartamentos (default)
+        # Color tejado por tipo — detecta por nombre Y por campo Tipo
+        def _roof_color(row):
+            nombre = str(row.get("Nombre", "")).lower()
+            tipo   = str(row.get("Tipo", row.get("Tipo_Arrendamiento", ""))).lower()
+            texto  = nombre + " " + tipo
+            if any(x in texto for x in ["despacho","oficina","comercial","local","salón","salon","coworking"]):
+                return "#185FA5", "Despacho"
+            if any(x in texto for x in ["casa","chalet","adosado","unifamiliar","abarqueros","villa"]):
+                return "#6B2737", "Casa"
+            if any(x in texto for x in ["cochera","garaje","parking","trastero"]):
+                return "#4A5568", "Garaje"
+            return "#B8924A", "Apartamento"
 
         # CSS casita — inyectar una sola vez
         st.markdown("""<style>
@@ -1487,11 +1491,7 @@ if menu == "Torre de Control":
                 rm        = tasacion(row)
                 desv      = (safe_float(row.get("Renta", 0)) - rm) / rm * 100 if rm else 0
                 zt        = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
-                tipo_inm  = str(row.get("Tipo", row.get("Tipo_Arrendamiento", "Apartamento")))
-                roof_col  = _roof_color(tipo_inm)
-                tipo_label = ("Despacho" if "#185FA5" in roof_col
-                              else "Casa" if "#6B2737" in roof_col
-                              else "Apartamento")
+                roof_col, tipo_label = _roof_color(row)
                 # Pill mercado
                 if desv > 5:
                     pill_cls = "pill-pos"; desv_txt = f"+{desv:.1f}% mercado"
@@ -1504,15 +1504,15 @@ if menu == "Torre de Control":
 
                 with cols[col_idx]:
                     st.markdown(f"""
-                    <svg viewBox="0 0 200 76" xmlns="http://www.w3.org/2000/svg"
-                         style="display:block;width:100%;" preserveAspectRatio="none">
-                      <polygon points="100,5 196,76 4,76" fill="{roof_col}"/>
-                      <text x="100" y="57" text-anchor="middle"
+                    <svg viewBox="0 0 200 52" xmlns="http://www.w3.org/2000/svg"
+                         style="display:block;width:100%;margin-bottom:-1px;" preserveAspectRatio="none">
+                      <polygon points="100,4 196,52 4,52" fill="{roof_col}"/>
+                      <text x="100" y="40" text-anchor="middle"
                             font-family="sans-serif" font-size="13"
-                            font-weight="500" fill="white" opacity="0.92">{tipo_label}</text>
-                      <text x="100" y="28" text-anchor="middle"
-                            font-family="sans-serif" font-size="17"
-                            fill="white" opacity="0.65">⌂</text>
+                            font-weight="500" fill="white" opacity="0.95">{tipo_label}</text>
+                      <text x="100" y="20" text-anchor="middle"
+                            font-family="sans-serif" font-size="13"
+                            fill="white" opacity="0.6">⌂</text>
                     </svg>
                     <div class="casita-body">
                       <p class="c-name">{row["Nombre"]}{zt}</p>
