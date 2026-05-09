@@ -278,40 +278,6 @@ def agregar_movimientos(nuevos, user_id):
         return False
 
 
-def guardar_inmuebles(df, user_id):
-    """Borra inmuebles del usuario y los reinserta."""
-    try:
-        h = _headers()
-
-        # 1. Borrar
-        requests.delete(
-            f"{SUPABASE_URL}/rest/v1/inmuebles?user_id=eq.{user_id}",
-            headers=h
-        )
-
-        if df is None or len(df) == 0:
-            return True
-
-        # 2. Preparar registros
-        records = _df_inm_to_records(df, user_id)
-        if not records:
-            return True
-
-        # 3. Insertar
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/inmuebles",
-            headers=h,
-            json=records
-        )
-        if r.status_code not in [200, 201]:
-            st.error(f"❌ Error insertando inmuebles: {r.status_code} — {r.text[:300]}")
-            return False
-        return True
-    except Exception as e:
-        st.error(f"Error guardando inmuebles: {e}")
-        return False
-
-
 def eliminar_inmueble(nombre, user_id):
     """Elimina un inmueble por nombre."""
     try:
