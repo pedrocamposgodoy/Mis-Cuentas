@@ -325,48 +325,6 @@ def eliminar_inmueble(nombre, user_id):
         return False
 
 
-def upsert_inmueble(registro: dict, user_id: str) -> dict:
-    """
-    Inserta o actualiza UN inmueble sin tocar los demás.
-    Usa upsert nativo de Supabase (POST con Prefer: resolution=merge-duplicates).
-    Nunca borra nada. Seguro para usar en imports.
-    """
-    try:
-        nombre = registro.get("Nombre") or registro.get("nombre", "")
-        if not nombre:
-            return {"ok": False, "error": "Registro sin nombre"}
-
-        # Convertir claves a formato base de datos
-        rec_db = {}
-        for k, v in registro.items():
-            k_db = RENAME_INM_TO_DB.get(k, k.lower())
-            if v is not None and str(v) not in ("nan", "None", ""):
-                try:
-                    rec_db[k_db] = float(v) if isinstance(v, (int, float)) else v
-                except:
-                    rec_db[k_db] = v
-        rec_db["user_id"] = user_id
-        rec_db["nombre"]  = nombre  # asegurar que nombre está siempre
-
-        # Upsert nativo Supabase — merge por (nombre, user_id)
-        headers_upsert = {
-            **_headers(),
-            "Prefer": "resolution=merge-duplicates,return=minimal",
-        }
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/inmuebles",
-            headers=headers_upsert,
-            json=rec_db,
-            timeout=10
-        )
-        if r.status_code in (200, 201, 204):
-            return {"ok": True, "accion": "actualizado"}
-        return {"ok": False, "error": f"{r.status_code}: {r.text[:300]}"}
-
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
 # ─── HELPERS INTERNOS ────────────────────────────────────────────
 
 def _df_mov_to_records(df, user_id):
@@ -388,17 +346,116 @@ def _df_mov_to_records(df, user_id):
 
 
 def _df_inm_to_records(df, user_id):
-    """Convierte DataFrame de inmuebles a lista de dicts para Supabase."""
+    """Convierte DataFrame de inmuebles a lista de dicts para Supabase.
+    Acepta columnas tanto en formato app (Nombre, Renta...) como en formato DB (nombre, renta...).
+    """
     df2 = df.copy()
-    df2 = df2.rename(columns={k: v for k, v in RENAME_INM_TO_DB.items() if k in df2.columns})
-    cols_db = [v for v in RENAME_INM_TO_DB.values()]
-    cols_presentes = [c for c in cols_db if c in df2.columns]
-    df2 = df2[cols_presentes]
-    df2 = df2.where(pd.notna(df2), None)
-    records = df2.to_dict(orient='records')
-    for r in records:
-        r['user_id'] = user_id
+
+    # Mapeo directo App→DB sin depender del rename (evita problemas con ñ y encoding)
+    MAP_APP_TO_DB = {
+        'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
+        'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
+        'Valor_Construccion': 'valor_construccion', 'Año_Reforma': 'ano_reforma',
+        'Año_Construccion': 'ano_construccion', 'Mobiliario': 'mobiliario',
+        'Tipo': 'tipo', 'Ref_Catastral': 'ref_catastral', 'Titular': 'titular',
+        'M2_Construidos': 'm2_construidos', 'Habitaciones': 'habitaciones',
+        'CP': 'cp', 'Planta': 'planta', 'Parking': 'parking', 'Estado': 'estado',
+        'Tipo_Arrendamiento': 'tipo_arrendamiento',
+        'Cochera_Vinculada': 'cochera_vinculada',
+        'Zona_Tensionada': 'zona_tensionada',
+        'Fecha_Inicio_Contrato': 'fecha_inicio_contrato',
+        'Fecha_Vencimiento_Contrato': 'fecha_vencimiento_contrato',
+        'NIF_Inquilino': 'nif_inquilino',
+        'Intereses_Hipoteca': 'intereses_hipoteca',
+        'IBI_Anual': 'ibi_anual', 'Seguro_Anual': 'seguro_anual',
+        'Gastos_Juridicos': 'gastos_juridicos',
+        'Retenciones_IRPF': 'retenciones_irpf',
+        'Gastos_Formalizacion': 'gastos_formalizacion',
+        'Gastos_Pendientes_Años_Ant': 'gastos_pendientes_anos_ant',
+        'Servicios_Suministros': 'servicios_suministros',
+        'Direccion': 'direccion',
+        'Fecha_Adquisicion': 'fecha_adquisicion',
+        'Precio_Compra': 'precio_compra',
+        'Impuestos_Compra': 'impuestos_compra',
+        'Gastos_Compra': 'gastos_compra',
+        'Valor_Catastral': 'valor_catastral',
+        'Valor_Catastral_Piso': 'valor_catastral_piso',
+        'Pct_Suelo': 'pct_suelo', 'Pct_Construccion': 'pct_construccion',
+        'Valor_Real_Construccion': 'valor_real_construccion',
+        'Amortizacion_Fiscal': 'amortizacion_fiscal',
+        'Seguro_Vida': 'seguro_vida', 'Gasto_Ascensor': 'gasto_ascensor',
+        'Ref_Catastral_Cochera': 'ref_catastral_cochera',
+        'IBI_Cocheras': 'ibi_cocheras', 'Comunidad_Cocheras': 'comunidad_cocheras',
+        'IVA_Aplicable': 'iva_aplicable', 'Tipo_IVA': 'tipo_iva',
+        'Retencion_IRPF_Pct': 'retencion_irpf_pct',
+        'Dias_Arrendados_Anio': 'dias_arrendados_anio',
+    }
+
+    # Columnas válidas en la BD
+    COLS_VALIDAS_DB = set(MAP_APP_TO_DB.values())
+
+    records = []
+    for _, row in df2.iterrows():
+        rec = {'user_id': user_id}
+        for col_app, col_db in MAP_APP_TO_DB.items():
+            # Buscar tanto en formato app como en formato db
+            val = None
+            if col_app in row.index:
+                val = row[col_app]
+            elif col_db in row.index:
+                val = row[col_db]
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                continue
+            if isinstance(val, str) and val.strip() == '':
+                continue
+            rec[col_db] = val
+        records.append(rec)
     return records
+
+
+def guardar_inmuebles(df, user_id):
+    """Borra inmuebles del usuario y los reinserta."""
+    try:
+        # Usar anon key para saltar posibles problemas de RLS
+        h = {
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+        }
+
+        # 1. Borrar
+        r_del = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/inmuebles?user_id=eq.{user_id}",
+            headers=h, timeout=10
+        )
+
+        if df is None or len(df) == 0:
+            return True
+
+        # 2. Preparar registros
+        records = _df_inm_to_records(df, user_id)
+        if not records:
+            st.error("❌ No se generaron registros para guardar. Verifica el formato del DataFrame.")
+            return False
+
+        # 3. Insertar en lotes de 20 para evitar timeouts
+        lote = 20
+        for i in range(0, len(records), lote):
+            batch = records[i:i+lote]
+            r = requests.post(
+                f"{SUPABASE_URL}/rest/v1/inmuebles",
+                headers=h,
+                json=batch,
+                timeout=15
+            )
+            if r.status_code not in [200, 201]:
+                st.error(f"❌ Error insertando inmuebles (lote {i//lote+1}): {r.status_code} — {r.text[:300]}")
+                return False
+        return True
+    except Exception as e:
+        st.error(f"Error guardando inmuebles: {e}")
+        return False
 
 
 def _limpiar_numericos_inm(df):
