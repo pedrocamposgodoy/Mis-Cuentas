@@ -1550,7 +1550,7 @@ elif menu == "Fichas (Benchmark)":
             st.rerun()
     
     f = df_inm[df_inm["Nombre"]==sel].iloc[0]
-    renta_act = safe_float(f.get("Renta",0)); renta_mer = tasacion(f); desv = (renta_act-renta_mer)/renta_mer*100
+    renta_act = safe_float(f.get("Renta",0)); renta_mer = tasacion(f); desv = (renta_act-renta_mer)/renta_mer*100 if renta_mer else 0
     perdida_m = max(0,renta_mer-renta_act); perdida_a = perdida_m*12
     df_gf = df_mov[(df_mov["Apartamento"]==sel)&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]
     gastos_u = (safe_float(f.get("Comunidad",0)) if pd.notna(f.get("Comunidad", 0)) else 0) + df_gf["Importe"].sum()
