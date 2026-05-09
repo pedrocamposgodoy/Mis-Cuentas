@@ -641,3 +641,73 @@ def buscar_propietario_por_codigo(codigo: str) -> dict | None:
         }
     except Exception as e:
         return None
+
+
+def upsert_inmueble(registro: dict, user_id: str) -> dict:
+    """
+    Inserta o actualiza UN inmueble sin tocar los demás.
+    Usa upsert nativo de Supabase (POST con Prefer: resolution=merge-duplicates).
+    Requiere restricción UNIQUE (nombre, user_id) en la tabla.
+    """
+    try:
+        nombre = registro.get("Nombre") or registro.get("nombre", "")
+        if not nombre:
+            return {"ok": False, "error": "Registro sin nombre"}
+
+        # Convertir claves a formato base de datos
+        MAP_APP_TO_DB = {
+            'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
+            'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
+            'IBI_Anual': 'ibi_anual', 'Seguro_Anual': 'seguro_anual',
+            'Intereses_Hipoteca': 'intereses_hipoteca',
+            'Tipo_Arrendamiento': 'tipo_arrendamiento',
+            'Ref_Catastral': 'ref_catastral', 'M2_Construidos': 'm2_construidos',
+            'CP': 'cp', 'Valor_Catastral': 'valor_catastral',
+            'Pct_Construccion': 'pct_construccion',
+            'Amortizacion_Fiscal': 'amortizacion_fiscal',
+            'Precio_Compra': 'precio_compra',
+            'Impuestos_Compra': 'impuestos_compra',
+            'Gastos_Compra': 'gastos_compra',
+            'Fecha_Inicio_Contrato': 'fecha_inicio_contrato',
+            'Fecha_Adquisicion': 'fecha_adquisicion',
+            'NIF_Inquilino': 'nif_inquilino',
+            'Dias_Arrendados_Anio': 'dias_arrendados_anio',
+            'Seguro_Vida': 'seguro_vida',
+            'Gasto_Ascensor': 'gasto_ascensor',
+            'IBI_Cocheras': 'ibi_cocheras',
+            'Comunidad_Cocheras': 'comunidad_cocheras',
+            'Ref_Catastral_Cochera': 'ref_catastral_cochera',
+            'Valor_Real_Construccion': 'valor_real_construccion',
+            'Retenciones_IRPF': 'retenciones_irpf',
+            'Titular': 'titular',
+        }
+
+        rec_db = {}
+        for k, v in registro.items():
+            k_db = MAP_APP_TO_DB.get(k, k.lower())
+            if v is not None and str(v) not in ("nan", "None", ""):
+                try:
+                    rec_db[k_db] = float(v) if isinstance(v, (int, float)) else v
+                except:
+                    rec_db[k_db] = v
+        rec_db["user_id"] = user_id
+        rec_db["nombre"]  = nombre
+
+        h = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates,return=minimal",
+        }
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/inmuebles",
+            headers=h,
+            json=rec_db,
+            timeout=10
+        )
+        if r.status_code in (200, 201, 204):
+            return {"ok": True, "accion": "actualizado"}
+        return {"ok": False, "error": f"{r.status_code}: {r.text[:300]}"}
+
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
