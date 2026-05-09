@@ -328,58 +328,40 @@ def eliminar_inmueble(nombre, user_id):
 def upsert_inmueble(registro: dict, user_id: str) -> dict:
     """
     Inserta o actualiza UN inmueble sin tocar los demás.
-    - Si existe (match por nombre + user_id) → PATCH solo los campos del registro
-    - Si no existe → POST creando el inmueble nuevo
+    Usa upsert nativo de Supabase (POST con Prefer: resolution=merge-duplicates).
     Nunca borra nada. Seguro para usar en imports.
-    Devuelve: {"ok": True, "accion": "creado"|"actualizado"} o {"ok": False, "error": ...}
     """
     try:
         nombre = registro.get("Nombre") or registro.get("nombre", "")
         if not nombre:
             return {"ok": False, "error": "Registro sin nombre"}
 
-        # Convertir claves a formato base de datos (minúsculas)
+        # Convertir claves a formato base de datos
         rec_db = {}
         for k, v in registro.items():
             k_db = RENAME_INM_TO_DB.get(k, k.lower())
             if v is not None and str(v) not in ("nan", "None", ""):
-                rec_db[k_db] = v
+                try:
+                    rec_db[k_db] = float(v) if isinstance(v, (int, float)) else v
+                except:
+                    rec_db[k_db] = v
         rec_db["user_id"] = user_id
+        rec_db["nombre"]  = nombre  # asegurar que nombre está siempre
 
-        # ¿Existe ya?
-        check = requests.get(
-            f"{SUPABASE_URL}/rest/v1/inmuebles"
-            f"?nombre=eq.{requests.utils.quote(nombre)}"
-            f"&user_id=eq.{user_id}&select=id",
-            headers=_headers(),
-            timeout=8
+        # Upsert nativo Supabase — merge por (nombre, user_id)
+        headers_upsert = {
+            **_headers(),
+            "Prefer": "resolution=merge-duplicates,return=minimal",
+        }
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/inmuebles",
+            headers=headers_upsert,
+            json=rec_db,
+            timeout=10
         )
-        existentes = check.json() if check.status_code == 200 else []
-
-        if existentes:
-            # PATCH — actualizar solo los campos del registro
-            r = requests.patch(
-                f"{SUPABASE_URL}/rest/v1/inmuebles"
-                f"?nombre=eq.{requests.utils.quote(nombre)}"
-                f"&user_id=eq.{user_id}",
-                headers={**_headers(), "Prefer": "return=minimal"},
-                json=rec_db,
-                timeout=8
-            )
-            if r.status_code in (200, 204):
-                return {"ok": True, "accion": "actualizado"}
-            return {"ok": False, "error": f"PATCH {r.status_code}: {r.text[:200]}"}
-        else:
-            # POST — crear nuevo
-            r = requests.post(
-                f"{SUPABASE_URL}/rest/v1/inmuebles",
-                headers=_headers(),
-                json=rec_db,
-                timeout=8
-            )
-            if r.status_code in (200, 201):
-                return {"ok": True, "accion": "creado"}
-            return {"ok": False, "error": f"POST {r.status_code}: {r.text[:200]}"}
+        if r.status_code in (200, 201, 204):
+            return {"ok": True, "accion": "actualizado"}
+        return {"ok": False, "error": f"{r.status_code}: {r.text[:300]}"}
 
     except Exception as e:
         return {"ok": False, "error": str(e)}
