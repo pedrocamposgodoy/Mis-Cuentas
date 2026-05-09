@@ -1269,7 +1269,145 @@ def importar_excel_asesor(archivo_excel, user_id, upsert_inmueble_fn,
 
 
 # ────────────────────────────────────────────────────────────────
-# 5. RENDER STREAMLIT — sección Fiscalidad completa
+# 5. PDF INDIVIDUAL — un solo inmueble (sin import circular)
+# ────────────────────────────────────────────────────────────────
+
+def _generar_pdf_modelo100_individual(inmueble_data, modelo):
+    """Genera PDF del Modelo 100 para un solo inmueble."""
+    if not REPORTLAB_OK:
+        return None
+    from reportlab.pdfgen import canvas as rl_canvas2
+    from reportlab.platypus import Table, TableStyle
+    buffer = io.BytesIO()
+    c = rl_canvas2.Canvas(buffer, pagesize=A4)
+    w, h = A4
+    azul_oscuro = HexColor("#0F2744")
+    azul_acento = HexColor("#185FA5")
+    verde       = HexColor("#1a7a40")
+    naranja     = HexColor("#B45309")
+    gris_claro  = HexColor("#F4F7FB")
+    gris_borde  = HexColor("#D0DFF0")
+    amarillo    = HexColor("#FFF9E6")
+    ref      = f"NC-{datetime.now().strftime('%Y')}-{inmueble_data['Nombre'][:3].upper()}"
+    tipo_arr = str(inmueble_data.get("Tipo_Arrendamiento", "Larga Duracion"))
+    dias_arr = int(float(inmueble_data.get("Dias_Arrendados_Anio", 365) or 365))
+
+    # Cabecera
+    c.setFillColor(azul_oscuro)
+    c.rect(0, h-100, w, 100, fill=True, stroke=False)
+    c.setFillColor(azul_acento)
+    c.roundRect(30, h-85, 55, 55, 6, fill=True, stroke=False)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 22); c.drawCentredString(57.5, h-65, "NC")
+    c.setFont("Helvetica", 7); c.drawCentredString(57.5, h-77, "CAPITAL")
+    c.setFont("Helvetica-Bold", 20); c.drawString(100, h-50, "Nolasco Capital")
+    c.setFont("Helvetica", 9); c.drawString(100, h-65, "GRANADA  |  GESTION PATRIMONIAL INMOBILIARIA")
+    c.setFont("Helvetica", 8)
+    c.drawRightString(w-30, h-45, f"Ref: {ref}")
+    c.drawRightString(w-30, h-57, f"Fecha: {datetime.now().strftime('%d/%m/%Y')}")
+    c.drawRightString(w-30, h-69, f"Ejercicio: {datetime.now().year}")
+    c.setStrokeColor(azul_acento); c.setLineWidth(3); c.line(0, h-103, w, h-103)
+
+    # Título
+    y = h-130
+    c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold", 13)
+    c.drawString(30, y, "Modelo 100 - Rendimientos del Capital Inmobiliario")
+    c.setFont("Helvetica", 9); c.setFillColor(HexColor("#5A7A9A"))
+    c.drawString(30, y-15, "Datos informativos para el asesor fiscal | Pendiente validacion profesional")
+
+    # Datos inmueble
+    y -= 45
+    c.setFillColor(gris_claro); c.roundRect(25, y-70, w-50, 70, 6, fill=True, stroke=False)
+    c.setStrokeColor(gris_borde); c.roundRect(25, y-70, w-50, 70, 6, fill=False, stroke=True)
+    c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold", 10); c.drawString(35, y-14, "Datos del Inmueble")
+    labels1 = [("Inmueble:", 35, str(inmueble_data["Nombre"])),
+               ("Ref. Catastral:", 200, str(inmueble_data.get("Ref_Catastral","N/A"))),
+               ("Titular:", 390, str(inmueble_data.get("Titular","N/A")))]
+    labels2 = [("Modalidad:", 35, tipo_arr),
+               ("NIF Inquilino:", 200, str(inmueble_data.get("NIF_Inquilino","N/A"))),
+               ("Dias arrendados:", 390, f"{dias_arr} dias")]
+    c.setFont("Helvetica", 8); c.setFillColor(HexColor("#5A7A9A"))
+    for lbl, x, _ in labels1: c.drawString(x, y-30, lbl)
+    for lbl, x, _ in labels2: c.drawString(x, y-48, lbl)
+    c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold", 8)
+    for lbl, x, val in labels1: c.drawString(x+60, y-30, val)
+    for lbl, x, val in labels2: c.drawString(x+65, y-48, val)
+
+    # Tabla casillas
+    y -= 95
+    c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold", 11); c.drawString(30, y, "Casillas del Modelo 100")
+    c.setStrokeColor(azul_acento); c.setLineWidth(2); c.line(30, y-4, 230, y-4)
+    y -= 22
+    amort_detalle = modelo.get("0113_detalle", "")
+    data_tabla = [
+        ["Casilla", "Descripcion", "Importe (EUR)", "Nota"],
+        ["0101", "Dias arrendado",                f"{modelo['0101']} dias",   ""],
+        ["0102", "Ingresos integros",              f"{modelo['0102']:,.2f}",   ""],
+        ["0105", "Intereses hipoteca",             f"{modelo['0105']:,.2f}",   "Solo intereses"],
+        ["0106", "Reparacion y conservacion",      f"{modelo['0106']:,.2f}",   "Diario contable"],
+        ["0108", "Tributos e IBI",                 f"{modelo['0108']:,.2f}",   ""],
+        ["0110", "Comunidad + Seguros",            f"{modelo['0110']:,.2f}",   "Hogar+vida+comunidad"],
+        ["0111", "Suministros",                    f"{modelo['0111']:,.2f}",   ""],
+        ["0112", "Gastos juridicos",               f"{modelo['0112']:,.2f}",   ""],
+        ["0113", "Amortizacion fiscal (3%)",       f"{modelo['0113']:,.2f}",   amort_detalle[:35] if amort_detalle else ""],
+        ["0107", "TOTAL GASTOS DEDUCIBLES",        f"{modelo['0107']:,.2f}",   ""],
+        ["0149", "RENDIMIENTO NETO",               f"{modelo['0149']:,.2f}",   ""],
+        ["0150", f"Reduccion {modelo['reduccion_pct']}% (orient.)", f"-{modelo['0150']:,.2f}", "VALIDAR asesor"],
+        ["0152", "RENDIMIENTO NETO REDUCIDO",      f"{modelo['0152']:,.2f}",   "VALIDAR asesor"],
+        ["0153", "Retenciones practicadas",        f"{modelo['0153']:,.2f}",   ""],
+    ]
+    t = Table(data_tabla, colWidths=[58, 165, 90, 152])
+    t.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0),(-1,0),  azul_oscuro),
+        ("TEXTCOLOR",     (0,0),(-1,0),  white),
+        ("FONTNAME",      (0,0),(-1,0),  "Helvetica-Bold"),
+        ("FONTSIZE",      (0,0),(-1,0),  8),
+        ("FONTNAME",      (0,1),(-1,-1), "Helvetica"),
+        ("FONTSIZE",      (0,1),(-1,-1), 7.5),
+        ("ALIGN",         (2,1),(2,-1),  "RIGHT"),
+        ("FONTNAME",      (0,1),(0,-1),  "Helvetica-Bold"),
+        ("GRID",          (0,0),(-1,-1), 0.4, gris_borde),
+        ("LINEBELOW",     (0,0),(-1,0),  2, azul_acento),
+        ("ROWBACKGROUNDS",(0,1),(-1,-5), [white, gris_claro]),
+        ("BACKGROUND",    (0,-4),(-1,-4),HexColor("#F0F8FF")),
+        ("FONTNAME",      (0,-4),(-1,-4),"Helvetica-Bold"),
+        ("BACKGROUND",    (0,-3),(-1,-3),amarillo),
+        ("FONTNAME",      (0,-3),(-1,-3),"Helvetica-Bold"),
+        ("TEXTCOLOR",     (3,-3),(3,-3), naranja),
+        ("BACKGROUND",    (0,-2),(-1,-2),HexColor("#FFF0DC")),
+        ("FONTNAME",      (0,-2),(-1,-2),"Helvetica-Bold"),
+        ("TEXTCOLOR",     (3,-2),(3,-2), naranja),
+        ("BACKGROUND",    (0,-1),(-1,-1),gris_claro),
+        ("TOPPADDING",    (0,0),(-1,-1), 5),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 5),
+        ("LEFTPADDING",   (0,0),(-1,-1), 6),
+    ]))
+    t.wrapOn(c, w, h)
+    t.drawOn(c, 25, y - len(data_tabla)*19 - 5)
+    y_after = y - len(data_tabla)*19 - 20
+
+    # Aviso
+    y_av = y_after - 15
+    c.setFillColor(amarillo); c.roundRect(25, y_av-55, w-50, 55, 5, fill=True, stroke=False)
+    c.setStrokeColor(naranja); c.setLineWidth(1); c.roundRect(25, y_av-55, w-50, 55, 5, fill=False, stroke=True)
+    c.setFillColor(naranja); c.setFont("Helvetica-Bold", 9)
+    c.drawString(35, y_av-14, "IMPORTANTE: Documento informativo — pendiente validacion por asesor fiscal")
+    c.setFont("Helvetica", 8); c.setFillColor(HexColor("#5A4A00"))
+    c.drawString(35, y_av-28, "Reduccion 60% (cas. 0150): orientativa segun ingresos totales del contribuyente.")
+    c.drawString(35, y_av-40, "Amortizacion: MAX(precio compra, catastral) x % construccion x 3%.")
+
+    # Footer
+    c.setFillColor(azul_oscuro); c.rect(0, 0, w, 30, fill=True, stroke=False)
+    c.setFillColor(white); c.setFont("Helvetica", 7)
+    c.drawString(30, 11, "Nolasco Capital  |  Granada  |  Gestion Patrimonial Inmobiliaria")
+    c.drawRightString(w-30, 11, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+
+# ────────────────────────────────────────────────────────────────
+# 6. RENDER STREAMLIT — sección Fiscalidad completa
 # ────────────────────────────────────────────────────────────────
 
 def render_seccion_fiscal(df_inm, df_mov, safe_float_fn, calcular_modelo_100_fn):
@@ -1362,16 +1500,19 @@ def render_seccion_fiscal(df_inm, df_mov, safe_float_fn, calcular_modelo_100_fn)
         if REPORTLAB_OK:
             if st.button("✅ Generar PDF este inmueble", type="primary",
                           use_container_width=True, key="pdf_inm"):
-                from app import generar_pdf_modelo100
-                pdf_buf = generar_pdf_modelo100(fila, modelo)
+                pdf_buf = _generar_pdf_modelo100_individual(fila, modelo)
                 if pdf_buf:
-                    st.download_button(
-                        "📥 Descargar PDF inmueble",
-                        data=pdf_buf,
-                        file_name=f"Modelo100_{inmueble_sel.replace(' ','_')}_{año_fiscal}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True,
-                    )
+                    st.session_state["pdf_inm_buf"] = pdf_buf
+                    st.success("✓ PDF generado")
+
+            if "pdf_inm_buf" in st.session_state:
+                st.download_button(
+                    "📥 Descargar PDF inmueble",
+                    data=st.session_state["pdf_inm_buf"],
+                    file_name=f"Modelo100_{inmueble_sel.replace(' ','_')}_{año_fiscal}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
 
     # ── TAB 2: Resumen Global ─────────────────────────────────────
     with tab2:
