@@ -174,8 +174,32 @@ def inject_global_css(app: str):
         border-right: 0.5px solid {'rgba(255,255,255,0.08)' if is_dark else 'rgba(0,0,0,0.06)'};
     }}
 
-    [data-testid="stSidebar"] * {{
-        color: {'#8899AA' if is_dark else '#6B7280'} !important;
+    /* Texto del sidebar sin !important global para no romper nav */
+    [data-testid="stSidebar"] p,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] label {{
+        color: {'#8899AA' if is_dark else '#4B5563'};
+    }}
+
+    /* Botones sidebar: transparentes con texto legible */
+    [data-testid="stSidebar"] .stButton > button {{
+        background: transparent !important;
+        color: {'#8899AA' if is_dark else '#4B5563'} !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-size: 13px !important;
+        font-weight: 400 !important;
+        padding: 8px 14px !important;
+        text-align: left !important;
+        width: 100% !important;
+        justify-content: flex-start !important;
+        box-shadow: none !important;
+    }}
+
+    [data-testid="stSidebar"] .stButton > button:hover {{
+        background: {'rgba(255,255,255,0.06)' if is_dark else 'rgba(24,95,165,0.06)'} !important;
+        color: {'#ffffff' if is_dark else '#185FA5'} !important;
+        opacity: 1 !important;
     }}
 
     [data-testid="stSidebar"] .stRadio label {{
@@ -346,8 +370,10 @@ def inject_global_css(app: str):
         box-shadow: 0 0 0 3px {t['accent_light']} !important;
     }}
 
-    /* ── BUTTONS ── */
-    .stButton > button {{
+    /* ── BUTTONS GLOBALES (fuera del sidebar) ── */
+    /* Solo afecta botones en el main content, no en sidebar */
+    .main .stButton > button,
+    [data-testid="stMainBlockContainer"] .stButton > button {{
         background: {t['bocadillo_btn']} !important;
         color: white !important;
         border: none !important;
@@ -360,8 +386,25 @@ def inject_global_css(app: str):
         transition: opacity 0.15s !important;
     }}
 
-    .stButton > button:hover {{
+    .main .stButton > button:hover,
+    [data-testid="stMainBlockContainer"] .stButton > button:hover {{
         opacity: 0.85 !important;
+    }}
+
+    /* Botón primary explícito (type=primary) — siempre acento */
+    button[kind="primary"] {{
+        background: {t['accent']} !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 12px !important;
+    }}
+
+    /* Botón secondary — outline */
+    button[kind="secondary"] {{
+        background: transparent !important;
+        color: {t['accent']} !important;
+        border: 1.5px solid {t['accent_pastel']} !important;
+        border-radius: 12px !important;
     }}
 
     /* ── PILLS ── */
