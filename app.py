@@ -46,8 +46,9 @@ COLOR_TOPS = ["#185FA5","#0F6E56","#378ADD","#639922","#D85A30","#7F77DD"]
 # ================================================================
 # SECCIÓN 2 — ESTILOS CSS (Design System Nolasco Capital)
 # ================================================================
-from nolasco_styles import inject_styles
-inject_styles()
+from nolasco_styles import inject_global_css, bocadillo_ia_interactivo, generar_insight_proactivo
+APP = "capital"
+inject_global_css(APP)
 
 
 # ================================================================
@@ -2918,6 +2919,34 @@ elif menu == "Asesor Patrimonial IA":
     if df_inm.empty:
         st.info("📭 Añade inmuebles en 'Datos de la Cartera' para usar el Asesor.")
     else:
+        # ── BOCADILLO IA INTERACTIVO ────────────────────────────────
+        def _safe_float(v):
+            try: return float(str(v).replace(",","").replace("€","").strip())
+            except: return 0.0
+        renta_total   = df_inm["Renta"].apply(_safe_float).sum()
+        mercado_total = df_inm["Renta_Mercado"].apply(_safe_float).sum()
+        rent_pct      = round(renta_total / mercado_total * 100, 1) if mercado_total > 0 else 0
+        contexto_ia = {
+            "num_inmuebles":        len(df_inm),
+            "rentabilidad_media":   rent_pct,
+            "rentabilidad_mercado": 100,
+            "perdida_mensual":      round(mercado_total - renta_total, 0),
+            "inmuebles": [
+                {
+                    "nombre":      row.get("Nombre", ""),
+                    "renta":       _safe_float(row.get("Renta", 0)),
+                    "mercado":     _safe_float(row.get("Renta_Mercado", 0)),
+                    "vencimiento": str(row.get("Fecha_Vencimiento_Contrato", "")),
+                }
+                for _, row in df_inm.iterrows()
+            ],
+            "email": st.session_state.user_email or "",
+        }
+        proactive = generar_insight_proactivo(APP, contexto_ia)
+        bocadillo_ia_interactivo(APP, contexto_ia, proactive_text=proactive)
+        st.markdown("<hr style='border:0;border-top:1px solid #D0DFF0;margin:1.5rem 0;'>", unsafe_allow_html=True)
+        # ── FIN BOCADILLO ───────────────────────────────────────────
+
         datos_propietario = {
             "nombre":   st.session_state.get("user_nombre", ""),
             "email":    st.session_state.get("user_email", st.session_state.user_email or ""),
