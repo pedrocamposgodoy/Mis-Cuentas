@@ -197,13 +197,13 @@ def render_sabio(seccion: str, contexto: dict):
             insight = _insight_proactivo(seccion, contexto)
 
         st.markdown(f"""
-        <div style="background:{ACCENT_LIGHT};border-radius:12px;padding:12px 16px;
-                    border-left:3px solid {ACCENT};margin-bottom:14px;">
-            <p style="font-size:10px;font-weight:700;letter-spacing:0.1em;
-                      text-transform:uppercase;color:{ACCENT};margin:0 0 6px">
+        <div style="background:{ACCENT_LIGHT};border-radius:12px;padding:14px 18px;
+                    border-left:3px solid {ACCENT};margin-bottom:16px;">
+            <p style="font-size:11px;font-weight:700;letter-spacing:0.1em;
+                      text-transform:uppercase;color:{ACCENT};margin:0 0 8px">
                 {label}
             </p>
-            <p style="font-size:13px;color:{TEXT_PRI};line-height:1.6;margin:0">
+            <p style="font-size:14px;color:{TEXT_PRI};line-height:1.7;margin:0">
                 {insight}
             </p>
         </div>
@@ -226,8 +226,8 @@ def render_sabio(seccion: str, contexto: dict):
                 badge_label = LABELS.get(badge_seccion, "Sabio").replace("✦ Sabio · ", "")
                 st.markdown(f"""
                 <div style="background:#F8FAFC;border-radius:4px 14px 14px 14px;
-                            padding:10px 14px;font-size:12.5px;color:{TEXT_PRI};
-                            line-height:1.65;margin:6px 0;
+                            padding:12px 16px;font-size:13.5px;color:{TEXT_PRI};
+                            line-height:1.7;margin:8px 0;
                             border-left:2px solid {ACCENT};">
                     <span style="font-size:9px;text-transform:uppercase;letter-spacing:0.08em;
                                  color:{TEXT_SEC};font-weight:600;">{badge_label}</span><br>
