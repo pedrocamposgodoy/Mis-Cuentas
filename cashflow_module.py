@@ -14,8 +14,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, date
-import anthropic
-import os
+from sabio_patrimonial import render_sabio
 
 # ──────────────────────────────────────────────────────────────
 # CONSTANTES
@@ -37,12 +36,6 @@ def _safe_float(v, d=0.0):
     except:
         return float(d)
 
-
-def _get_api_key():
-    try:
-        return st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "")
-    except:
-        return os.getenv("ANTHROPIC_API_KEY", "")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -322,7 +315,7 @@ def _render_tabla(df_hist: pd.DataFrame, df_proy: pd.DataFrame):
 
 
 # ──────────────────────────────────────────────────────────────
-# BOCADILLO IA — SABIO PATRIMONIAL (fijo abajo-izda)
+# BOCADILLO IA eliminado — ahora usa sabio_patrimonial.render_sabio()
 # ──────────────────────────────────────────────────────────────
 def _generar_insight_cashflow(contexto: dict) -> str:
     """Genera insight inicial sobre el cash flow. Cacheado en session_state."""
@@ -638,4 +631,4 @@ def render_cashflow(df_mov: pd.DataFrame, df_inm: pd.DataFrame,
 
     # ── SABIO PATRIMONIAL ───────────────────────────────────
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-    render_bocadillo_sabio_cashflow(contexto_ia)
+    render_sabio("cashflow", contexto_ia)
