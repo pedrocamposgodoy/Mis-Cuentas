@@ -9,7 +9,6 @@ import io
 import base64
 import plotly.graph_objects as go
 from datetime import datetime, date
-from cashflow_module import render_cashflow
 
 try:
     from reportlab.lib.pagesizes import A4
@@ -24,6 +23,7 @@ except ImportError:
 # IMPORT MÓDULO B2B2C
 # ================================================================
 from asesoramiento_ia import render_asesor_ia, render_privacidad, render_diagnostico_inmueble
+from sabio_patrimonial import render_sabio, limpiar_insight_seccion
 
 # ================================================================
 # SECCIÓN 1 — CONFIGURACIÓN Y COLORES
@@ -45,7 +45,7 @@ COLOR_TOPS = ["#185FA5","#0F6E56","#378ADD","#639922","#D85A30","#7F77DD"]
 # ================================================================
 # SECCIÓN 2 — ESTILOS CSS (Design System Nolasco Capital)
 # ================================================================
-from nolasco_styles import inject_global_css, bocadillo_ia_interactivo, generar_insight_proactivo
+from nolasco_styles import inject_global_css
 APP = "capital"
 inject_global_css(APP)
 
@@ -1096,6 +1096,38 @@ elif menu == "Fichas (Benchmark)":
     res=pd.concat([pd.DataFrame([{"Concepto":"Comunidad","Importe":safe_float(f.get("Comunidad",0)) if pd.notna(f.get("Comunidad",0)) else 0,"Deducible":"S"}]),df_gf[["Concepto","Importe","Deducible"]]])
     st.dataframe(res.style.format({"Importe":"{:,.2f} €"}),hide_index=True,use_container_width=True)
 
+    # ── SABIO PATRIMONIAL — Fichas ──────────────────────────────
+    contexto_fichas = {
+        "inmueble":             str(f.get("Nombre", "")),
+        "tipo":                 str(f.get("Tipo", "")),
+        "renta_actual":         safe_float(f.get("Renta", 0)),
+        "renta_mercado":        safe_float(f.get("Renta_Mercado", renta_mer)),
+        "renta_tasada_motor":   renta_mer,
+        "desviacion_mercado_pct": round(desv, 1),
+        "perdida_mensual":      round(perdida_m, 0),
+        "perdida_anual":        round(perdida_a, 0),
+        "comunidad_mensual":    safe_float(f.get("Comunidad", 0)),
+        "gastos_totales":       round(gastos_u, 0),
+        "rentabilidad_bruta":   round(rent_bruta, 2),
+        "rentabilidad_neta":    round(rent_neta, 2),
+        "fecha_inicio":         str(f.get("Fecha_Inicio_Contrato", "")),
+        "fecha_vencimiento":    str(f.get("Fecha_Vencimiento_Contrato", "")),
+        "tipo_arrendamiento":   tipo_arr,
+        "zona_tensionada":      "Sí" if zona_tens else "No",
+        "inquilino":            str(f.get("Inquilino", "")),
+        "m2":                   safe_float(f.get("M2_Construidos", 0)),
+        "estado":               str(f.get("Estado", "")),
+        "cp":                   str(f.get("CP", "")),
+        "ibi_anual":            safe_float(f.get("IBI_Anual", 0)),
+        "intereses_hipoteca":   safe_float(f.get("Intereses_Hipoteca", 0)),
+        "seguro_anual":         safe_float(f.get("Seguro_Anual", 0)),
+        "alerta_vencimiento":   msg_v if tipo_v else "Sin alerta",
+    }
+    if st.session_state.get("sabio_prev_ficha") != f.get("Nombre"):
+        limpiar_insight_seccion("fichas")
+        st.session_state["sabio_prev_ficha"] = f.get("Nombre")
+    render_sabio("fichas", contexto_fichas)
+
 # ================================================================
 # PANTALLA: AUDITORÍA DE MANTENIMIENTO
 # ⚠️  SEPARADA de Fichas — era código huérfano en el original
@@ -1408,11 +1440,15 @@ elif menu == "Diario Contable":
 
 # ================================================================
 # PANTALLA: CASH FLOW
-# Módulo completo — cashflow_module.py
+# Placeholder — módulo completo se implementa en cashflow.py
+# Deps: df_mov, df_inm, leer_gastos_recurrentes()
+# TODO: importar desde cashflow.py cuando esté listo
 # ================================================================
 elif menu == "Cash Flow":
-    df_gastos_rec_cf = leer_gastos_recurrentes(user_id=st.session_state.user_id)
-    render_cashflow(df_mov, df_inm, df_gastos_rec_cf, safe_float)
+    st.markdown('<div class="nc-brand-header">Cash Flow · Tesorería</div>',unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Histórico real + proyección 12 meses · El latido de tu tesorería</div>',unsafe_allow_html=True)
+    st.info("🔧 Módulo en construcción — disponible en la próxima entrega. El Sabio Patrimonial estará integrado aquí.")
+
 # ================================================================
 # PANTALLA: SUMINISTROS
 # Auditoría de potencia eléctrica, comparador de tarifas
@@ -1595,11 +1631,11 @@ elif menu == "Asesor Patrimonial IA":
             "inmuebles": [{"nombre":row.get("Nombre",""),"renta":_safe_float(row.get("Renta",0)),"mercado":_safe_float(row.get("Renta_Mercado",0)),"vencimiento":str(row.get("Fecha_Vencimiento_Contrato",""))} for _,row in df_inm.iterrows()],
             "email": st.session_state.user_email or "",
         }
-        proactive=generar_insight_proactivo(APP,contexto_ia)
-        bocadillo_ia_interactivo(APP,contexto_ia,proactive_text=proactive)
         st.markdown("<hr style='border:0;border-top:1px solid #D0DFF0;margin:1.5rem 0;'>",unsafe_allow_html=True)
         datos_propietario={"nombre":st.session_state.get("user_nombre",""),"email":st.session_state.get("user_email",st.session_state.user_email or ""),"telefono":st.session_state.get("user_telefono",""),}
         render_asesor_ia(user_id=st.session_state.user_id,df_inmuebles=df_inm,datos_propietario=datos_propietario)
+        # ── SABIO PATRIMONIAL — Asesor ──────────────────────────
+        render_sabio("asesor", contexto_ia)
 
 # ================================================================
 # PANTALLA: PRIVACIDAD Y CONSENTIMIENTOS (RGPD)
