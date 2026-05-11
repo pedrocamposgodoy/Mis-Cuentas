@@ -224,13 +224,26 @@ def _render_grafico(df_hist: pd.DataFrame, df_proy: pd.DataFrame):
         hovermode="x unified",
     )
     # Línea divisoria histórico / proyección
+    # Nota: add_vline no funciona con eje categórico en Plotly reciente.
+    # Usamos add_shape con coordenadas de papel para el eje X.
     if len(df_hist) > 0 and len(df_proy) > 0:
-        ultimo_mes_hist = MESES[int(df_hist.iloc[-1]["mes"]) - 1]
-        fig.add_vline(
-            x=ultimo_mes_hist, line_width=1.5, line_dash="dash",
-            line_color="rgba(0,0,0,0.2)",
-            annotation_text="Hoy", annotation_position="top",
-            annotation_font=dict(size=10, color="#5A7A9A")
+        # Calcular posición relativa del último mes histórico en el eje categórico
+        total_meses = len(df_hist) + len(df_proy)
+        x_rel = (len(df_hist) - 0.5) / total_meses  # fracción del eje [0,1]
+        fig.add_shape(
+            type="line",
+            xref="paper", yref="paper",
+            x0=x_rel, x1=x_rel,
+            y0=0, y1=1,
+            line=dict(color="rgba(0,0,0,0.18)", width=1.5, dash="dash"),
+        )
+        fig.add_annotation(
+            xref="paper", yref="paper",
+            x=x_rel + 0.01, y=0.98,
+            text="Hoy",
+            showarrow=False,
+            font=dict(size=10, color="#5A7A9A"),
+            xanchor="left",
         )
 
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
