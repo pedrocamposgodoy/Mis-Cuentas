@@ -9,6 +9,7 @@ import io
 import base64
 import plotly.graph_objects as go
 from datetime import datetime, date
+from cashflow_module import render_cashflow
 
 try:
     from reportlab.lib.pagesizes import A4
@@ -1097,12 +1098,12 @@ elif menu == "Fichas (Benchmark)":
     st.dataframe(res.style.format({"Importe":"{:,.2f} €"}),hide_index=True,use_container_width=True)
 
     # ── SABIO PATRIMONIAL — Fichas ──────────────────────────────
+    _tipo_v, _msg_v = alerta_vencimiento(f)
     contexto_fichas = {
         "inmueble":             str(f.get("Nombre", "")),
         "tipo":                 str(f.get("Tipo", "")),
         "renta_actual":         safe_float(f.get("Renta", 0)),
-        "renta_mercado":        safe_float(f.get("Renta_Mercado", renta_mer)),
-        "renta_tasada_motor":   renta_mer,
+        "renta_tasada_mercado": renta_mer,
         "desviacion_mercado_pct": round(desv, 1),
         "perdida_mensual":      round(perdida_m, 0),
         "perdida_anual":        round(perdida_a, 0),
@@ -1121,7 +1122,7 @@ elif menu == "Fichas (Benchmark)":
         "ibi_anual":            safe_float(f.get("IBI_Anual", 0)),
         "intereses_hipoteca":   safe_float(f.get("Intereses_Hipoteca", 0)),
         "seguro_anual":         safe_float(f.get("Seguro_Anual", 0)),
-        "alerta_vencimiento":   msg_v if tipo_v else "Sin alerta",
+        "alerta_vencimiento":   _msg_v if _tipo_v else "Sin alerta",
     }
     if st.session_state.get("sabio_prev_ficha") != f.get("Nombre"):
         limpiar_insight_seccion("fichas")
@@ -1440,15 +1441,11 @@ elif menu == "Diario Contable":
 
 # ================================================================
 # PANTALLA: CASH FLOW
-# Placeholder — módulo completo se implementa en cashflow.py
-# Deps: df_mov, df_inm, leer_gastos_recurrentes()
-# TODO: importar desde cashflow.py cuando esté listo
+# Módulo completo — cashflow_module.py
 # ================================================================
 elif menu == "Cash Flow":
-    st.markdown('<div class="nc-brand-header">Cash Flow · Tesorería</div>',unsafe_allow_html=True)
-    st.markdown('<div class="nc-brand-sub">Histórico real + proyección 12 meses · El latido de tu tesorería</div>',unsafe_allow_html=True)
-    st.info("🔧 Módulo en construcción — disponible en la próxima entrega. El Sabio Patrimonial estará integrado aquí.")
-
+    df_gastos_rec_cf = leer_gastos_recurrentes(user_id=st.session_state.user_id)
+    render_cashflow(df_mov, df_inm, df_gastos_rec_cf, safe_float)
 # ================================================================
 # PANTALLA: SUMINISTROS
 # Auditoría de potencia eléctrica, comparador de tarifas
