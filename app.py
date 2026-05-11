@@ -9,6 +9,7 @@ import io
 import base64
 import plotly.graph_objects as go
 from datetime import datetime, date
+from cashflow_module import render_cashflow
 
 try:
     from reportlab.lib.pagesizes import A4
@@ -1407,15 +1408,11 @@ elif menu == "Diario Contable":
 
 # ================================================================
 # PANTALLA: CASH FLOW
-# Placeholder — módulo completo se implementa en cashflow.py
-# Deps: df_mov, df_inm, leer_gastos_recurrentes()
-# TODO: importar desde cashflow.py cuando esté listo
+# Módulo completo — cashflow_module.py
 # ================================================================
 elif menu == "Cash Flow":
-    st.markdown('<div class="nc-brand-header">Cash Flow · Tesorería</div>',unsafe_allow_html=True)
-    st.markdown('<div class="nc-brand-sub">Histórico real + proyección 12 meses · El latido de tu tesorería</div>',unsafe_allow_html=True)
-    st.info("🔧 Módulo en construcción — disponible en la próxima entrega. El Sabio Patrimonial estará integrado aquí.")
-
+    df_gastos_rec_cf = leer_gastos_recurrentes(user_id=st.session_state.user_id)
+    render_cashflow(df_mov, df_inm, df_gastos_rec_cf, safe_float)
 # ================================================================
 # PANTALLA: SUMINISTROS
 # Auditoría de potencia eléctrica, comparador de tarifas
