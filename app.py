@@ -10,6 +10,7 @@ import base64
 import plotly.graph_objects as go
 from datetime import datetime, date
 from cashflow_module import render_cashflow
+from kpi_renderer import render_kpi_large, render_kpi_row
 
 try:
     from reportlab.lib.pagesizes import A4
@@ -864,11 +865,28 @@ if menu == "Torre de Control":
         <script>(function(){{const cv=document.getElementById('robotMini');if(!cv||cv.dataset.init)return;cv.dataset.init='1';const cx=cv.getContext('2d');const g=cx.createRadialGradient(40,35,8,40,40,45);g.addColorStop(0,'#e8f6ff');g.addColorStop(1,'#bcd8f0');cx.fillStyle=g;cx.fillRect(0,0,80,80);const bg=cx.createLinearGradient(40,32,40,58);bg.addColorStop(0,'#90c8f0');bg.addColorStop(0.5,'#4080c0');bg.addColorStop(1,'#2060a0');cx.fillStyle=bg;cx.beginPath();cx.roundRect(26,36,28,30,5);cx.fill();const hg=cx.createRadialGradient(36,30,4,40,34,22);hg.addColorStop(0,'#b8e0ff');hg.addColorStop(0.6,'#5090c8');hg.addColorStop(1,'#2060a0');cx.fillStyle=hg;cx.beginPath();cx.arc(40,34,20,0,Math.PI*2);cx.fill();function eye(ex,ey){{cx.fillStyle='rgba(80,210,255,0.5)';cx.beginPath();cx.arc(ex,ey,5,0,Math.PI*2);cx.fill();const ig=cx.createRadialGradient(ex-1,ey-1,0.5,ex,ey,3.5);ig.addColorStop(0,'#b8f0ff');ig.addColorStop(0.4,'#30b8f0');ig.addColorStop(1,'#03284a');cx.fillStyle=ig;cx.beginPath();cx.arc(ex,ey,3.5,0,Math.PI*2);cx.fill();cx.fillStyle='#020c18';cx.beginPath();cx.arc(ex,ey,1.8,0,Math.PI*2);cx.fill();cx.fillStyle='rgba(255,255,255,0.85)';cx.beginPath();cx.arc(ex-1,ey-1,0.9,0,Math.PI*2);cx.fill();}}eye(33,31);eye(47,31);cx.strokeStyle='#5090c8';cx.lineWidth=1.5;cx.lineCap='round';cx.beginPath();cx.moveTo(40,14);cx.lineTo(40,8);cx.stroke();const pg=cx.createRadialGradient(39,6,0.4,40,6,3.5);pg.addColorStop(0,'#ffffff');pg.addColorStop(0.3,'#90e0ff');pg.addColorStop(1,'#1890e0');cx.fillStyle=pg;cx.beginPath();cx.arc(40,6,2.8,0,Math.PI*2);cx.fill();}})();</script>"""
         st.components.v1.html(robot_mini_html, height=62)
 
-    # KPIs acumulado
-    c1, c2, c3 = st.columns(3)
-    c1.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Ingresos Registrados</div><div class="nc-kpi__value" style="color:{GREEN};">{total_ingresos_registrados:,.0f} €</div><div class="nc-kpi__sub">Total cobrado acumulado</div></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Gastos Registrados</div><div class="nc-kpi__value" style="color:{RED};">−{total_gastos_registrados:,.0f} €</div><div class="nc-kpi__sub">Total pagado acumulado</div></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="nc-kpi is-highlight"><div class="nc-kpi__label">Balance Real</div><div class="nc-kpi__value">{balance_real:,.0f} €</div><div class="nc-kpi__sub">Margen {margen_real:.0f}%</div></div>', unsafe_allow_html=True)
+    # KPIs acumulado — nuevo estilo grande y prominente
+    st.markdown('<div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#9CA3AF;margin:20px 0 12px;">Acumulado del año en curso</div>', unsafe_allow_html=True)
+    render_kpi_row([
+        {
+            "label": "Ingresos Registrados",
+            "value": f"{total_ingresos_registrados:,.0f} €",
+            "color": GREEN,
+            "subtitle": "Total cobrado acumulado"
+        },
+        {
+            "label": "Gastos Registrados",
+            "value": f"−{total_gastos_registrados:,.0f} €",
+            "color": RED,
+            "subtitle": "Total pagado acumulado"
+        },
+        {
+            "label": "Balance Real",
+            "value": f"{balance_real:,.0f} €",
+            "color": ACCENT,
+            "subtitle": f"Margen {margen_real:.0f}%"
+        }
+    ])
 
     nombre_mes = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][mes_actual-1]
     def _color_desv(val, invertido=False):
@@ -1020,11 +1038,34 @@ elif menu == "Fichas (Benchmark)":
     rent_neta=((renta_act-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
     tipo_arr=str(f.get("Tipo_Arrendamiento","Larga Duración")); zona_tens=str(f.get("Zona_Tensionada","N"))=="S"; cochera_v=str(f.get("Cochera_Vinculada","N"))=="S"
 
-    k1,k2,k3,k4=st.columns(4)
-    k1.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Renta Actual</div><div class="nc-kpi__value" style="color:{GREEN};">{renta_act:,.0f} €</div><div class="nc-kpi__sub">mensual</div></div>',unsafe_allow_html=True)
-    k2.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Renta Tasada</div><div class="nc-kpi__value" style="color:{TEXT_PRI};">{renta_mer:,.0f} €</div><div class="nc-kpi__sub">motor CP + características</div></div>',unsafe_allow_html=True)
-    k3.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Rentabilidad Bruta</div><div class="nc-kpi__value" style="color:{ACCENT};">{rent_bruta:.1f}%</div><div class="nc-kpi__sub">sobre valor construcción</div></div>',unsafe_allow_html=True)
-    k4.markdown(f'<div class="nc-kpi is-highlight"><div class="nc-kpi__label">Rentabilidad Neta</div><div class="nc-kpi__value">{rent_neta:.1f}%</div><div class="nc-kpi__sub">{tipo_arr}</div></div>',unsafe_allow_html=True)
+    # KPIs de Fichas — nuevo estilo grande y prominente
+    st.markdown('<div style="margin:24px 0 16px;"></div>', unsafe_allow_html=True)
+    render_kpi_row([
+        {
+            "label": "Renta Actual",
+            "value": f"{renta_act:,.0f} €",
+            "color": GREEN,
+            "subtitle": "mensual"
+        },
+        {
+            "label": "Renta Tasada",
+            "value": f"{renta_mer:,.0f} €",
+            "color": "#9CA3AF",
+            "subtitle": "motor CP + características"
+        },
+        {
+            "label": "Rentabilidad Bruta",
+            "value": f"{rent_bruta:.1f}%",
+            "color": ACCENT,
+            "subtitle": "sobre valor construcción"
+        },
+        {
+            "label": "Rentabilidad Neta",
+            "value": f"{rent_neta:.1f}%",
+            "color": ACCENT,
+            "subtitle": tipo_arr
+        }
+    ])
 
     badges=[]
     if zona_tens: badges.append('<span style="background:#FDECEA;color:#A32D2D;font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">🔒 Zona Tensionada</span>')
