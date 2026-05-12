@@ -12,7 +12,7 @@ SUPABASE_KEY = "sb_publishable_Obgti7yMfXw8wCUL2FbTtA_EWeyHuM9"
 
 # ─── COLUMNAS ESPERADAS ─────────────────────────────────────────
 COLS_INM = [
-    "Nombre","Inquilino","Renta","Renta_Mercado","Comunidad","Valor_Construccion",
+    "Nombre","Direccion","Inquilino","Renta","Renta_Mercado","Comunidad","Valor_Construccion",
     "Año_Reforma","Año_Construccion","Mobiliario","Tipo","Ref_Catastral","Titular",
     "M2_Construidos","Habitaciones","CP","Planta","Parking","Estado",
     "Tipo_Arrendamiento","Cochera_Vinculada","Zona_Tensionada",
@@ -24,7 +24,8 @@ COLS_INM = [
     "Valor_Catastral","Valor_Catastral_Piso","Pct_Suelo","Pct_Construccion",
     "Valor_Real_Construccion","Amortizacion_Fiscal","Seguro_Vida",
     "Gasto_Ascensor","Ref_Catastral_Cochera","IBI_Cocheras","Comunidad_Cocheras",
-    "IVA_Aplicable","Tipo_IVA","Retencion_IRPF_Pct","Dias_Arrendados_Anio"
+    "IVA_Aplicable","Tipo_IVA","Retencion_IRPF_Pct","Dias_Arrendados_Anio",
+    "Imputacion_Rentas"
 ]
 
 COLS_MOV = ["Fecha","Apartamento","Concepto","Categoría","Tipo","Importe","Deducible"]
@@ -39,7 +40,8 @@ DEFAULTS_FISCAL = {
     "Valor_Catastral":0,"Valor_Catastral_Piso":0,"Pct_Suelo":0.25,"Pct_Construccion":0.75,
     "Valor_Real_Construccion":0,"Amortizacion_Fiscal":0,"Seguro_Vida":0,
     "Gasto_Ascensor":0,"Ref_Catastral_Cochera":"","IBI_Cocheras":0,"Comunidad_Cocheras":0,
-    "IVA_Aplicable":False,"Tipo_IVA":21,"Retencion_IRPF_Pct":0,"Dias_Arrendados_Anio":365
+    "IVA_Aplicable":False,"Tipo_IVA":21,"Retencion_IRPF_Pct":0,"Dias_Arrendados_Anio":365,
+    "Direccion":"","Imputacion_Rentas":0
 }
 
 # ─── HELPER: CABECERAS CON TOKEN DE USUARIO ──────────────────────
@@ -135,7 +137,8 @@ RENAME_INM_TO_APP = {
     'gasto_ascensor': 'Gasto_Ascensor', 'ref_catastral_cochera': 'Ref_Catastral_Cochera',
     'ibi_cocheras': 'IBI_Cocheras', 'comunidad_cocheras': 'Comunidad_Cocheras',
     'iva_aplicable': 'IVA_Aplicable', 'tipo_iva': 'Tipo_IVA',
-    'retencion_irpf_pct': 'Retencion_IRPF_Pct', 'dias_arrendados_anio': 'Dias_Arrendados_Anio'
+    'retencion_irpf_pct': 'Retencion_IRPF_Pct', 'dias_arrendados_anio': 'Dias_Arrendados_Anio',
+    'imputacion_rentas': 'Imputacion_Rentas'
 }
 
 RENAME_INM_TO_DB = {v: k for k, v in RENAME_INM_TO_APP.items()}
@@ -355,6 +358,8 @@ def _df_inm_to_records(df, user_id):
         'IVA_Aplicable': 'iva_aplicable', 'Tipo_IVA': 'tipo_iva',
         'Retencion_IRPF_Pct': 'retencion_irpf_pct',
         'Dias_Arrendados_Anio': 'dias_arrendados_anio',
+        'Imputacion_Rentas': 'imputacion_rentas',
+        'Direccion': 'direccion',
     }
 
     # Columnas válidas en la BD
@@ -428,7 +433,7 @@ def _limpiar_numericos_inm(df):
         "Valor_Catastral", "Valor_Catastral_Piso", "Pct_Suelo", "Pct_Construccion",
         "Valor_Real_Construccion", "Amortizacion_Fiscal", "Seguro_Vida",
         "Gasto_Ascensor", "IBI_Cocheras", "Comunidad_Cocheras",
-        "Tipo_IVA", "Retencion_IRPF_Pct", "Dias_Arrendados_Anio"
+        "Tipo_IVA", "Retencion_IRPF_Pct", "Dias_Arrendados_Anio", "Imputacion_Rentas"
     ]
     for col in cols_num:
         if col in df.columns:
@@ -672,6 +677,8 @@ def upsert_inmueble(registro: dict, user_id: str) -> dict:
             'Valor_Real_Construccion': 'valor_real_construccion',
             'Retenciones_IRPF': 'retenciones_irpf',
             'Titular': 'titular',
+            'Imputacion_Rentas': 'imputacion_rentas',
+            'Direccion': 'direccion',
         }
 
         rec_db = {}
