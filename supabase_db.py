@@ -732,21 +732,46 @@ def upsert_inmueble(registro: dict, user_id: str) -> dict:
         rec_db["user_id"] = user_id
         rec_db["nombre"]  = nombre
 
-        h = {
+        h_base = {
             "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
             "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates,return=minimal",
         }
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/inmuebles",
-            headers=h,
+        nombre_encoded = requests.utils.quote(nombre, safe='')
+
+        # 1. Intentar PATCH — actualiza si ya existe (no necesita restricción UNIQUE)
+        r_patch = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre_encoded}&user_id=eq.{user_id}",
+            headers={**h_base, "Prefer": "return=minimal"},
             json=rec_db,
             timeout=10
         )
-        if r.status_code in (200, 201, 204):
+        if r_patch.status_code in (200, 204):
             return {"ok": True, "accion": "actualizado"}
-        return {"ok": False, "error": f"{r.status_code}: {r.text[:300]}"}
+
+        # 2. Si el PATCH no encontró filas (204 sin efecto) o falla, hacer POST (insertar nuevo)
+        # Verificar si realmente existe antes de insertar
+        r_check = requests.get(
+            f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre_encoded}&user_id=eq.{user_id}&select=id",
+            headers=h_base,
+            timeout=10
+        )
+        existe = r_check.status_code == 200 and len(r_check.json()) > 0
+
+        if existe:
+            # Ya existe pero el PATCH falló — devolver el error del PATCH
+            return {"ok": False, "error": f"PATCH {r_patch.status_code}: {r_patch.text[:300]}"}
+
+        # No existe → INSERT
+        r_post = requests.post(
+            f"{SUPABASE_URL}/rest/v1/inmuebles",
+            headers={**h_base, "Prefer": "return=minimal"},
+            json=rec_db,
+            timeout=10
+        )
+        if r_post.status_code in (200, 201, 204):
+            return {"ok": True, "accion": "creado"}
+        return {"ok": False, "error": f"POST {r_post.status_code}: {r_post.text[:300]}"}
 
     except Exception as e:
         return {"ok": False, "error": str(e)}
