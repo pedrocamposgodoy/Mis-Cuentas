@@ -2093,43 +2093,23 @@ elif menu == "Datos de la Cartera":
                 if not errores_form:
                     nuevo_inmueble={"Nombre":nombre,"Inquilino":inquilino,"Renta":renta,"Renta_Mercado":renta_mercado,"Comunidad":comunidad,"Valor_Construccion":valor_construccion,"Año_Reforma":año_reforma,"Año_Construccion":año_construccion,"Mobiliario":mobiliario,"Tipo":tipo,"Ref_Catastral":ref_catastral,"Titular":titular,"M2_Construidos":m2,"Habitaciones":habitaciones,"CP":cp,"Planta":planta,"Parking":parking,"Estado":estado,"Tipo_Arrendamiento":tipo_arrendamiento,"Cochera_Vinculada":cochera_vinculada,"Zona_Tensionada":zona_tensionada,"Fecha_Inicio_Contrato":fecha_inicio.strftime("%Y-%m-%d"),"Fecha_Vencimiento_Contrato":fecha_vencimiento.strftime("%Y-%m-%d"),"Fecha_Adquisicion":fecha_adquisicion.strftime("%Y-%m-%d"),"Dias_Arrendados_Anio":int(dias_arrendados),"NIF_Inquilino":nif_inquilino,"IBI_Anual":ibi_anual,"Seguro_Anual":seguro_anual,"Seguro_Vida":seguro_vida,"Intereses_Hipoteca":intereses_hipoteca,"Gasto_Ascensor":gasto_ascensor,"Gastos_Juridicos":gastos_juridicos,"Retenciones_IRPF":retenciones_irpf,"Retencion_IRPF_Pct":retencion_irpf_pct,"IVA_Aplicable":iva_aplicable,"Tipo_IVA":tipo_iva,"Gastos_Formalizacion":gastos_formalizacion,"Gastos_Pendientes_Años_Ant":gastos_pend_años_ant,"Servicios_Suministros":servicios_suministros,"Precio_Compra":precio_compra,"Impuestos_Compra":impuestos_compra,"Gastos_Compra":gastos_compra,"Valor_Catastral":valor_catastral,"Valor_Catastral_Piso":valor_catastral_piso,"Pct_Suelo":pct_suelo,"Pct_Construccion":pct_construccion,"Valor_Real_Construccion":valor_real_construccion,"Amortizacion_Fiscal":amortizacion_fiscal,"Ref_Catastral_Cochera":ref_catastral_cochera,"IBI_Cocheras":ibi_cocheras,"Comunidad_Cocheras":comunidad_cocheras,"imputacion_rentas":imputacion_rentas}
                     import time
-                    # Columnas autogeneradas por Supabase — nunca enviar en upsert
-                    COLS_AUTO_SUPABASE=["id","user_id","created_at"]
-                    # Columnas que el df tiene pero no debemos enviar
-                    cols_existentes=[c for c in st.session_state.df_inm_persistent.columns if c not in COLS_AUTO_SUPABASE]
-                    nuevo_inmueble_limpio={k:v for k,v in nuevo_inmueble.items() if k in cols_existentes}
-                    cols_extra=[k for k in nuevo_inmueble if k not in cols_existentes]
-                    cols_faltantes=[c for c in cols_existentes if c not in nuevo_inmueble]
-                    # Rellenar con None las columnas que faltan en el nuevo registro
-                    for c in cols_faltantes:
-                        nuevo_inmueble_limpio[c]=None
-                    nuevo_inmueble=nuevo_inmueble_limpio
-                    # Limpiar también el df antes de enviar — quitar columnas auto de Supabase
-                    if "id" in st.session_state.df_inm_persistent.columns:
-                        df_para_guardar=st.session_state.df_inm_persistent.drop(columns=COLS_AUTO_SUPABASE,errors="ignore")
-                    else:
-                        df_para_guardar=st.session_state.df_inm_persistent
                     try:
-                        if es_nuevo:
-                            df_nuevo=pd.concat([df_para_guardar,pd.DataFrame([nuevo_inmueble])],ignore_index=True)
-                            st.session_state.df_inm_persistent=pd.concat([st.session_state.df_inm_persistent,pd.DataFrame([nuevo_inmueble])],ignore_index=True)
-                            resultado_db=guardar_inmuebles(df_nuevo,user_id=st.session_state.user_id)
-                        else:
-                            for col,val in nuevo_inmueble.items():
-                                if col in st.session_state.df_inm_persistent.columns:
-                                    st.session_state.df_inm_persistent.at[st.session_state.inmueble_editando,col]=val
-                            df_para_guardar_edit=st.session_state.df_inm_persistent.drop(columns=COLS_AUTO_SUPABASE,errors="ignore")
-                            resultado_db=guardar_inmuebles(df_para_guardar_edit,user_id=st.session_state.user_id)
-                        # Verificar si Supabase devuelvió error explícito
-                        db_ok=True
-                        db_msg=""
-                        if isinstance(resultado_db, dict):
-                            if resultado_db.get("error") or not resultado_db.get("success", True):
-                                db_ok=False
-                                db_msg=str(resultado_db.get("error","Error desconocido en BD"))
-                        elif resultado_db is False:
-                            db_ok=False
-                            db_msg="La función de guardado devolvió False"
+                        # Usar upsert_inmueble — envía solo este registro, sin el df completo
+                        # Evita PGRST102 porque no hay lote con claves inconsistentes
+                        resultado_db=upsert_inmueble(nuevo_inmueble, user_id=st.session_state.user_id)
+                        db_ok=resultado_db.get("ok", False)
+                        db_msg=resultado_db.get("error","")
+                        # Actualizar df local solo si Supabase confirmó OK
+                        if db_ok:
+                            if es_nuevo:
+                                st.session_state.df_inm_persistent=pd.concat(
+                                    [st.session_state.df_inm_persistent, pd.DataFrame([nuevo_inmueble])],
+                                    ignore_index=True
+                                )
+                            else:
+                                for col,val in nuevo_inmueble.items():
+                                    if col in st.session_state.df_inm_persistent.columns:
+                                        st.session_state.df_inm_persistent.at[st.session_state.inmueble_editando,col]=val
                         if db_ok:
                             accion="añadido" if es_nuevo else "actualizado"
                             st.success(f"✅ '{nombre}' {accion} correctamente en Supabase")
