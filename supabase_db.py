@@ -365,21 +365,31 @@ def _df_inm_to_records(df, user_id):
     # Columnas válidas en la BD
     COLS_VALIDAS_DB = set(MAP_APP_TO_DB.values())
 
+    # Columnas DB que debe tener CADA fila — PostgREST PGRST102 si difieren entre filas
+    ALL_DB_COLS = set(MAP_APP_TO_DB.values())
+
     records = []
     for _, row in df2.iterrows():
+        # Inicializar TODAS las columnas a None para garantizar claves uniformes
         rec = {'user_id': user_id}
+        for col_db in ALL_DB_COLS:
+            rec[col_db] = None
+
         for col_app, col_db in MAP_APP_TO_DB.items():
-            # Buscar tanto en formato app como en formato db
             val = None
             if col_app in row.index:
                 val = row[col_app]
             elif col_db in row.index:
                 val = row[col_db]
+
+            # Convertir NaN/vacío a None (null en JSON — válido para Supabase)
             if val is None or (isinstance(val, float) and pd.isna(val)):
-                continue
-            if isinstance(val, str) and val.strip() == '':
-                continue
-            rec[col_db] = val
+                rec[col_db] = None
+            elif isinstance(val, str) and val.strip() == '':
+                rec[col_db] = None
+            else:
+                rec[col_db] = val
+
         records.append(rec)
     return records
 
@@ -402,19 +412,21 @@ def guardar_inmuebles(df, user_id):
             st.error("❌ No se generaron registros para guardar.")
             return False
 
-        # Insertar en lotes de 20
-        lote = 20
-        for i in range(0, len(records), lote):
-            batch = records[i:i+lote]
+        # Upsert registro a registro — evita PGRST102 por claves desiguales entre filas
+        errores = []
+        for rec in records:
             r = requests.post(
                 f"{SUPABASE_URL}/rest/v1/inmuebles",
                 headers=h,
-                json=batch,
+                json=rec,
                 timeout=15
             )
             if r.status_code not in [200, 201, 204]:
-                st.error(f"❌ Error guardando inmuebles: {r.status_code} — {r.text[:300]}")
-                return False
+                errores.append(f"{rec.get('nombre','?')}: {r.status_code} — {r.text[:200]}")
+        if errores:
+            for e in errores:
+                st.error(f"❌ Error guardando inmuebles: {e}")
+            return False
         return True
     except Exception as e:
         st.error(f"Error guardando inmuebles: {e}")
