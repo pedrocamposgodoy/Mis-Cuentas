@@ -66,7 +66,7 @@ from supabase_db import (
 )
 
 COLS_INM = [
-    "Nombre","Inquilino","Renta","Renta_Mercado","Comunidad","Valor_Construccion",
+    "Nombre","Direccion","Inquilino","Renta","Renta_Mercado","Comunidad","Valor_Construccion",
     "Año_Reforma","Año_Construccion","Mobiliario","Tipo","Ref_Catastral","Titular",
     "M2_Construidos","Habitaciones","CP","Planta","Parking","Estado",
     "Tipo_Arrendamiento","Cochera_Vinculada","Zona_Tensionada",
@@ -79,11 +79,11 @@ COLS_INM = [
     "Gasto_Ascensor","Ref_Catastral_Cochera","IBI_Cocheras","Comunidad_Cocheras",
     "IVA_Aplicable","Tipo_IVA","Retencion_IRPF_Pct","Dias_Arrendados_Anio",
     "Gastos_Pendientes_Años_Ant","Servicios_Suministros",
-    "Imputacion_Rentas"
+    "imputacion_rentas"
 ]
 
 DEFAULTS_FISCAL = {
-    "Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N",
+    "Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Direccion":"",
     "Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01",
     "NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":0,"Seguro_Anual":0,
     "Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,
@@ -92,7 +92,7 @@ DEFAULTS_FISCAL = {
     "Valor_Real_Construccion":0,"Amortizacion_Fiscal":0,"Seguro_Vida":0,
     "Gasto_Ascensor":0,"Ref_Catastral_Cochera":"","IBI_Cocheras":0,"Comunidad_Cocheras":0,
     "IVA_Aplicable":False,"Tipo_IVA":21,"Retencion_IRPF_Pct":0,"Dias_Arrendados_Anio":365,
-    "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0,"Imputacion_Rentas":0
+    "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0,"imputacion_rentas":0
 }
 
 # ================================================================
@@ -429,7 +429,7 @@ def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
     if dias_arrendado <= 0: dias_arrendado = 365
     factor_dias = min(dias_arrendado, 365) / 365
     renta_mensual = safe_float(row.get("Renta", 0))
-    imputacion_rentas = safe_float(row.get("Imputacion_Rentas", 0))
+    imputacion_rentas = safe_float(row.get("imputacion_rentas", 0))
     es_no_arrendado = renta_mensual == 0 and imputacion_rentas > 0
     ingresos_integros = round(renta_mensual * 12 * factor_dias, 2) if not es_no_arrendado else 0
     intereses = round(safe_float(row.get("Intereses_Hipoteca", 0)) * factor_dias, 2)
@@ -2091,28 +2091,35 @@ elif menu == "Datos de la Cartera":
                 imputacion_rentas=round(valor_catastral*0.02,2) if not esta_arrendado and valor_catastral>0 else 0.0
                 for e in errores_form: st.error(f"❌ {e}")
                 if not errores_form:
-                    nuevo_inmueble={"Nombre":nombre,"Inquilino":inquilino,"Renta":renta,"Renta_Mercado":renta_mercado,"Comunidad":comunidad,"Valor_Construccion":valor_construccion,"Año_Reforma":año_reforma,"Año_Construccion":año_construccion,"Mobiliario":mobiliario,"Tipo":tipo,"Ref_Catastral":ref_catastral,"Titular":titular,"M2_Construidos":m2,"Habitaciones":habitaciones,"CP":cp,"Planta":planta,"Parking":parking,"Estado":estado,"Tipo_Arrendamiento":tipo_arrendamiento,"Cochera_Vinculada":cochera_vinculada,"Zona_Tensionada":zona_tensionada,"Fecha_Inicio_Contrato":fecha_inicio.strftime("%Y-%m-%d"),"Fecha_Vencimiento_Contrato":fecha_vencimiento.strftime("%Y-%m-%d"),"Fecha_Adquisicion":fecha_adquisicion.strftime("%Y-%m-%d"),"Dias_Arrendados_Anio":int(dias_arrendados),"NIF_Inquilino":nif_inquilino,"IBI_Anual":ibi_anual,"Seguro_Anual":seguro_anual,"Seguro_Vida":seguro_vida,"Intereses_Hipoteca":intereses_hipoteca,"Gasto_Ascensor":gasto_ascensor,"Gastos_Juridicos":gastos_juridicos,"Retenciones_IRPF":retenciones_irpf,"Retencion_IRPF_Pct":retencion_irpf_pct,"IVA_Aplicable":iva_aplicable,"Tipo_IVA":tipo_iva,"Gastos_Formalizacion":gastos_formalizacion,"Gastos_Pendientes_Años_Ant":gastos_pend_años_ant,"Servicios_Suministros":servicios_suministros,"Precio_Compra":precio_compra,"Impuestos_Compra":impuestos_compra,"Gastos_Compra":gastos_compra,"Valor_Catastral":valor_catastral,"Valor_Catastral_Piso":valor_catastral_piso,"Pct_Suelo":pct_suelo,"Pct_Construccion":pct_construccion,"Valor_Real_Construccion":valor_real_construccion,"Amortizacion_Fiscal":amortizacion_fiscal,"Ref_Catastral_Cochera":ref_catastral_cochera,"IBI_Cocheras":ibi_cocheras,"Comunidad_Cocheras":comunidad_cocheras,"Imputacion_Rentas":imputacion_rentas}
+                    nuevo_inmueble={"Nombre":nombre,"Inquilino":inquilino,"Renta":renta,"Renta_Mercado":renta_mercado,"Comunidad":comunidad,"Valor_Construccion":valor_construccion,"Año_Reforma":año_reforma,"Año_Construccion":año_construccion,"Mobiliario":mobiliario,"Tipo":tipo,"Ref_Catastral":ref_catastral,"Titular":titular,"M2_Construidos":m2,"Habitaciones":habitaciones,"CP":cp,"Planta":planta,"Parking":parking,"Estado":estado,"Tipo_Arrendamiento":tipo_arrendamiento,"Cochera_Vinculada":cochera_vinculada,"Zona_Tensionada":zona_tensionada,"Fecha_Inicio_Contrato":fecha_inicio.strftime("%Y-%m-%d"),"Fecha_Vencimiento_Contrato":fecha_vencimiento.strftime("%Y-%m-%d"),"Fecha_Adquisicion":fecha_adquisicion.strftime("%Y-%m-%d"),"Dias_Arrendados_Anio":int(dias_arrendados),"NIF_Inquilino":nif_inquilino,"IBI_Anual":ibi_anual,"Seguro_Anual":seguro_anual,"Seguro_Vida":seguro_vida,"Intereses_Hipoteca":intereses_hipoteca,"Gasto_Ascensor":gasto_ascensor,"Gastos_Juridicos":gastos_juridicos,"Retenciones_IRPF":retenciones_irpf,"Retencion_IRPF_Pct":retencion_irpf_pct,"IVA_Aplicable":iva_aplicable,"Tipo_IVA":tipo_iva,"Gastos_Formalizacion":gastos_formalizacion,"Gastos_Pendientes_Años_Ant":gastos_pend_años_ant,"Servicios_Suministros":servicios_suministros,"Precio_Compra":precio_compra,"Impuestos_Compra":impuestos_compra,"Gastos_Compra":gastos_compra,"Valor_Catastral":valor_catastral,"Valor_Catastral_Piso":valor_catastral_piso,"Pct_Suelo":pct_suelo,"Pct_Construccion":pct_construccion,"Valor_Real_Construccion":valor_real_construccion,"Amortizacion_Fiscal":amortizacion_fiscal,"Ref_Catastral_Cochera":ref_catastral_cochera,"IBI_Cocheras":ibi_cocheras,"Comunidad_Cocheras":comunidad_cocheras,"imputacion_rentas":imputacion_rentas}
                     import time
-                    # Asegurar que nuevo_inmueble solo tiene columnas que ya existen en el df
-                    cols_existentes=list(st.session_state.df_inm_persistent.columns)
+                    # Columnas autogeneradas por Supabase — nunca enviar en upsert
+                    COLS_AUTO_SUPABASE=["id","user_id","created_at"]
+                    # Columnas que el df tiene pero no debemos enviar
+                    cols_existentes=[c for c in st.session_state.df_inm_persistent.columns if c not in COLS_AUTO_SUPABASE]
                     nuevo_inmueble_limpio={k:v for k,v in nuevo_inmueble.items() if k in cols_existentes}
                     cols_extra=[k for k in nuevo_inmueble if k not in cols_existentes]
                     cols_faltantes=[c for c in cols_existentes if c not in nuevo_inmueble]
-                    if cols_extra or cols_faltantes:
-                        st.warning(f"⚠️ Ajuste de columnas — Extra (ignoradas): {cols_extra} | Faltantes (rellenadas con None): {cols_faltantes}")
                     # Rellenar con None las columnas que faltan en el nuevo registro
                     for c in cols_faltantes:
                         nuevo_inmueble_limpio[c]=None
                     nuevo_inmueble=nuevo_inmueble_limpio
+                    # Limpiar también el df antes de enviar — quitar columnas auto de Supabase
+                    if "id" in st.session_state.df_inm_persistent.columns:
+                        df_para_guardar=st.session_state.df_inm_persistent.drop(columns=COLS_AUTO_SUPABASE,errors="ignore")
+                    else:
+                        df_para_guardar=st.session_state.df_inm_persistent
                     try:
                         if es_nuevo:
-                            df_nuevo=pd.concat([st.session_state.df_inm_persistent,pd.DataFrame([nuevo_inmueble])],ignore_index=True)
-                            st.session_state.df_inm_persistent=df_nuevo
+                            df_nuevo=pd.concat([df_para_guardar,pd.DataFrame([nuevo_inmueble])],ignore_index=True)
+                            st.session_state.df_inm_persistent=pd.concat([st.session_state.df_inm_persistent,pd.DataFrame([nuevo_inmueble])],ignore_index=True)
                             resultado_db=guardar_inmuebles(df_nuevo,user_id=st.session_state.user_id)
                         else:
                             for col,val in nuevo_inmueble.items():
-                                st.session_state.df_inm_persistent.at[st.session_state.inmueble_editando,col]=val
-                            resultado_db=guardar_inmuebles(st.session_state.df_inm_persistent,user_id=st.session_state.user_id)
+                                if col in st.session_state.df_inm_persistent.columns:
+                                    st.session_state.df_inm_persistent.at[st.session_state.inmueble_editando,col]=val
+                            df_para_guardar_edit=st.session_state.df_inm_persistent.drop(columns=COLS_AUTO_SUPABASE,errors="ignore")
+                            resultado_db=guardar_inmuebles(df_para_guardar_edit,user_id=st.session_state.user_id)
                         # Verificar si Supabase devuelvió error explícito
                         db_ok=True
                         db_msg=""
