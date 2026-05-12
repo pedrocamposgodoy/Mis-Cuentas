@@ -1928,6 +1928,15 @@ elif menu == "Datos de la Cartera":
         st.markdown(f'<div class="nc-section-title">{titulo}</div>',unsafe_allow_html=True)
         datos={col: DEFAULTS_FISCAL.get(col,"") for col in COLS_INM} if es_nuevo else df_inm.iloc[st.session_state.inmueble_editando].to_dict()
 
+        # Checkboxes FUERA del form — controlan qué secciones se muestran
+        _arrendado_default=bool(str(datos.get("Inquilino","")).strip() and safe_float(datos.get("Renta"),0.0)>0)
+        _cochera_default=bool(str(datos.get("Cochera_Vinculada","N")).upper()=="S" or str(datos.get("Ref_Catastral_Cochera","")).strip())
+        esta_arrendado=st.checkbox("🔑 Este inmueble está ARRENDADO actualmente",value=_arrendado_default,help="Activa si tiene inquilino y genera renta. Si está vacío o es uso propio, déjalo sin marcar.")
+        tiene_cochera=st.checkbox("🅿️ Este inmueble tiene COCHERA VINCULADA",value=_cochera_default,help="Activa si la cochera va incluida con este piso.")
+        if not esta_arrendado:
+            st.info("ℹ️ **Inmueble no arrendado** — tributará por **imputación de rentas (2% sobre valor catastral)**. Introduce el valor catastral en la sección de Amortización para el cálculo correcto.")
+        st.markdown("---")
+
         with st.form("form_inmueble"):
             st.markdown("### 📋 Datos Básicos")
             col1,col2=st.columns(2)
@@ -1958,22 +1967,14 @@ elif menu == "Datos de la Cartera":
                 año_reforma=st.number_input("Año Última Reforma",value=safe_int(datos.get("Año_Reforma"),2020),min_value=1900,max_value=2030)
                 zona_tensionada=st.selectbox("Zona Tensionada",["N","S"],index=0 if datos.get("Zona_Tensionada")=="N" else 1)
 
-            # ── ÁRBOL DE DECISIÓN 1: ¿ESTÁ ARRENDADO? ────────────
-            st.markdown("---")
-            st.markdown("### 🔑 ¿Está este inmueble arrendado?")
-            esta_arrendado=st.checkbox(
-                "✅ Sí, este inmueble ESTÁ ARRENDADO actualmente",
-                value=bool(datos.get("Inquilino","").strip() and safe_float(datos.get("Renta"),0.0)>0),
-                help="Marca si tiene inquilino y genera renta. Si está vacío o es uso propio, déjalo sin marcar."
-            )
-
+            # ── SECCIÓN ARRENDAMIENTO (controlada por checkbox fuera del form) ────
             if esta_arrendado:
                 st.markdown("#### 📝 Datos del arrendamiento")
                 col_a1,col_a2=st.columns(2)
                 with col_a1:
                     inquilino=st.text_input("Inquilino *",value=datos.get("Inquilino",""))
                     nif_inquilino=st.text_input("NIF Inquilino",value=datos.get("NIF_Inquilino",""))
-                    renta=st.number_input("Renta Mensual (€) *",value=safe_float(datos.get("Renta"),0.0),min_value=0.01,step=50.0)
+                    renta=st.number_input("Renta Mensual (€) *",value=safe_float(datos.get("Renta"),0.0),min_value=0.0,step=50.0)
                     renta_mercado=st.number_input("Renta de Mercado (€)",value=safe_float(datos.get("Renta_Mercado"),0.0),min_value=0.0,step=50.0)
                 with col_a2:
                     tipo_arrendamiento=st.selectbox("Tipo Arrendamiento *",["Larga Duración","Temporada","Vacacional"],index=safe_index(["Larga Duración","Temporada","Vacacional"],datos.get("Tipo_Arrendamiento"),0))
@@ -1989,7 +1990,7 @@ elif menu == "Datos de la Cartera":
                     dias_arrendados=st.number_input("Días arrendados año fiscal",value=safe_float(datos.get("Dias_Arrendados_Anio"),365.0),min_value=1.0,max_value=366.0,step=1.0)
                 gastos_formalizacion=st.number_input("Gastos Formalización (€)",value=safe_float(datos.get("Gastos_Formalizacion"),0.0),min_value=0.0,step=10.0)
             else:
-                # Valores neutros — no se arrendará, tributará por imputación
+                # Valores neutros cuando no está arrendado
                 inquilino=""
                 nif_inquilino=""
                 renta=0.0
@@ -2002,17 +2003,8 @@ elif menu == "Datos de la Cartera":
                 fecha_vencimiento=date(2025,12,31)
                 dias_arrendados=0.0
                 gastos_formalizacion=0.0
-                st.info("ℹ️ **Inmueble no arrendado** — tributará por **imputación de rentas (2% sobre valor catastral)**. Introduce el valor catastral en la sección de Amortización Fiscal para el cálculo correcto.")
 
-            # ── ÁRBOL DE DECISIÓN 2: ¿TIENE COCHERA VINCULADA? ───
-            st.markdown("---")
-            st.markdown("### 🅿️ ¿Tiene cochera vinculada?")
-            tiene_cochera=st.checkbox(
-                "✅ Sí, este inmueble TIENE COCHERA VINCULADA",
-                value=bool(str(datos.get("Cochera_Vinculada","N")).upper()=="S" or str(datos.get("Ref_Catastral_Cochera","")).strip()),
-                help="Marca si la cochera va incluida con este piso. Si la cochera es independiente o no existe, déjalo sin marcar."
-            )
-
+            # ── SECCIÓN COCHERA (controlada por checkbox fuera del form) ────
             if tiene_cochera:
                 cochera_vinculada="S"
                 st.markdown("#### 🅿️ Datos de la cochera")
