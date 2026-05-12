@@ -707,14 +707,26 @@ def upsert_inmueble(registro: dict, user_id: str) -> dict:
             'Imputacion_Rentas': 'imputacion_rentas',
         }
 
+        # Columnas INTEGER en Supabase — enviar como int, no float
+        COLS_INT_DB = {
+            'ano_reforma', 'ano_construccion', 'habitaciones', 'planta',
+            'dias_arrendados_anio'
+        }
         rec_db = {}
         for k, v in registro.items():
             k_db = MAP_APP_TO_DB.get(k)
             if k_db is None:
-                continue  # clave no reconocida — ignorar en lugar de k.lower() con ñ
+                continue  # clave no reconocida — ignorar
             if v is not None and str(v) not in ("nan", "None", ""):
                 try:
-                    rec_db[k_db] = float(v) if isinstance(v, (int, float)) else v
+                    if k_db in COLS_INT_DB:
+                        rec_db[k_db] = int(float(v))  # 2000.0 → 2000
+                    elif isinstance(v, bool):
+                        rec_db[k_db] = v  # booleanos primero (bool es subclase de int)
+                    elif isinstance(v, (int, float)):
+                        rec_db[k_db] = float(v)
+                    else:
+                        rec_db[k_db] = v
                 except:
                     rec_db[k_db] = v
         rec_db["user_id"] = user_id
