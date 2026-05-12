@@ -78,7 +78,8 @@ COLS_INM = [
     "Valor_Real_Construccion","Amortizacion_Fiscal","Seguro_Vida",
     "Gasto_Ascensor","Ref_Catastral_Cochera","IBI_Cocheras","Comunidad_Cocheras",
     "IVA_Aplicable","Tipo_IVA","Retencion_IRPF_Pct","Dias_Arrendados_Anio",
-    "Gastos_Pendientes_Años_Ant","Servicios_Suministros"
+    "Gastos_Pendientes_Años_Ant","Servicios_Suministros",
+    "Imputacion_Rentas"
 ]
 
 DEFAULTS_FISCAL = {
@@ -91,7 +92,7 @@ DEFAULTS_FISCAL = {
     "Valor_Real_Construccion":0,"Amortizacion_Fiscal":0,"Seguro_Vida":0,
     "Gasto_Ascensor":0,"Ref_Catastral_Cochera":"","IBI_Cocheras":0,"Comunidad_Cocheras":0,
     "IVA_Aplicable":False,"Tipo_IVA":21,"Retencion_IRPF_Pct":0,"Dias_Arrendados_Anio":365,
-    "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
+    "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0,"Imputacion_Rentas":0
 }
 
 # ================================================================
@@ -428,7 +429,9 @@ def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
     if dias_arrendado <= 0: dias_arrendado = 365
     factor_dias = min(dias_arrendado, 365) / 365
     renta_mensual = safe_float(row.get("Renta", 0))
-    ingresos_integros = round(renta_mensual * 12 * factor_dias, 2)
+    imputacion_rentas = safe_float(row.get("Imputacion_Rentas", 0))
+    es_no_arrendado = renta_mensual == 0 and imputacion_rentas > 0
+    ingresos_integros = round(renta_mensual * 12 * factor_dias, 2) if not es_no_arrendado else 0
     intereses = round(safe_float(row.get("Intereses_Hipoteca", 0)) * factor_dias, 2)
     gastos_reparacion = round(df_mov_local[
         (df_mov_local["Apartamento"] == row["Nombre"]) &
@@ -468,7 +471,9 @@ def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
     retenciones = safe_float(row.get("Retenciones_IRPF", 0))
     return {
         "0062_0075":     f"Ref: {row.get('Ref_Catastral', 'N/A')}",
-        "0076":          "A (Arrendamiento)",
+        "0076":          "I (Imputación)" if es_no_arrendado else "A (Arrendamiento)",
+        "0085":          365 - dias_arrendado if es_no_arrendado else 0,
+        "0087":          round(imputacion_rentas, 2) if es_no_arrendado else 0,
         "0100":          "SÍ" if tipo_arrendamiento == "Larga Duración" else "NO",
         "0101":          dias_arrendado,
         "0102":          ingresos_integros,
@@ -2080,11 +2085,25 @@ elif menu == "Datos de la Cartera":
                 if tiene_cochera:
                     if not ref_catastral_cochera.strip(): errores_form.append("La ref. catastral de la cochera es obligatoria si tiene cochera vinculada")
                     if ibi_cocheras<=0: errores_form.append("El IBI de la cochera es obligatorio si tiene cochera vinculada")
+                # Casilla 0087: imputación 2% valor catastral si no arrendado
+                # Casilla 0102: ingresos íntegros si arrendado
+                # Son mutuamente excluyentes — nunca los dos a la vez
                 imputacion_rentas=round(valor_catastral*0.02,2) if not esta_arrendado and valor_catastral>0 else 0.0
                 for e in errores_form: st.error(f"❌ {e}")
                 if not errores_form:
-                    nuevo_inmueble={"Nombre":nombre,"Inquilino":inquilino,"Renta":renta,"Renta_Mercado":renta_mercado,"Comunidad":comunidad,"Valor_Construccion":valor_construccion,"Año_Reforma":año_reforma,"Año_Construccion":año_construccion,"Mobiliario":mobiliario,"Tipo":tipo,"Ref_Catastral":ref_catastral,"Titular":titular,"M2_Construidos":m2,"Habitaciones":habitaciones,"CP":cp,"Planta":planta,"Parking":parking,"Estado":estado,"Tipo_Arrendamiento":tipo_arrendamiento,"Cochera_Vinculada":cochera_vinculada,"Zona_Tensionada":zona_tensionada,"Fecha_Inicio_Contrato":fecha_inicio.strftime("%Y-%m-%d"),"Fecha_Vencimiento_Contrato":fecha_vencimiento.strftime("%Y-%m-%d"),"Fecha_Adquisicion":fecha_adquisicion.strftime("%Y-%m-%d"),"Dias_Arrendados_Anio":int(dias_arrendados),"NIF_Inquilino":nif_inquilino,"IBI_Anual":ibi_anual,"Seguro_Anual":seguro_anual,"Seguro_Vida":seguro_vida,"Intereses_Hipoteca":intereses_hipoteca,"Gasto_Ascensor":gasto_ascensor,"Gastos_Juridicos":gastos_juridicos,"Retenciones_IRPF":retenciones_irpf,"Retencion_IRPF_Pct":retencion_irpf_pct,"IVA_Aplicable":iva_aplicable,"Tipo_IVA":tipo_iva,"Gastos_Formalizacion":gastos_formalizacion,"Gastos_Pendientes_Años_Ant":gastos_pend_años_ant,"Servicios_Suministros":servicios_suministros,"Precio_Compra":precio_compra,"Impuestos_Compra":impuestos_compra,"Gastos_Compra":gastos_compra,"Valor_Catastral":valor_catastral,"Valor_Catastral_Piso":valor_catastral_piso,"Pct_Suelo":pct_suelo,"Pct_Construccion":pct_construccion,"Valor_Real_Construccion":valor_real_construccion,"Amortizacion_Fiscal":amortizacion_fiscal,"Ref_Catastral_Cochera":ref_catastral_cochera,"IBI_Cocheras":ibi_cocheras,"Comunidad_Cocheras":comunidad_cocheras,"Imputacion_Rentas_2pct":imputacion_rentas}
+                    nuevo_inmueble={"Nombre":nombre,"Inquilino":inquilino,"Renta":renta,"Renta_Mercado":renta_mercado,"Comunidad":comunidad,"Valor_Construccion":valor_construccion,"Año_Reforma":año_reforma,"Año_Construccion":año_construccion,"Mobiliario":mobiliario,"Tipo":tipo,"Ref_Catastral":ref_catastral,"Titular":titular,"M2_Construidos":m2,"Habitaciones":habitaciones,"CP":cp,"Planta":planta,"Parking":parking,"Estado":estado,"Tipo_Arrendamiento":tipo_arrendamiento,"Cochera_Vinculada":cochera_vinculada,"Zona_Tensionada":zona_tensionada,"Fecha_Inicio_Contrato":fecha_inicio.strftime("%Y-%m-%d"),"Fecha_Vencimiento_Contrato":fecha_vencimiento.strftime("%Y-%m-%d"),"Fecha_Adquisicion":fecha_adquisicion.strftime("%Y-%m-%d"),"Dias_Arrendados_Anio":int(dias_arrendados),"NIF_Inquilino":nif_inquilino,"IBI_Anual":ibi_anual,"Seguro_Anual":seguro_anual,"Seguro_Vida":seguro_vida,"Intereses_Hipoteca":intereses_hipoteca,"Gasto_Ascensor":gasto_ascensor,"Gastos_Juridicos":gastos_juridicos,"Retenciones_IRPF":retenciones_irpf,"Retencion_IRPF_Pct":retencion_irpf_pct,"IVA_Aplicable":iva_aplicable,"Tipo_IVA":tipo_iva,"Gastos_Formalizacion":gastos_formalizacion,"Gastos_Pendientes_Años_Ant":gastos_pend_años_ant,"Servicios_Suministros":servicios_suministros,"Precio_Compra":precio_compra,"Impuestos_Compra":impuestos_compra,"Gastos_Compra":gastos_compra,"Valor_Catastral":valor_catastral,"Valor_Catastral_Piso":valor_catastral_piso,"Pct_Suelo":pct_suelo,"Pct_Construccion":pct_construccion,"Valor_Real_Construccion":valor_real_construccion,"Amortizacion_Fiscal":amortizacion_fiscal,"Ref_Catastral_Cochera":ref_catastral_cochera,"IBI_Cocheras":ibi_cocheras,"Comunidad_Cocheras":comunidad_cocheras,"Imputacion_Rentas":imputacion_rentas}
                     import time
+                    # Asegurar que nuevo_inmueble solo tiene columnas que ya existen en el df
+                    cols_existentes=list(st.session_state.df_inm_persistent.columns)
+                    nuevo_inmueble_limpio={k:v for k,v in nuevo_inmueble.items() if k in cols_existentes}
+                    cols_extra=[k for k in nuevo_inmueble if k not in cols_existentes]
+                    cols_faltantes=[c for c in cols_existentes if c not in nuevo_inmueble]
+                    if cols_extra or cols_faltantes:
+                        st.warning(f"⚠️ Ajuste de columnas — Extra (ignoradas): {cols_extra} | Faltantes (rellenadas con None): {cols_faltantes}")
+                    # Rellenar con None las columnas que faltan en el nuevo registro
+                    for c in cols_faltantes:
+                        nuevo_inmueble_limpio[c]=None
+                    nuevo_inmueble=nuevo_inmueble_limpio
                     try:
                         if es_nuevo:
                             df_nuevo=pd.concat([st.session_state.df_inm_persistent,pd.DataFrame([nuevo_inmueble])],ignore_index=True)
@@ -2108,7 +2127,9 @@ elif menu == "Datos de la Cartera":
                             accion="añadido" if es_nuevo else "actualizado"
                             st.success(f"✅ '{nombre}' {accion} correctamente en Supabase")
                             if not esta_arrendado and imputacion_rentas>0:
-                                st.info(f"📊 Imputación de rentas calculada: **{imputacion_rentas:,.2f} €** (2% × valor catastral {valor_catastral:,.0f}€)")
+                                st.info(f"📊 **Imputación de rentas (casilla 0087):** {imputacion_rentas:,.2f} € anuales\n(2% × {valor_catastral:,.0f} € valor catastral) — se declara en lugar de la renta de arrendamiento")
+                            elif not esta_arrendado and valor_catastral==0:
+                                st.warning("⚠️ Introduce el Valor Catastral en la sección de Amortización para calcular la imputación de rentas")
                         else:
                             st.error(f"❌ Error al guardar en Supabase: {db_msg}")
                             st.code(db_msg, language="text")
