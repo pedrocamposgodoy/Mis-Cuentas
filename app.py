@@ -1933,12 +1933,12 @@ elif menu == "Datos de la Cartera":
             col1,col2=st.columns(2)
             with col1:
                 nombre=st.text_input("Nombre del Inmueble *",value=datos.get("Nombre",""))
-                inquilino=st.text_input("Inquilino",value=datos.get("Inquilino",""))
-                renta=st.number_input("Renta Mensual (€) *",value=safe_float(datos.get("Renta"),0.0),min_value=0.0,step=50.0)
+                ref_catastral=st.text_input("Ref. Catastral *",value=datos.get("Ref_Catastral",""))
+                titular=st.text_input("Titular",value=datos.get("Titular",""))
             with col2:
-                renta_mercado=st.number_input("Renta de Mercado (€)",value=safe_float(datos.get("Renta_Mercado"),0.0),min_value=0.0,step=50.0)
                 comunidad=st.number_input("Comunidad Mensual (€)",value=safe_float(datos.get("Comunidad"),0.0),min_value=0.0,step=10.0)
                 valor_construccion=st.number_input("Valor Construcción (€) *",value=safe_float(datos.get("Valor_Construccion"),0.0),min_value=0.0,step=1000.0)
+
             st.markdown("### 🏠 Características")
             col3,col4,col5=st.columns(3)
             with col3:
@@ -1953,30 +1953,83 @@ elif menu == "Datos de la Cartera":
                 mobiliario=st.selectbox("Mobiliario",["S","N"],index=0 if datos.get("Mobiliario")=="S" else 1)
                 parking=st.selectbox("Parking",["S","N"],index=0 if datos.get("Parking")=="S" else 1)
                 año_construccion=st.number_input("Año Construcción",value=safe_int(datos.get("Año_Construccion"),2000),min_value=1900,max_value=2030)
-            st.markdown("### 📝 Información Adicional")
-            col6,col7=st.columns(2)
-            with col6:
-                ref_catastral=st.text_input("Ref. Catastral",value=datos.get("Ref_Catastral",""))
-                titular=st.text_input("Titular",value=datos.get("Titular",""))
+            col6_extra,col7_extra=st.columns(2)
+            with col6_extra:
                 año_reforma=st.number_input("Año Última Reforma",value=safe_int(datos.get("Año_Reforma"),2020),min_value=1900,max_value=2030)
-            with col7:
-                tipo_arrendamiento=st.selectbox("Tipo Arrendamiento",["Larga Duración","Temporada","Vacacional"],index=safe_index(["Larga Duración","Temporada","Vacacional"],datos.get("Tipo_Arrendamiento"),0))
-                cochera_vinculada=st.selectbox("Cochera Vinculada",["N","S"],index=0 if datos.get("Cochera_Vinculada")=="N" else 1)
                 zona_tensionada=st.selectbox("Zona Tensionada",["N","S"],index=0 if datos.get("Zona_Tensionada")=="N" else 1)
-            st.markdown("### 📅 Contrato e Inquilino")
-            col11,col12,col13=st.columns(3)
-            with col11:
-                nif_inquilino=st.text_input("NIF Inquilino",value=datos.get("NIF_Inquilino",""))
-                fecha_inicio=st.date_input("Fecha Inicio Contrato",value=pd.to_datetime(datos.get("Fecha_Inicio_Contrato","2024-01-01")).date() if pd.notna(datos.get("Fecha_Inicio_Contrato")) else date(2024,1,1))
-            with col12:
-                iva_aplicable=st.checkbox("¿Arrendamiento a empresa (IVA)?",value=bool(datos.get("IVA_Aplicable",False)))
-                fecha_vencimiento=st.date_input("Fecha Vencimiento Contrato",value=pd.to_datetime(datos.get("Fecha_Vencimiento_Contrato","2025-12-31")).date() if pd.notna(datos.get("Fecha_Vencimiento_Contrato")) else date(2025,12,31))
-            with col13:
-                retencion_irpf_pct=st.number_input("Retención IRPF (%)",value=safe_float(datos.get("Retencion_IRPF_Pct"),0.0),min_value=0.0,max_value=25.0,step=1.0)
-                tipo_iva=st.number_input("Tipo IVA (%)",value=safe_float(datos.get("Tipo_IVA"),21.0),min_value=0.0,max_value=21.0,step=1.0,disabled=not iva_aplicable)
-            col_dias1,col_dias2=st.columns(2)
-            with col_dias1: dias_arrendados=st.number_input("Días arrendados año fiscal (cas. 0101)",value=safe_float(datos.get("Dias_Arrendados_Anio"),365.0),min_value=0.0,max_value=366.0,step=1.0)
-            with col_dias2: gastos_formalizacion=st.number_input("Gastos Formalización (€)",value=safe_float(datos.get("Gastos_Formalizacion"),0.0),min_value=0.0,step=10.0)
+
+            # ── ÁRBOL DE DECISIÓN 1: ¿ESTÁ ARRENDADO? ────────────
+            st.markdown("---")
+            st.markdown("### 🔑 ¿Está este inmueble arrendado?")
+            esta_arrendado=st.checkbox(
+                "✅ Sí, este inmueble ESTÁ ARRENDADO actualmente",
+                value=bool(datos.get("Inquilino","").strip() and safe_float(datos.get("Renta"),0.0)>0),
+                help="Marca si tiene inquilino y genera renta. Si está vacío o es uso propio, déjalo sin marcar."
+            )
+
+            if esta_arrendado:
+                st.markdown("#### 📝 Datos del arrendamiento")
+                col_a1,col_a2=st.columns(2)
+                with col_a1:
+                    inquilino=st.text_input("Inquilino *",value=datos.get("Inquilino",""))
+                    nif_inquilino=st.text_input("NIF Inquilino",value=datos.get("NIF_Inquilino",""))
+                    renta=st.number_input("Renta Mensual (€) *",value=safe_float(datos.get("Renta"),0.0),min_value=0.01,step=50.0)
+                    renta_mercado=st.number_input("Renta de Mercado (€)",value=safe_float(datos.get("Renta_Mercado"),0.0),min_value=0.0,step=50.0)
+                with col_a2:
+                    tipo_arrendamiento=st.selectbox("Tipo Arrendamiento *",["Larga Duración","Temporada","Vacacional"],index=safe_index(["Larga Duración","Temporada","Vacacional"],datos.get("Tipo_Arrendamiento"),0))
+                    iva_aplicable=st.checkbox("¿Arrendamiento a empresa (IVA)?",value=bool(datos.get("IVA_Aplicable",False)))
+                    tipo_iva=st.number_input("Tipo IVA (%)",value=safe_float(datos.get("Tipo_IVA"),21.0),min_value=0.0,max_value=21.0,step=1.0,disabled=not iva_aplicable)
+                    retencion_irpf_pct=st.number_input("Retención IRPF (%)",value=safe_float(datos.get("Retencion_IRPF_Pct"),0.0),min_value=0.0,max_value=25.0,step=1.0)
+                col_f1,col_f2,col_f3=st.columns(3)
+                with col_f1:
+                    fecha_inicio=st.date_input("Fecha Inicio Contrato *",value=pd.to_datetime(datos.get("Fecha_Inicio_Contrato","2024-01-01")).date() if pd.notna(datos.get("Fecha_Inicio_Contrato")) else date(2024,1,1))
+                with col_f2:
+                    fecha_vencimiento=st.date_input("Fecha Vencimiento Contrato",value=pd.to_datetime(datos.get("Fecha_Vencimiento_Contrato","2025-12-31")).date() if pd.notna(datos.get("Fecha_Vencimiento_Contrato")) else date(2025,12,31))
+                with col_f3:
+                    dias_arrendados=st.number_input("Días arrendados año fiscal",value=safe_float(datos.get("Dias_Arrendados_Anio"),365.0),min_value=1.0,max_value=366.0,step=1.0)
+                gastos_formalizacion=st.number_input("Gastos Formalización (€)",value=safe_float(datos.get("Gastos_Formalizacion"),0.0),min_value=0.0,step=10.0)
+            else:
+                # Valores neutros — no se arrendará, tributará por imputación
+                inquilino=""
+                nif_inquilino=""
+                renta=0.0
+                renta_mercado=0.0
+                tipo_arrendamiento="Larga Duración"
+                iva_aplicable=False
+                tipo_iva=21.0
+                retencion_irpf_pct=0.0
+                fecha_inicio=date(2024,1,1)
+                fecha_vencimiento=date(2025,12,31)
+                dias_arrendados=0.0
+                gastos_formalizacion=0.0
+                st.info("ℹ️ **Inmueble no arrendado** — tributará por **imputación de rentas (2% sobre valor catastral)**. Introduce el valor catastral en la sección de Amortización Fiscal para el cálculo correcto.")
+
+            # ── ÁRBOL DE DECISIÓN 2: ¿TIENE COCHERA VINCULADA? ───
+            st.markdown("---")
+            st.markdown("### 🅿️ ¿Tiene cochera vinculada?")
+            tiene_cochera=st.checkbox(
+                "✅ Sí, este inmueble TIENE COCHERA VINCULADA",
+                value=bool(str(datos.get("Cochera_Vinculada","N")).upper()=="S" or str(datos.get("Ref_Catastral_Cochera","")).strip()),
+                help="Marca si la cochera va incluida con este piso. Si la cochera es independiente o no existe, déjalo sin marcar."
+            )
+
+            if tiene_cochera:
+                cochera_vinculada="S"
+                st.markdown("#### 🅿️ Datos de la cochera")
+                col_c1,col_c2,col_c3=st.columns(3)
+                with col_c1:
+                    ref_catastral_cochera=st.text_input("Ref. Catastral Cochera *",value=datos.get("Ref_Catastral_Cochera",""))
+                with col_c2:
+                    ibi_cocheras=st.number_input("IBI Cochera (€) *",value=safe_float(datos.get("IBI_Cocheras"),0.0),min_value=0.0,step=10.0)
+                with col_c3:
+                    comunidad_cocheras=st.number_input("Comunidad Cochera (€)",value=safe_float(datos.get("Comunidad_Cocheras"),0.0),min_value=0.0,step=10.0)
+            else:
+                cochera_vinculada="N"
+                ref_catastral_cochera=""
+                ibi_cocheras=0.0
+                comunidad_cocheras=0.0
+                st.caption("🔘 Sin cochera vinculada — campos no aplicables")
+
             st.markdown("### 💰 Gastos Deducibles IRPF")
             col8,col9,col10=st.columns(3)
             with col8:
@@ -2020,22 +2073,25 @@ elif menu == "Datos de la Cartera":
             amortizacion_fiscal=round(base_amortizacion*0.03*pct_titular,2)
             valor_real_construccion=round(max(base_compra,valor_catastral)*pct_construccion,2)
             st.success(f"📊 **Amortización Fiscal Calculada**\nBase compra: **{base_compra:,.0f} €** · Catastral: **{valor_catastral:,.0f} €**\n✅ Amortización anual (3% × {pct_titular*100:.0f}%): **{amortizacion_fiscal:,.0f} €/año**")
-            st.markdown("### 🅿️ Cochera / Garaje")
-            col_coch1,col_coch2,col_coch3=st.columns(3)
-            with col_coch1: ref_catastral_cochera=st.text_input("Ref. Catastral Cochera",value=datos.get("Ref_Catastral_Cochera",""))
-            with col_coch2: ibi_cocheras=st.number_input("IBI Cochera (€)",value=safe_float(datos.get("IBI_Cocheras"),0.0),min_value=0.0,step=10.0)
-            with col_coch3: comunidad_cocheras=st.number_input("Comunidad Cochera (€)",value=safe_float(datos.get("Comunidad_Cocheras"),0.0),min_value=0.0,step=10.0)
             st.markdown("---")
             col_submit,col_cancel=st.columns(2)
             with col_submit: submitted=st.form_submit_button("💾 Guardar Inmueble",type="primary",use_container_width=True)
             with col_cancel: cancelled=st.form_submit_button("❌ Cancelar",use_container_width=True)
 
             if submitted:
-                if not nombre.strip(): st.error("El nombre del inmueble es obligatorio")
-                elif renta<=0: st.error("La renta debe ser mayor que 0")
-                elif valor_construccion<=0: st.error("El valor de construcción debe ser mayor que 0")
-                else:
-                    nuevo_inmueble={"Nombre":nombre,"Inquilino":inquilino,"Renta":renta,"Renta_Mercado":renta_mercado,"Comunidad":comunidad,"Valor_Construccion":valor_construccion,"Año_Reforma":año_reforma,"Año_Construccion":año_construccion,"Mobiliario":mobiliario,"Tipo":tipo,"Ref_Catastral":ref_catastral,"Titular":titular,"M2_Construidos":m2,"Habitaciones":habitaciones,"CP":cp,"Planta":planta,"Parking":parking,"Estado":estado,"Tipo_Arrendamiento":tipo_arrendamiento,"Cochera_Vinculada":cochera_vinculada,"Zona_Tensionada":zona_tensionada,"Fecha_Inicio_Contrato":fecha_inicio.strftime("%Y-%m-%d"),"Fecha_Vencimiento_Contrato":fecha_vencimiento.strftime("%Y-%m-%d"),"Fecha_Adquisicion":fecha_adquisicion.strftime("%Y-%m-%d"),"Dias_Arrendados_Anio":int(dias_arrendados),"NIF_Inquilino":nif_inquilino,"IBI_Anual":ibi_anual,"Seguro_Anual":seguro_anual,"Seguro_Vida":seguro_vida,"Intereses_Hipoteca":intereses_hipoteca,"Gasto_Ascensor":gasto_ascensor,"Gastos_Juridicos":gastos_juridicos,"Retenciones_IRPF":retenciones_irpf,"Retencion_IRPF_Pct":retencion_irpf_pct,"IVA_Aplicable":iva_aplicable,"Tipo_IVA":tipo_iva,"Gastos_Formalizacion":gastos_formalizacion,"Gastos_Pendientes_Años_Ant":gastos_pend_años_ant,"Servicios_Suministros":servicios_suministros,"Precio_Compra":precio_compra,"Impuestos_Compra":impuestos_compra,"Gastos_Compra":gastos_compra,"Valor_Catastral":valor_catastral,"Valor_Catastral_Piso":valor_catastral_piso,"Pct_Suelo":pct_suelo,"Pct_Construccion":pct_construccion,"Valor_Real_Construccion":valor_real_construccion,"Amortizacion_Fiscal":amortizacion_fiscal,"Ref_Catastral_Cochera":ref_catastral_cochera,"IBI_Cocheras":ibi_cocheras,"Comunidad_Cocheras":comunidad_cocheras}
+                errores_form=[]
+                if not nombre.strip(): errores_form.append("El nombre del inmueble es obligatorio")
+                if valor_construccion<=0: errores_form.append("El valor de construcción es obligatorio")
+                if esta_arrendado:
+                    if not inquilino.strip(): errores_form.append("El inquilino es obligatorio si el inmueble está arrendado")
+                    if renta<=0: errores_form.append("La renta debe ser mayor que 0 si el inmueble está arrendado")
+                if tiene_cochera:
+                    if not ref_catastral_cochera.strip(): errores_form.append("La ref. catastral de la cochera es obligatoria si tiene cochera vinculada")
+                    if ibi_cocheras<=0: errores_form.append("El IBI de la cochera es obligatorio si tiene cochera vinculada")
+                imputacion_rentas=round(valor_catastral*0.02,2) if not esta_arrendado and valor_catastral>0 else 0.0
+                for e in errores_form: st.error(f"❌ {e}")
+                if not errores_form:
+                    nuevo_inmueble={"Nombre":nombre,"Inquilino":inquilino,"Renta":renta,"Renta_Mercado":renta_mercado,"Comunidad":comunidad,"Valor_Construccion":valor_construccion,"Año_Reforma":año_reforma,"Año_Construccion":año_construccion,"Mobiliario":mobiliario,"Tipo":tipo,"Ref_Catastral":ref_catastral,"Titular":titular,"M2_Construidos":m2,"Habitaciones":habitaciones,"CP":cp,"Planta":planta,"Parking":parking,"Estado":estado,"Tipo_Arrendamiento":tipo_arrendamiento,"Cochera_Vinculada":cochera_vinculada,"Zona_Tensionada":zona_tensionada,"Fecha_Inicio_Contrato":fecha_inicio.strftime("%Y-%m-%d"),"Fecha_Vencimiento_Contrato":fecha_vencimiento.strftime("%Y-%m-%d"),"Fecha_Adquisicion":fecha_adquisicion.strftime("%Y-%m-%d"),"Dias_Arrendados_Anio":int(dias_arrendados),"NIF_Inquilino":nif_inquilino,"IBI_Anual":ibi_anual,"Seguro_Anual":seguro_anual,"Seguro_Vida":seguro_vida,"Intereses_Hipoteca":intereses_hipoteca,"Gasto_Ascensor":gasto_ascensor,"Gastos_Juridicos":gastos_juridicos,"Retenciones_IRPF":retenciones_irpf,"Retencion_IRPF_Pct":retencion_irpf_pct,"IVA_Aplicable":iva_aplicable,"Tipo_IVA":tipo_iva,"Gastos_Formalizacion":gastos_formalizacion,"Gastos_Pendientes_Años_Ant":gastos_pend_años_ant,"Servicios_Suministros":servicios_suministros,"Precio_Compra":precio_compra,"Impuestos_Compra":impuestos_compra,"Gastos_Compra":gastos_compra,"Valor_Catastral":valor_catastral,"Valor_Catastral_Piso":valor_catastral_piso,"Pct_Suelo":pct_suelo,"Pct_Construccion":pct_construccion,"Valor_Real_Construccion":valor_real_construccion,"Amortizacion_Fiscal":amortizacion_fiscal,"Ref_Catastral_Cochera":ref_catastral_cochera,"IBI_Cocheras":ibi_cocheras,"Comunidad_Cocheras":comunidad_cocheras,"Imputacion_Rentas_2pct":imputacion_rentas}
                     if es_nuevo:
                         df_nuevo=pd.concat([st.session_state.df_inm_persistent,pd.DataFrame([nuevo_inmueble])],ignore_index=True)
                         st.session_state.df_inm_persistent=df_nuevo
