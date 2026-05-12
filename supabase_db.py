@@ -664,38 +664,54 @@ def upsert_inmueble(registro: dict, user_id: str) -> dict:
             return {"ok": False, "error": "Registro sin nombre"}
 
         # Convertir claves a formato base de datos
+        # Mapa completo App→DB — cubre TODOS los campos para evitar fallback k.lower()
+        # que convierte Año_Reforma → año_reforma (ñ inválida en PostgreSQL)
         MAP_APP_TO_DB = {
-            'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
+            'Nombre': 'nombre', 'Direccion': 'direccion',
+            'Inquilino': 'inquilino', 'Renta': 'renta',
             'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
-            'IBI_Anual': 'ibi_anual', 'Seguro_Anual': 'seguro_anual',
-            'Intereses_Hipoteca': 'intereses_hipoteca',
+            'Valor_Construccion': 'valor_construccion',
+            'Año_Reforma': 'ano_reforma', 'Año_Construccion': 'ano_construccion',
+            'Mobiliario': 'mobiliario', 'Tipo': 'tipo',
+            'Ref_Catastral': 'ref_catastral', 'Titular': 'titular',
+            'M2_Construidos': 'm2_construidos', 'Habitaciones': 'habitaciones',
+            'CP': 'cp', 'Planta': 'planta', 'Parking': 'parking', 'Estado': 'estado',
             'Tipo_Arrendamiento': 'tipo_arrendamiento',
-            'Ref_Catastral': 'ref_catastral', 'M2_Construidos': 'm2_construidos',
-            'CP': 'cp', 'Valor_Catastral': 'valor_catastral',
-            'Pct_Construccion': 'pct_construccion',
-            'Amortizacion_Fiscal': 'amortizacion_fiscal',
+            'Cochera_Vinculada': 'cochera_vinculada',
+            'Zona_Tensionada': 'zona_tensionada',
+            'Fecha_Inicio_Contrato': 'fecha_inicio_contrato',
+            'Fecha_Vencimiento_Contrato': 'fecha_vencimiento_contrato',
+            'NIF_Inquilino': 'nif_inquilino',
+            'Intereses_Hipoteca': 'intereses_hipoteca',
+            'IBI_Anual': 'ibi_anual', 'Seguro_Anual': 'seguro_anual',
+            'Gastos_Juridicos': 'gastos_juridicos',
+            'Retenciones_IRPF': 'retenciones_irpf',
+            'Gastos_Formalizacion': 'gastos_formalizacion',
+            'Gastos_Pendientes_Años_Ant': 'gastos_pendientes_anos_ant',
+            'Servicios_Suministros': 'servicios_suministros',
+            'Fecha_Adquisicion': 'fecha_adquisicion',
             'Precio_Compra': 'precio_compra',
             'Impuestos_Compra': 'impuestos_compra',
             'Gastos_Compra': 'gastos_compra',
-            'Fecha_Inicio_Contrato': 'fecha_inicio_contrato',
-            'Fecha_Adquisicion': 'fecha_adquisicion',
-            'NIF_Inquilino': 'nif_inquilino',
-            'Dias_Arrendados_Anio': 'dias_arrendados_anio',
-            'Seguro_Vida': 'seguro_vida',
-            'Gasto_Ascensor': 'gasto_ascensor',
-            'IBI_Cocheras': 'ibi_cocheras',
-            'Comunidad_Cocheras': 'comunidad_cocheras',
-            'Ref_Catastral_Cochera': 'ref_catastral_cochera',
+            'Valor_Catastral': 'valor_catastral',
+            'Valor_Catastral_Piso': 'valor_catastral_piso',
+            'Pct_Suelo': 'pct_suelo', 'Pct_Construccion': 'pct_construccion',
             'Valor_Real_Construccion': 'valor_real_construccion',
-            'Retenciones_IRPF': 'retenciones_irpf',
-            'Titular': 'titular',
+            'Amortizacion_Fiscal': 'amortizacion_fiscal',
+            'Seguro_Vida': 'seguro_vida', 'Gasto_Ascensor': 'gasto_ascensor',
+            'Ref_Catastral_Cochera': 'ref_catastral_cochera',
+            'IBI_Cocheras': 'ibi_cocheras', 'Comunidad_Cocheras': 'comunidad_cocheras',
+            'IVA_Aplicable': 'iva_aplicable', 'Tipo_IVA': 'tipo_iva',
+            'Retencion_IRPF_Pct': 'retencion_irpf_pct',
+            'Dias_Arrendados_Anio': 'dias_arrendados_anio',
             'Imputacion_Rentas': 'imputacion_rentas',
-            'Direccion': 'direccion',
         }
 
         rec_db = {}
         for k, v in registro.items():
-            k_db = MAP_APP_TO_DB.get(k, k.lower())
+            k_db = MAP_APP_TO_DB.get(k)
+            if k_db is None:
+                continue  # clave no reconocida — ignorar en lugar de k.lower() con ñ
             if v is not None and str(v) not in ("nan", "None", ""):
                 try:
                     rec_db[k_db] = float(v) if isinstance(v, (int, float)) else v
