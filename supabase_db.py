@@ -501,11 +501,10 @@ def guardar_inmuebles(df, user_id):
             # NUNCA enviar 'id' ni 'created_at' — los genera Supabase
             rec.pop('id', None)
             rec.pop('created_at', None)
-            # Log del registro exacto que se envía (para debug)
             import json as _json
             payload_str = _json.dumps(rec, default=str)
             r = requests.post(
-                f"{SUPABASE_URL}/rest/v1/inmuebles",
+                f"{SUPABASE_URL}/rest/v1/inmuebles?on_conflict=nombre,user_id",
                 headers=h,
                 json=rec,
                 timeout=15
