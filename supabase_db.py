@@ -359,6 +359,8 @@ def _df_inm_to_records(df, user_id):
         'Retencion_IRPF_Pct': 'retencion_irpf_pct',
         'Dias_Arrendados_Anio': 'dias_arrendados_anio',
         'Imputacion_Rentas': 'imputacion_rentas',
+        'Cochera_Incluida_Arrendamiento': 'cochera_incluida_arrendamiento',
+        'Inmueble_No_Arrendado': 'inmueble_no_arrendado',
         'Direccion': 'direccion',
     }
 
@@ -407,7 +409,19 @@ def guardar_inmuebles(df, user_id):
         if df is None or len(df) == 0:
             return True
 
-        records = _df_inm_to_records(df, user_id)
+        # ── FIX CRÍTICO: asegurar user_id en TODAS las filas ──────
+        # Cuando el data_editor añade filas nuevas, user_id llega NaN/None
+        df2 = df.copy()
+        if 'user_id' in df2.columns:
+            mask_vacio = df2['user_id'].isna() | (df2['user_id'].astype(str).str.strip().isin(['', 'None', 'nan']))
+            df2.loc[mask_vacio, 'user_id'] = user_id
+        # Eliminar filas sin nombre (filas vacías del data_editor)
+        if 'Nombre' in df2.columns:
+            df2 = df2[df2['Nombre'].notna() & (df2['Nombre'].astype(str).str.strip() != '')]
+        elif 'nombre' in df2.columns:
+            df2 = df2[df2['nombre'].notna() & (df2['nombre'].astype(str).str.strip() != '')]
+
+        records = _df_inm_to_records(df2, user_id)
         if not records:
             st.error("❌ No se generaron registros para guardar.")
             return False
