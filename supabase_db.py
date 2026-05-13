@@ -317,10 +317,10 @@ def _df_mov_to_records(df, user_id):
 def _df_inm_to_records(df, user_id):
     """Convierte DataFrame de inmuebles a lista de dicts para Supabase.
     Acepta columnas tanto en formato app (Nombre, Renta...) como en formato DB (nombre, renta...).
+    Aplica defaults correctos por tipo para evitar errores NOT NULL.
     """
     df2 = df.copy()
 
-    # Mapeo directo App→DB sin depender del rename (evita problemas con ñ y encoding)
     MAP_APP_TO_DB = {
         'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
         'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
@@ -361,22 +361,68 @@ def _df_inm_to_records(df, user_id):
         'Imputacion_Rentas': 'imputacion_rentas',
         'Cochera_Incluida_Arrendamiento': 'cochera_incluida_arrendamiento',
         'Inmueble_No_Arrendado': 'inmueble_no_arrendado',
-        'Direccion': 'direccion',
     }
 
-    # Columnas válidas en la BD
-    COLS_VALIDAS_DB = set(MAP_APP_TO_DB.values())
+    # Campos numéricos → DEFAULT 0 si vienen nulos (NOT NULL en Supabase)
+    CAMPOS_NUMERICOS_DEFAULT_0 = {
+        'renta', 'renta_mercado', 'comunidad', 'valor_construccion',
+        'ano_reforma', 'ano_construccion', 'm2_construidos', 'habitaciones',
+        'planta', 'intereses_hipoteca', 'ibi_anual', 'seguro_anual',
+        'gastos_juridicos', 'retenciones_irpf', 'gastos_formalizacion',
+        'gastos_pendientes_anos_ant', 'servicios_suministros',
+        'precio_compra', 'impuestos_compra', 'gastos_compra',
+        'valor_catastral', 'valor_catastral_piso', 'pct_suelo', 'pct_construccion',
+        'valor_real_construccion', 'amortizacion_fiscal', 'seguro_vida',
+        'gasto_ascensor', 'ibi_cocheras', 'comunidad_cocheras',
+        'tipo_iva', 'retencion_irpf_pct', 'dias_arrendados_anio', 'imputacion_rentas',
+    }
 
-    # Columnas DB que debe tener CADA fila — PostgREST PGRST102 si difieren entre filas
-    ALL_DB_COLS = set(MAP_APP_TO_DB.values())
+    # Campos texto con valor por defecto obligatorio (NOT NULL en Supabase)
+    CAMPOS_TEXTO_DEFAULT = {
+        'mobiliario': 'N',
+        'parking': 'N',
+        'estado': 'Bueno',
+        'tipo_arrendamiento': 'Larga Duración',
+        'cochera_vinculada': 'N',
+        'zona_tensionada': 'N',
+        'fecha_inicio_contrato': '2024-01-01',
+        'fecha_adquisicion': '2024-01-01',
+    }
+
+    # Campos booleanos → DEFAULT False
+    CAMPOS_BOOLEANOS_DEFAULT_FALSE = {
+        'iva_aplicable', 'cochera_incluida_arrendamiento', 'inmueble_no_arrendado',
+    }
+
+    # Campos de texto que SÍ pueden ser NULL (no forzar default)
+    # direccion, inquilino, ref_catastral, titular, cp, tipo, nif_inquilino,
+    # renta_mercado (puede ser 0 o null), fecha_vencimiento_contrato, ref_catastral_cochera
+
+    def _es_nulo(val):
+        if val is None:
+            return True
+        if isinstance(val, float) and pd.isna(val):
+            return True
+        if isinstance(val, str) and val.strip() in ('', 'None', 'nan', 'NaN'):
+            return True
+        return False
 
     records = []
     for _, row in df2.iterrows():
-        # Inicializar TODAS las columnas a None para garantizar claves uniformes
         rec = {'user_id': user_id}
-        for col_db in ALL_DB_COLS:
-            rec[col_db] = None
 
+        # Inicializar todas las columnas con sus defaults correctos
+        for col_db in set(MAP_APP_TO_DB.values()):
+            if col_db in CAMPOS_NUMERICOS_DEFAULT_0:
+                rec[col_db] = 0
+            elif col_db in CAMPOS_BOOLEANOS_DEFAULT_FALSE:
+                rec[col_db] = False
+            elif col_db in CAMPOS_TEXTO_DEFAULT:
+                rec[col_db] = CAMPOS_TEXTO_DEFAULT[col_db]
+            else:
+                rec[col_db] = None  # texto nullable → null está bien
+
+        # Sobrescribir con el valor real si existe y no es nulo
         for col_app, col_db in MAP_APP_TO_DB.items():
             val = None
             if col_app in row.index:
@@ -384,13 +430,23 @@ def _df_inm_to_records(df, user_id):
             elif col_db in row.index:
                 val = row[col_db]
 
-            # Convertir NaN/vacío a None (null en JSON — válido para Supabase)
-            if val is None or (isinstance(val, float) and pd.isna(val)):
-                rec[col_db] = None
-            elif isinstance(val, str) and val.strip() == '':
-                rec[col_db] = None
+            if _es_nulo(val):
+                # Mantener el default ya asignado arriba
+                pass
             else:
-                rec[col_db] = val
+                # Conversiones de tipo seguras
+                if col_db in CAMPOS_NUMERICOS_DEFAULT_0:
+                    try:
+                        rec[col_db] = float(val) if '.' in str(val) else int(float(val))
+                    except (ValueError, TypeError):
+                        rec[col_db] = 0
+                elif col_db in CAMPOS_BOOLEANOS_DEFAULT_FALSE:
+                    if isinstance(val, bool):
+                        rec[col_db] = val
+                    else:
+                        rec[col_db] = str(val).strip().lower() in ('true', '1', 's', 'si', 'sí', 'yes')
+                else:
+                    rec[col_db] = str(val).strip() if val is not None else None
 
         records.append(rec)
     return records
