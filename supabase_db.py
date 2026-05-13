@@ -484,10 +484,14 @@ def guardar_inmuebles(df, user_id):
 
         # Upsert registro a registro — evita PGRST102 por claves desiguales entre filas
         errores = []
+        ok_count = 0
         for rec in records:
-            # NUNCA enviar 'id' — es SERIAL autoincremental, lo genera Supabase
-            # Si se manda null/vacío en campo integer explota con 22P02
+            # NUNCA enviar 'id' ni 'created_at' — los genera Supabase
             rec.pop('id', None)
+            rec.pop('created_at', None)
+            # Log del registro exacto que se envía (para debug)
+            import json as _json
+            payload_str = _json.dumps(rec, default=str)
             r = requests.post(
                 f"{SUPABASE_URL}/rest/v1/inmuebles",
                 headers=h,
@@ -495,11 +499,20 @@ def guardar_inmuebles(df, user_id):
                 timeout=15
             )
             if r.status_code not in [200, 201, 204]:
-                errores.append(f"{rec.get('nombre','?')}: {r.status_code} — {r.text[:200]}")
+                errores.append(
+                    f"**{rec.get('nombre','?')}** — HTTP {r.status_code}\n"
+                    f"Respuesta: {r.text[:400]}\n"
+                    f"Payload enviado: {payload_str[:600]}"
+                )
+            else:
+                ok_count += 1
+
         if errores:
-            for e in errores:
-                st.error(f"❌ Error guardando inmuebles: {e}")
+            # Guardar en session_state para que persistan tras st.rerun()
+            st.session_state["_errores_guardar_inm"] = errores
+            st.session_state["_ok_guardar_inm"] = ok_count
             return False
+        st.session_state.pop("_errores_guardar_inm", None)
         return True
     except Exception as e:
         st.error(f"Error guardando inmuebles: {e}")
