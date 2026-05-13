@@ -363,19 +363,26 @@ def _df_inm_to_records(df, user_id):
         'Inmueble_No_Arrendado': 'inmueble_no_arrendado',
     }
 
-    # Campos numéricos → DEFAULT 0 si vienen nulos (NOT NULL en Supabase)
-    CAMPOS_NUMERICOS_DEFAULT_0 = {
-        'renta', 'renta_mercado', 'comunidad', 'valor_construccion',
+    # Campos INTEGER en Supabase → mandar int, nunca float
+    CAMPOS_INTEGER = {
         'ano_reforma', 'ano_construccion', 'm2_construidos', 'habitaciones',
-        'planta', 'intereses_hipoteca', 'ibi_anual', 'seguro_anual',
+        'planta', 'dias_arrendados_anio',
+    }
+
+    # Campos NUMERIC/FLOAT en Supabase → mandar float
+    CAMPOS_FLOAT = {
+        'renta', 'renta_mercado', 'comunidad', 'valor_construccion',
+        'intereses_hipoteca', 'ibi_anual', 'seguro_anual',
         'gastos_juridicos', 'retenciones_irpf', 'gastos_formalizacion',
         'gastos_pendientes_anos_ant', 'servicios_suministros',
         'precio_compra', 'impuestos_compra', 'gastos_compra',
         'valor_catastral', 'valor_catastral_piso', 'pct_suelo', 'pct_construccion',
         'valor_real_construccion', 'amortizacion_fiscal', 'seguro_vida',
         'gasto_ascensor', 'ibi_cocheras', 'comunidad_cocheras',
-        'tipo_iva', 'retencion_irpf_pct', 'dias_arrendados_anio', 'imputacion_rentas',
+        'tipo_iva', 'retencion_irpf_pct', 'imputacion_rentas',
     }
+
+    CAMPOS_NUMERICOS_DEFAULT_0 = CAMPOS_INTEGER | CAMPOS_FLOAT
 
     # Campos texto con valor por defecto obligatorio (NOT NULL en Supabase)
     CAMPOS_TEXTO_DEFAULT = {
@@ -413,14 +420,16 @@ def _df_inm_to_records(df, user_id):
 
         # Inicializar todas las columnas con sus defaults correctos
         for col_db in set(MAP_APP_TO_DB.values()):
-            if col_db in CAMPOS_NUMERICOS_DEFAULT_0:
-                rec[col_db] = 0
+            if col_db in CAMPOS_INTEGER:
+                rec[col_db] = 0          # int
+            elif col_db in CAMPOS_FLOAT:
+                rec[col_db] = 0.0        # float
             elif col_db in CAMPOS_BOOLEANOS_DEFAULT_FALSE:
                 rec[col_db] = False
             elif col_db in CAMPOS_TEXTO_DEFAULT:
                 rec[col_db] = CAMPOS_TEXTO_DEFAULT[col_db]
             else:
-                rec[col_db] = None  # texto nullable → null está bien
+                rec[col_db] = None       # texto nullable
 
         # Sobrescribir con el valor real si existe y no es nulo
         for col_app, col_db in MAP_APP_TO_DB.items():
@@ -437,7 +446,10 @@ def _df_inm_to_records(df, user_id):
                 # Conversiones de tipo seguras
                 if col_db in CAMPOS_NUMERICOS_DEFAULT_0:
                     try:
-                        rec[col_db] = float(val) if '.' in str(val) else int(float(val))
+                        if col_db in CAMPOS_INTEGER:
+                            rec[col_db] = int(float(val))   # INTEGER en Supabase
+                        else:
+                            rec[col_db] = float(val)         # NUMERIC/FLOAT en Supabase
                     except (ValueError, TypeError):
                         rec[col_db] = 0
                 elif col_db in CAMPOS_BOOLEANOS_DEFAULT_FALSE:
