@@ -23,7 +23,7 @@ import anthropic
 APP_TOKENS = {
     "capital": {
         # Colores
-        "sidebar_bg":         "#FFFFFF",
+        "sidebar_bg":         "#0A1E38",
         "sidebar_accent":     "#185FA5",
         "body_bg":            "#F0F2F5",
         "card_bg":            "#FFFFFF",
@@ -454,6 +454,80 @@ def inject_global_css(app: str):
     /* ── HIDE STREAMLIT DEFAULTS ── */
     #MainMenu, footer, header {{ visibility: hidden; }}
     .block-container {{ padding-top: 2rem !important; }}
+
+    /* ── PAGE HEADERS ── */
+    .nc-brand-header {{
+        font-family: {t['font_display']};
+        font-size: 2rem;
+        font-weight: 700;
+        color: {t['text_primary']};
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+        margin: 0 0 4px 0;
+    }}
+
+    .nc-brand-sub {{
+        font-family: {t['font_body']};
+        font-size: 13px;
+        color: {t['text_secondary']};
+        margin: 0 0 20px 0;
+        font-weight: 400;
+    }}
+
+    .nc-section-title {{
+        font-family: {t['font_display']};
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: {t['text_primary']};
+        letter-spacing: -0.01em;
+        margin: 24px 0 12px 0;
+        padding-bottom: 6px;
+        border-bottom: 1.5px solid {'rgba(255,255,255,0.07)' if is_dark else 'rgba(24,95,165,0.10)'};
+    }}
+
+    /* ── KPI CARD (heredado por kpi_renderer) ── */
+    .nc-kpi {{
+        background: {t['card_bg']};
+        border-radius: 14px;
+        padding: 16px 18px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        border: 0.5px solid rgba(0,0,0,0.05);
+        height: 100%;
+    }}
+
+    .nc-kpi__label {{
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: {t['text_muted']};
+        margin: 0 0 6px 0;
+    }}
+
+    .nc-kpi__value {{
+        font-family: {t['font_display']};
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: {t['accent']};
+        margin: 0;
+        line-height: 1;
+    }}
+
+    .nc-kpi__sub {{
+        font-size: 10px;
+        color: {t['text_muted']};
+        margin: 5px 0 0 0;
+    }}
+
+    /* ── RECUADRO INGRESOS ── */
+    .nc-ingresos-box {{
+        background: {t['card_bg']};
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        border: 1.5px solid {'rgba(255,255,255,0.07)' if is_dark else 'rgba(24,95,165,0.12)'};
+        margin-bottom: 16px;
+    }}
     </style>
     """
 
