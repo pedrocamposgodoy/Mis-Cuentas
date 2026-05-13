@@ -485,6 +485,9 @@ def guardar_inmuebles(df, user_id):
         # Upsert registro a registro — evita PGRST102 por claves desiguales entre filas
         errores = []
         for rec in records:
+            # NUNCA enviar 'id' — es SERIAL autoincremental, lo genera Supabase
+            # Si se manda null/vacío en campo integer explota con 22P02
+            rec.pop('id', None)
             r = requests.post(
                 f"{SUPABASE_URL}/rest/v1/inmuebles",
                 headers=h,
