@@ -1883,6 +1883,17 @@ elif menu == "Legal":
 # ================================================================
 elif menu == "Datos de la Cartera":
     st.markdown('<div class="nc-brand-header">Datos de la Cartera</div>',unsafe_allow_html=True)
+
+    # ── Mostrar errores persistentes de guardado (sobreviven al rerun) ──
+    if "_errores_guardar_inm" in st.session_state:
+        ok = st.session_state.get("_ok_guardar_inm", 0)
+        errores = st.session_state["_errores_guardar_inm"]
+        st.error(f"⚠️ {len(errores)} inmueble(s) fallaron al guardar en Supabase ({ok} guardados correctamente). Copia estos errores:")
+        for e in errores:
+            st.code(e, language=None)
+        if st.button("🗑️ Limpiar errores", key="limpiar_err_inm"):
+            st.session_state.pop("_errores_guardar_inm", None)
+            st.rerun()
     st.markdown('<div class="nc-brand-sub">Gestión de inmuebles · Backups · Configuración</div>',unsafe_allow_html=True)
 
     if "modo_cartera" not in st.session_state: st.session_state.modo_cartera="lista"
