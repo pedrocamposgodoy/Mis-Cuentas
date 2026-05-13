@@ -1967,6 +1967,22 @@ elif menu == "Datos de la Cartera":
                 tipo_arrendamiento=st.selectbox("Tipo Arrendamiento",["Larga Duración","Temporada","Vacacional"],index=safe_index(["Larga Duración","Temporada","Vacacional"],datos.get("Tipo_Arrendamiento"),0))
                 cochera_vinculada=st.selectbox("Cochera Vinculada",["N","S"],index=0 if datos.get("Cochera_Vinculada")=="N" else 1)
                 zona_tensionada=st.selectbox("Zona Tensionada",["N","S"],index=0 if datos.get("Zona_Tensionada")=="N" else 1)
+            # ── Campos nuevos: inmueble no arrendado + cochera incluida ──
+            col_flags1, col_flags2 = st.columns(2)
+            with col_flags1:
+                inmueble_no_arrendado = st.checkbox(
+                    "🏚️ Inmueble NO arrendado (imputación 2% IRPF)",
+                    value=bool(datos.get("Inmueble_No_Arrendado", False)),
+                    help="Si el inmueble no está alquilado, Hacienda imputa una renta del 2% del valor catastral (o 1,1% si fue revisado después de 1994). No genera renta real — renta = 0."
+                )
+            with col_flags2:
+                cochera_incluida_arrendamiento = st.checkbox(
+                    "🚗 Cochera incluida en el arrendamiento",
+                    value=bool(datos.get("Cochera_Incluida_Arrendamiento", False)),
+                    help="La cochera se arrienda junto con el inmueble, sin contrato separado. Los gastos de la cochera (IBI, comunidad) son deducibles en el mismo contrato."
+                )
+            if inmueble_no_arrendado:
+                st.info("ℹ️ Al marcar inmueble no arrendado, la renta se considera 0. La imputación fiscal del 2% se calculará automáticamente en el Escudo Fiscal.")
             st.markdown("### 📅 Contrato e Inquilino")
             col11,col12,col13=st.columns(3)
             with col11:
@@ -2039,7 +2055,7 @@ elif menu == "Datos de la Cartera":
                 elif renta<=0: st.error("La renta debe ser mayor que 0")
                 elif valor_construccion<=0: st.error("El valor de construcción debe ser mayor que 0")
                 else:
-                    nuevo_inmueble={"Nombre":nombre,"Inquilino":inquilino,"Renta":renta,"Renta_Mercado":renta_mercado,"Comunidad":comunidad,"Valor_Construccion":valor_construccion,"Año_Reforma":año_reforma,"Año_Construccion":año_construccion,"Mobiliario":mobiliario,"Tipo":tipo,"Ref_Catastral":ref_catastral,"Titular":titular,"M2_Construidos":m2,"Habitaciones":habitaciones,"CP":cp,"Planta":planta,"Parking":parking,"Estado":estado,"Tipo_Arrendamiento":tipo_arrendamiento,"Cochera_Vinculada":cochera_vinculada,"Zona_Tensionada":zona_tensionada,"Fecha_Inicio_Contrato":fecha_inicio.strftime("%Y-%m-%d"),"Fecha_Vencimiento_Contrato":fecha_vencimiento.strftime("%Y-%m-%d"),"Fecha_Adquisicion":fecha_adquisicion.strftime("%Y-%m-%d"),"Dias_Arrendados_Anio":int(dias_arrendados),"NIF_Inquilino":nif_inquilino,"IBI_Anual":ibi_anual,"Seguro_Anual":seguro_anual,"Seguro_Vida":seguro_vida,"Intereses_Hipoteca":intereses_hipoteca,"Gasto_Ascensor":gasto_ascensor,"Gastos_Juridicos":gastos_juridicos,"Retenciones_IRPF":retenciones_irpf,"Retencion_IRPF_Pct":retencion_irpf_pct,"IVA_Aplicable":iva_aplicable,"Tipo_IVA":tipo_iva,"Gastos_Formalizacion":gastos_formalizacion,"Gastos_Pendientes_Años_Ant":gastos_pend_años_ant,"Servicios_Suministros":servicios_suministros,"Precio_Compra":precio_compra,"Impuestos_Compra":impuestos_compra,"Gastos_Compra":gastos_compra,"Valor_Catastral":valor_catastral,"Valor_Catastral_Piso":valor_catastral_piso,"Pct_Suelo":pct_suelo,"Pct_Construccion":pct_construccion,"Valor_Real_Construccion":valor_real_construccion,"Amortizacion_Fiscal":amortizacion_fiscal,"Ref_Catastral_Cochera":ref_catastral_cochera,"IBI_Cocheras":ibi_cocheras,"Comunidad_Cocheras":comunidad_cocheras}
+                    nuevo_inmueble={"Nombre":nombre,"Inquilino":inquilino,"Renta":renta,"Renta_Mercado":renta_mercado,"Comunidad":comunidad,"Valor_Construccion":valor_construccion,"Año_Reforma":año_reforma,"Año_Construccion":año_construccion,"Mobiliario":mobiliario,"Tipo":tipo,"Ref_Catastral":ref_catastral,"Titular":titular,"M2_Construidos":m2,"Habitaciones":habitaciones,"CP":cp,"Planta":planta,"Parking":parking,"Estado":estado,"Tipo_Arrendamiento":tipo_arrendamiento,"Cochera_Vinculada":cochera_vinculada,"Zona_Tensionada":zona_tensionada,"Fecha_Inicio_Contrato":fecha_inicio.strftime("%Y-%m-%d"),"Fecha_Vencimiento_Contrato":fecha_vencimiento.strftime("%Y-%m-%d"),"Fecha_Adquisicion":fecha_adquisicion.strftime("%Y-%m-%d"),"Dias_Arrendados_Anio":int(dias_arrendados),"NIF_Inquilino":nif_inquilino,"IBI_Anual":ibi_anual,"Seguro_Anual":seguro_anual,"Seguro_Vida":seguro_vida,"Intereses_Hipoteca":intereses_hipoteca,"Gasto_Ascensor":gasto_ascensor,"Gastos_Juridicos":gastos_juridicos,"Retenciones_IRPF":retenciones_irpf,"Retencion_IRPF_Pct":retencion_irpf_pct,"IVA_Aplicable":iva_aplicable,"Tipo_IVA":tipo_iva,"Gastos_Formalizacion":gastos_formalizacion,"Gastos_Pendientes_Años_Ant":gastos_pend_años_ant,"Servicios_Suministros":servicios_suministros,"Precio_Compra":precio_compra,"Impuestos_Compra":impuestos_compra,"Gastos_Compra":gastos_compra,"Valor_Catastral":valor_catastral,"Valor_Catastral_Piso":valor_catastral_piso,"Pct_Suelo":pct_suelo,"Pct_Construccion":pct_construccion,"Valor_Real_Construccion":valor_real_construccion,"Amortizacion_Fiscal":amortizacion_fiscal,"Ref_Catastral_Cochera":ref_catastral_cochera,"IBI_Cocheras":ibi_cocheras,"Comunidad_Cocheras":comunidad_cocheras,"Inmueble_No_Arrendado":inmueble_no_arrendado,"Cochera_Incluida_Arrendamiento":cochera_incluida_arrendamiento}
                     if es_nuevo:
                         df_nuevo=pd.concat([st.session_state.df_inm_persistent,pd.DataFrame([nuevo_inmueble])],ignore_index=True)
                         st.session_state.df_inm_persistent=df_nuevo
