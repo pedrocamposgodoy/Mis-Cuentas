@@ -213,15 +213,17 @@ def leer_movimientos(user_id=None):
 def guardar_movimientos_completo(df, user_id):
     """
     Borra todos los movimientos del usuario y los reinserta.
-    Usa el access_token del usuario para pasar RLS.
     """
+    if not user_id:
+        st.error("❌ Error crítico: user_id vacío. No se guardan movimientos.")
+        return False
     try:
         h = _headers()
 
         # 1. Borrar movimientos del usuario
         del_r = requests.delete(
             f"{SUPABASE_URL}/rest/v1/movimientos?user_id=eq.{user_id}",
-            headers=h
+            headers=h, timeout=15
         )
         if del_r.status_code not in [200, 204]:
             st.warning(f"⚠️ Delete status: {del_r.status_code} — {del_r.text[:200]}")
@@ -234,14 +236,20 @@ def guardar_movimientos_completo(df, user_id):
         if not records:
             return True
 
-        # 3. Insertar
-        ins_r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/movimientos",
-            headers=h,
-            json=records
-        )
-        if ins_r.status_code not in [200, 201]:
-            st.error(f"❌ Error insertando movimientos: {ins_r.status_code} — {ins_r.text[:300]}")
+        # 3. Insertar en lotes de 500 para evitar timeout
+        LOTE = 500
+        errores = []
+        for i in range(0, len(records), LOTE):
+            lote = records[i:i+LOTE]
+            ins_r = requests.post(
+                f"{SUPABASE_URL}/rest/v1/movimientos",
+                headers=h, json=lote, timeout=30
+            )
+            if ins_r.status_code not in [200, 201]:
+                errores.append(f"Lote {i//LOTE+1}: {ins_r.status_code} — {ins_r.text[:200]}")
+        if errores:
+            for e in errores:
+                st.error(f"❌ Error insertando movimientos: {e}")
             return False
         return True
 
@@ -282,13 +290,20 @@ def agregar_movimientos(nuevos, user_id):
 
 
 def eliminar_inmueble(nombre, user_id):
-    """Elimina un inmueble por nombre."""
+    """Elimina un inmueble por nombre y user_id."""
     try:
+        from urllib.parse import quote
+        nombre_enc = quote(str(nombre), safe='')
         r = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre}&user_id=eq.{user_id}",
-            headers=_headers()
+            f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre_enc}&user_id=eq.{user_id}",
+            headers=_headers(),
+            timeout=15
         )
-        return r.status_code in [200, 204]
+        if r.status_code in [200, 204]:
+            return True
+        else:
+            st.error(f"❌ No se pudo eliminar '{nombre}': {r.status_code} — {r.text[:200]}")
+            return False
     except Exception as e:
         st.error(f"Error eliminando inmueble: {e}")
         return False
