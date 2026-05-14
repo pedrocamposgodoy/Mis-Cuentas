@@ -275,6 +275,10 @@ with st.sidebar:
     logo_bytes = st.session_state.get("sidebar_logo_bytes")
     if logo_bytes:
         st.image(logo_bytes, use_container_width=True)
+        if st.button("🗑️ Quitar logo", key="btn_quitar_logo", use_container_width=True):
+            st.session_state.pop("sidebar_logo_bytes", None)
+            guardar_logo_usuario(st.session_state.user_id, b"", "png")
+            st.rerun()
     else:
         with st.expander("🖼️ Subir logo", expanded=False):
             logo_file = st.file_uploader("PNG o JPG", type=["png","jpg","jpeg"],
@@ -282,9 +286,12 @@ with st.sidebar:
             if logo_file:
                 ext = logo_file.name.split(".")[-1].lower()
                 b = logo_file.read()
-                st.session_state["sidebar_logo_bytes"] = b
-                guardar_logo_usuario(st.session_state.user_id, b, ext)
-                st.rerun()
+                ok = guardar_logo_usuario(st.session_state.user_id, b, ext)
+                if ok:
+                    st.session_state["sidebar_logo_bytes"] = b
+                    st.rerun()
+                else:
+                    st.error("❌ Error al guardar logo. Crea la tabla user_profiles en Supabase.")
 
     st.markdown("""
 <div style='padding:0.8rem 1.4rem 1rem;'>
