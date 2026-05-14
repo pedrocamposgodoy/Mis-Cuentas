@@ -86,7 +86,7 @@ from supabase_db import (
     leer_gastos_recurrentes, guardar_gasto_recurrente,
     actualizar_gasto_recurrente, eliminar_gasto_recurrente,
     generar_codigo_acceso, obtener_codigo_activo, revocar_codigo_acceso,
-    upsert_inmueble
+    upsert_inmueble, guardar_logo_usuario, leer_logo_usuario
 )
 
 COLS_INM = [
@@ -216,6 +216,12 @@ div.stButton > button:hover { background: #0F4A8A !important; }
 # ================================================================
 if "df_inm_persistent" not in st.session_state:
     st.session_state.df_inm_persistent = leer_inmuebles(user_id=st.session_state.user_id)
+
+# Cargar logo desde Supabase Storage (una vez por sesión)
+if "sidebar_logo_bytes" not in st.session_state:
+    logo_cargado = leer_logo_usuario(st.session_state.user_id)
+    if logo_cargado:
+        st.session_state["sidebar_logo_bytes"] = logo_cargado
 if "df_mov_persistent" not in st.session_state:
     st.session_state.df_mov_persistent = leer_movimientos(user_id=st.session_state.user_id)
 
@@ -266,14 +272,19 @@ PAGES = [
 
 with st.sidebar:
     # ── LOGO personalizable ────────────────────────────────────
-    if st.session_state.get("sidebar_logo") is not None:
-        st.image(st.session_state["sidebar_logo"], use_container_width=True)
+    logo_bytes = st.session_state.get("sidebar_logo_bytes")
+    if logo_bytes:
+        st.image(logo_bytes, use_container_width=True)
     else:
-        logo_file = st.file_uploader("🖼️ Subir logo", type=["png","jpg","jpeg"],
-                                      key="upload_logo", label_visibility="collapsed")
-        if logo_file:
-            st.session_state["sidebar_logo"] = logo_file
-            st.rerun()
+        with st.expander("🖼️ Subir logo", expanded=False):
+            logo_file = st.file_uploader("PNG o JPG", type=["png","jpg","jpeg"],
+                                          key="upload_logo", label_visibility="collapsed")
+            if logo_file:
+                ext = logo_file.name.split(".")[-1].lower()
+                b = logo_file.read()
+                st.session_state["sidebar_logo_bytes"] = b
+                guardar_logo_usuario(st.session_state.user_id, b, ext)
+                st.rerun()
 
     st.markdown("""
 <div style='padding:0.8rem 1.4rem 1rem;'>
@@ -1986,10 +1997,14 @@ elif menu == "Datos de la Cartera":
                     st.session_state.modo_cartera="editar"; st.session_state.inmueble_editando=idx; st.rerun()
                 if st.button("🗑️",key=f"del_{idx}",use_container_width=True):
                     if len(st.session_state.df_inm_persistent)>1:
-                        df_nuevo=st.session_state.df_inm_persistent.drop(idx).reset_index(drop=True)
-                        st.session_state.df_inm_persistent=df_nuevo
-                        guardar_inmuebles(df_nuevo,user_id=st.session_state.user_id)
-                        st.success(f"✓ {row['Nombre']} eliminado"); st.rerun()
+                        nombre_borrar = row['Nombre']
+                        ok_delete = eliminar_inmueble(nombre_borrar, user_id=st.session_state.user_id)
+                        if ok_delete:
+                            df_nuevo=st.session_state.df_inm_persistent.drop(idx).reset_index(drop=True)
+                            st.session_state.df_inm_persistent=df_nuevo
+                            st.success(f"✅ '{nombre_borrar}' eliminado de Supabase"); st.rerun()
+                        else:
+                            st.error(f"❌ No se pudo eliminar '{nombre_borrar}' de Supabase")
                     else: st.error("No puedes eliminar el último inmueble")
 
     # ── FORMULARIO EDITAR / NUEVO ──────────────────────────────
