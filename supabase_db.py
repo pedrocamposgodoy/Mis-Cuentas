@@ -890,39 +890,56 @@ def upsert_inmueble(registro: dict, user_id: str) -> dict:
 
 
 # ================================================================
-# SUPABASE STORAGE — Logo personalizado por usuario
-# Bucket: 'logos' (crear en Supabase Storage con acceso público)
+# LOGO DE USUARIO — guardado en tabla 'user_profiles' (base64)
+# Más simple que Storage, no requiere configurar buckets
+# SQL: CREATE TABLE IF NOT EXISTS user_profiles (
+#   user_id uuid PRIMARY KEY,
+#   logo_b64 text,
+#   updated_at timestamptz DEFAULT now()
+# );
 # ================================================================
 
 def guardar_logo_usuario(user_id: str, logo_bytes: bytes, extension: str = "png") -> bool:
-    """Sube el logo del usuario a Supabase Storage."""
+    """Guarda el logo como base64 en la tabla user_profiles."""
+    import base64
     try:
         h = {
             'apikey': SUPABASE_KEY,
             'Authorization': f'Bearer {SUPABASE_KEY}',
-            'Content-Type': f'image/{extension}',
-            'x-upsert': 'true',
+            'Content-Type': 'application/json',
+            'Prefer': 'resolution=merge-duplicates,return=minimal'
         }
-        path = f"{user_id}/logo.{extension}"
+        b64 = base64.b64encode(logo_bytes).decode('utf-8')
+        data = {'user_id': user_id, 'logo_b64': f"data:image/{extension};base64,{b64}"}
         r = requests.post(
-            f"{SUPABASE_URL}/storage/v1/object/logos/{path}",
-            headers=h,
-            data=logo_bytes,
-            timeout=20
+            f"{SUPABASE_URL}/rest/v1/user_profiles?on_conflict=user_id",
+            headers=h, json=data, timeout=20
         )
-        return r.status_code in [200, 201]
-    except Exception as e:
+        return r.status_code in [200, 201, 204]
+    except Exception:
         return False
 
 
 def leer_logo_usuario(user_id: str) -> bytes | None:
-    """Descarga el logo del usuario desde Supabase Storage. Prueba png y jpg."""
-    for ext in ["png", "jpg", "jpeg"]:
-        try:
-            url = f"{SUPABASE_URL}/storage/v1/object/public/logos/{user_id}/logo.{ext}"
-            r = requests.get(url, timeout=10)
-            if r.status_code == 200:
-                return r.content
-        except Exception:
-            continue
-    return None
+    """Lee el logo desde la tabla user_profiles."""
+    import base64
+    try:
+        h = {
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}',
+        }
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/user_profiles?user_id=eq.{user_id}&select=logo_b64",
+            headers=h, timeout=10
+        )
+        if r.status_code == 200:
+            data = r.json()
+            if data and data[0].get('logo_b64'):
+                b64_str = data[0]['logo_b64']
+                # Quitar el prefijo data:image/...;base64,
+                if ',' in b64_str:
+                    b64_str = b64_str.split(',', 1)[1]
+                return base64.b64decode(b64_str)
+        return None
+    except Exception:
+        return None
