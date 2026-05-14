@@ -949,35 +949,64 @@ def generar_insight_proactivo(app: str, contexto: dict) -> str:
 # ─────────────────────────────────────────────
 
 def render_sidebar(app: str, active_item: str = None) -> str:
-    """
-    Renderiza el sidebar con el estilo de la imagen de referencia.
-    Retorna el item seleccionado.
-    """
     t = APP_TOKENS[app]
     items = t["sidebar_items"]
     labels = [f"{icon}  {label}" for icon, label in items]
 
     with st.sidebar:
-        # Logo
+        # ── Espacio para logo personalizable ──────────────────────
+        logo_key = f"nc_logo_{app}"
+        if logo_key in st.session_state and st.session_state[logo_key] is not None:
+            st.image(st.session_state[logo_key], use_container_width=True)
+        else:
+            # Placeholder clicable para subir logo
+            with st.expander("🖼️ Logo", expanded=False):
+                logo_file = st.file_uploader("Sube tu logo (PNG/JPG)", type=["png","jpg","jpeg"], key=f"upload_{logo_key}", label_visibility="collapsed")
+                if logo_file:
+                    st.session_state[logo_key] = logo_file
+                    st.rerun()
+
+        # ── Nombre de la app ───────────────────────────────────────
         st.markdown(f"""
-        <div style="padding: 20px 0 30px; text-align: left">
+        <div style="padding: 12px 0 24px; text-align: left">
             <p style="
                 font-family: {t['font_display']};
-                font-size: 1.3rem;
+                font-size: 1.4rem;
                 font-weight: 700;
-                color: {'#FFFFFF' if app == 'inmohub' else t['accent']};
+                color: {'#FFFFFF' if app in ('inmohub','capital') else t['accent']};
                 margin: 0;
                 letter-spacing: -0.02em
-            ">{'InmoHub' if app == 'inmohub' else 'Nolasco' if app == 'capital' else 'FicaHub'}</p>
+            ">{'InmoHub' if app == 'inmohub' else 'Nolasco Capital' if app == 'capital' else 'FicaHub'}</p>
             <p style="
                 font-size: 10px;
-                font-weight: 500;
-                letter-spacing: 0.1em;
+                font-weight: 600;
+                letter-spacing: 0.12em;
                 text-transform: uppercase;
-                color: {t['text_muted']};
-                margin: 2px 0 0
+                color: rgba(255,255,255,0.5);
+                margin: 3px 0 0
             ">{'Real Estate Intelligence' if app == 'inmohub' else 'Gestión Patrimonial' if app == 'capital' else 'Asesoría Fiscal IA'}</p>
         </div>
+        """, unsafe_allow_html=True)
+
+        # ── CSS para las letras del radio (más claras y legibles) ──
+        st.markdown(f"""
+        <style>
+        [data-testid="stSidebar"] .stRadio label {{
+            color: rgba(255,255,255,0.85) !important;
+            font-size: 14px !important;
+            font-weight: 500 !important;
+            padding: 6px 8px !important;
+        }}
+        [data-testid="stSidebar"] .stRadio label:hover {{
+            color: #ffffff !important;
+            background: rgba(255,255,255,0.08) !important;
+            border-radius: 8px;
+        }}
+        [data-testid="stSidebar"] .stRadio [aria-checked="true"] + label {{
+            color: #ffffff !important;
+            font-weight: 700 !important;
+        }}
+        </style>
         """, unsafe_allow_html=True)
 
         selected = st.radio(
