@@ -887,3 +887,42 @@ def upsert_inmueble(registro: dict, user_id: str) -> dict:
 
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# ================================================================
+# SUPABASE STORAGE — Logo personalizado por usuario
+# Bucket: 'logos' (crear en Supabase Storage con acceso público)
+# ================================================================
+
+def guardar_logo_usuario(user_id: str, logo_bytes: bytes, extension: str = "png") -> bool:
+    """Sube el logo del usuario a Supabase Storage."""
+    try:
+        h = {
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}',
+            'Content-Type': f'image/{extension}',
+            'x-upsert': 'true',
+        }
+        path = f"{user_id}/logo.{extension}"
+        r = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/logos/{path}",
+            headers=h,
+            data=logo_bytes,
+            timeout=20
+        )
+        return r.status_code in [200, 201]
+    except Exception as e:
+        return False
+
+
+def leer_logo_usuario(user_id: str) -> bytes | None:
+    """Descarga el logo del usuario desde Supabase Storage. Prueba png y jpg."""
+    for ext in ["png", "jpg", "jpeg"]:
+        try:
+            url = f"{SUPABASE_URL}/storage/v1/object/public/logos/{user_id}/logo.{ext}"
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                return r.content
+        except Exception:
+            continue
+    return None
