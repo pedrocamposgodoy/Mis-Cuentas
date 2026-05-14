@@ -853,17 +853,18 @@ if menu == "Torre de Control":
         fondo_color = "#FDECEA" if es_critica else "#FFF9E6"
         texto_color = "#C0392B" if es_critica else "#854F0B"
         extra = f"<span style='font-size:0.75rem;color:{borde_color};margin-left:8px;'>+{len(alertas_criticas)-1} alertas más</span>" if len(alertas_criticas)>1 else ""
-        robot_mini_html = f"""
-        <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:10px;">
-          <div style="flex-shrink:0;"><canvas id="robotMini" width="80" height="80" style="display:block;width:46px;height:46px;border-radius:50%;"></canvas></div>
-          <div style="position:relative;background:{fondo_color};border:1px solid {borde_color};border-radius:10px;padding:9px 14px;max-width:520px;">
-            <div style="position:absolute;left:-8px;top:14px;width:0;height:0;border-top:6px solid transparent;border-bottom:6px solid transparent;border-right:8px solid {borde_color};"></div>
-            <div style="position:absolute;left:-6px;top:15px;width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:7px solid {fondo_color};"></div>
-            <span style="font-size:0.85rem;font-weight:600;color:{texto_color};">{"🚨" if es_critica else "⚠️"} {alerta_txt}</span>{extra}
-          </div>
-        </div>
-        <script>(function(){{const cv=document.getElementById('robotMini');if(!cv||cv.dataset.init)return;cv.dataset.init='1';const cx=cv.getContext('2d');const g=cx.createRadialGradient(40,35,8,40,40,45);g.addColorStop(0,'#e8f6ff');g.addColorStop(1,'#bcd8f0');cx.fillStyle=g;cx.fillRect(0,0,80,80);const bg=cx.createLinearGradient(40,32,40,58);bg.addColorStop(0,'#90c8f0');bg.addColorStop(0.5,'#4080c0');bg.addColorStop(1,'#2060a0');cx.fillStyle=bg;cx.beginPath();cx.roundRect(26,36,28,30,5);cx.fill();const hg=cx.createRadialGradient(36,30,4,40,34,22);hg.addColorStop(0,'#b8e0ff');hg.addColorStop(0.6,'#5090c8');hg.addColorStop(1,'#2060a0');cx.fillStyle=hg;cx.beginPath();cx.arc(40,34,20,0,Math.PI*2);cx.fill();function eye(ex,ey){{cx.fillStyle='rgba(80,210,255,0.5)';cx.beginPath();cx.arc(ex,ey,5,0,Math.PI*2);cx.fill();const ig=cx.createRadialGradient(ex-1,ey-1,0.5,ex,ey,3.5);ig.addColorStop(0,'#b8f0ff');ig.addColorStop(0.4,'#30b8f0');ig.addColorStop(1,'#03284a');cx.fillStyle=ig;cx.beginPath();cx.arc(ex,ey,3.5,0,Math.PI*2);cx.fill();cx.fillStyle='#020c18';cx.beginPath();cx.arc(ex,ey,1.8,0,Math.PI*2);cx.fill();cx.fillStyle='rgba(255,255,255,0.85)';cx.beginPath();cx.arc(ex-1,ey-1,0.9,0,Math.PI*2);cx.fill();}}eye(33,31);eye(47,31);cx.strokeStyle='#5090c8';cx.lineWidth=1.5;cx.lineCap='round';cx.beginPath();cx.moveTo(40,14);cx.lineTo(40,8);cx.stroke();const pg=cx.createRadialGradient(39,6,0.4,40,6,3.5);pg.addColorStop(0,'#ffffff');pg.addColorStop(0.3,'#90e0ff');pg.addColorStop(1,'#1890e0');cx.fillStyle=pg;cx.beginPath();cx.arc(40,6,2.8,0,Math.PI*2);cx.fill();}})();</script>"""
-        st.components.v1.html(robot_mini_html, height=62)
+        col_robot, col_alerta = st.columns([1, 11])
+        with col_robot:
+            if st.button("🤖", key="btn_robot_torre", help="Abrir Sabio IA", use_container_width=True):
+                st.session_state["sabio_torre_abierto"] = True
+        with col_alerta:
+            st.markdown(f"""
+            <div style="position:relative;background:{fondo_color};border:1px solid {borde_color};
+                        border-radius:10px;padding:9px 14px;margin-top:4px;">
+              <span style="font-size:0.85rem;font-weight:600;color:{texto_color};">
+                {"🚨" if es_critica else "⚠️"} {alerta_txt}
+              </span>{extra}
+            </div>""", unsafe_allow_html=True)
 
     # KPIs acumulado — nuevo estilo grande y prominente
     st.markdown('<div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#9CA3AF;margin:20px 0 12px;">Acumulado del año en curso</div>', unsafe_allow_html=True)
@@ -1003,6 +1004,22 @@ if menu == "Torre de Control":
         for nombre,tipo,msg in alertas:
             cls = "status-red" if tipo in ("vencido","urgente") else "status-yellow"
             st.markdown(f'<div class="{cls}" style="margin-bottom:6px;"><b>{nombre}</b> — {msg}</div>', unsafe_allow_html=True)
+
+    # ── SABIO IA — Torre de Control (activado por botón robot) ──
+    contexto_torre = {
+        "total_ingresos": total_ingresos_registrados,
+        "total_gastos": total_gastos_registrados,
+        "balance": balance_real,
+        "margen_pct": margen_real,
+        "alertas_criticas": alertas_criticas,
+        "alertas_medias": alertas_medias,
+        "num_inmuebles": len(df_inm),
+    }
+    sabio_abierto = st.session_state.get("sabio_torre_abierto", False)
+    with st.expander("🧠 Sabio Patrimonial IA", expanded=sabio_abierto):
+        if sabio_abierto:
+            st.session_state["sabio_torre_abierto"] = False
+        render_sabio("torre", contexto_torre)
 
 # ================================================================
 # PANTALLA: FICHAS (BENCHMARK)
@@ -2094,8 +2111,22 @@ elif menu == "Datos de la Cartera":
         col_cfg={"Tipo_Arrendamiento":st.column_config.SelectboxColumn("Tipo Arrend.",options=["Larga Duración","Temporada","Vacacional"],required=True),"Estado":st.column_config.SelectboxColumn("Estado",options=["Reformado","Bueno","Regular"],required=True),"Mobiliario":st.column_config.SelectboxColumn("Mobiliario",options=["S","N"],required=True),"Parking":st.column_config.SelectboxColumn("Parking",options=["S","N"],required=True)}
         df_ed=st.data_editor(df_inm,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=col_cfg)
         if st.button("✅ Guardar Cambios de Tabla",type="primary"):
-            st.session_state.df_inm_persistent=df_ed; guardar_inmuebles(df_ed,user_id=st.session_state.user_id)
-            st.success("✓ Datos actualizados."); st.rerun()
+            # ── Detectar inmuebles borrados y eliminarlos de Supabase ──
+            nombres_antes = set(st.session_state.df_inm_persistent["Nombre"].dropna().astype(str))
+            nombres_despues = set(df_ed["Nombre"].dropna().astype(str)) if "Nombre" in df_ed.columns else nombres_antes
+            borrados = nombres_antes - nombres_despues
+            for nombre_borrado in borrados:
+                ok = eliminar_inmueble(nombre_borrado, user_id=st.session_state.user_id)
+                if ok:
+                    st.success(f"✅ '{nombre_borrado}' eliminado de Supabase")
+                else:
+                    st.error(f"❌ No se pudo eliminar '{nombre_borrado}' de Supabase")
+            # ── Guardar el resto (upsert) ──
+            st.session_state.df_inm_persistent = df_ed
+            guardar_inmuebles(df_ed, user_id=st.session_state.user_id)
+            if not borrados:
+                st.success("✓ Datos actualizados.")
+            st.rerun()
 
     # ── BACKUPS ────────────────────────────────────────────────
     elif st.session_state.modo_cartera=="backup":
