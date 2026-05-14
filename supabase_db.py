@@ -504,31 +504,52 @@ def guardar_inmuebles(df, user_id):
         elif 'nombre' in df2.columns:
             df2 = df2[df2['nombre'].notna() & (df2['nombre'].astype(str).str.strip() != '')]
 
+        # Reset index para que df2.iloc[i] coincida con records[i]
+        df2 = df2.reset_index(drop=True)
         records = _df_inm_to_records(df2, user_id)
         if not records:
             st.error("❌ No se generaron registros para guardar.")
             return False
 
-        # Upsert registro a registro — evita PGRST102 por claves desiguales entre filas
         errores = []
         ok_count = 0
-        for rec in records:
-            # NUNCA enviar 'id' ni 'created_at' — los genera Supabase
-            rec.pop('id', None)
+        for i, rec in enumerate(records):
             rec.pop('created_at', None)
-            import json as _json
-            payload_str = _json.dumps(rec, default=str)
-            r = requests.post(
-                f"{SUPABASE_URL}/rest/v1/inmuebles?on_conflict=nombre,user_id",
-                headers=h,
-                json=rec,
-                timeout=15
-            )
+
+            # Obtener id original del df (antes de que _df_inm_to_records lo elimine)
+            id_original = None
+            if 'id' in df2.columns:
+                raw_id = df2.iloc[i]['id'] if i < len(df2) else None
+                if raw_id is not None and str(raw_id).strip() not in ('', 'None', 'nan'):
+                    try:
+                        id_original = int(float(raw_id))
+                    except (ValueError, TypeError):
+                        id_original = None
+
+            rec.pop('id', None)  # Nunca mandar id en el body
+
+            if id_original:
+                # ── PATCH: actualizar registro existente por id ──────────
+                r = requests.patch(
+                    f"{SUPABASE_URL}/rest/v1/inmuebles?id=eq.{id_original}&user_id=eq.{user_id}",
+                    headers=h,
+                    json=rec,
+                    timeout=15
+                )
+            else:
+                # ── POST: insertar nuevo ─────────────────────────────────
+                r = requests.post(
+                    f"{SUPABASE_URL}/rest/v1/inmuebles?on_conflict=nombre,user_id",
+                    headers=h,
+                    json=rec,
+                    timeout=15
+                )
+
             if r.status_code not in [200, 201, 204]:
+                import json as _json
                 errores.append(
                     f"**{rec.get('nombre','?')}** — HTTP {r.status_code}\n"
-                    f"Respuesta: {r.text[:400]}\n"
-                    f"Payload enviado: {payload_str[:600]}"
+                    f"Respuesta: {r.text[:400]}"
                 )
             else:
                 ok_count += 1
