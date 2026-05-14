@@ -305,7 +305,7 @@ with st.sidebar:
         st.session_state.user_logged_in = False
         st.session_state.user_id = None
         st.session_state.user_email = None
-        for k in ["df_inm_persistent","df_mov_persistent"]:
+        for k in ["df_inm_persistent","df_mov_persistent","sidebar_logo_bytes"]:
             if k in st.session_state: del st.session_state[k]
         st.rerun()
 
