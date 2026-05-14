@@ -51,6 +51,30 @@ from nolasco_styles import inject_global_css
 APP = "capital"
 inject_global_css(APP)
 
+# CSS adicional para botones de navegación del sidebar
+st.markdown("""
+<style>
+[data-testid="stSidebar"] button[kind="secondary"] {
+    background: transparent !important;
+    border: none !important;
+    color: rgba(255,255,255,0.82) !important;
+    font-size: 0.92rem !important;
+    font-weight: 500 !important;
+    text-align: left !important;
+    padding: 0.45rem 0.8rem !important;
+    border-radius: 6px !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"]:hover {
+    background: rgba(255,255,255,0.08) !important;
+    color: #ffffff !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"] p {
+    color: rgba(255,255,255,0.82) !important;
+    font-size: 0.92rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ================================================================
 # SECCIÓN 3 — BASE DE DATOS SUPABASE
 # ================================================================
@@ -241,17 +265,27 @@ PAGES = [
 ]
 
 with st.sidebar:
+    # ── LOGO personalizable ────────────────────────────────────
+    if st.session_state.get("sidebar_logo") is not None:
+        st.image(st.session_state["sidebar_logo"], use_container_width=True)
+    else:
+        logo_file = st.file_uploader("🖼️ Subir logo", type=["png","jpg","jpeg"],
+                                      key="upload_logo", label_visibility="collapsed")
+        if logo_file:
+            st.session_state["sidebar_logo"] = logo_file
+            st.rerun()
+
     st.markdown("""
-<div style='padding:1.4rem 1.4rem 1rem;'>
-  <div style='font-family:"DM Serif Display",serif;font-size:1.5rem;color:#60B4FF;line-height:1.2;'>Nolasco Capital</div>
-  <div style='font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:#3a6a8a;margin-top:4px;'>Granada · Gestión Patrimonial</div>
+<div style='padding:0.8rem 1.4rem 1rem;'>
+  <div style='font-family:"DM Serif Display",serif;font-size:1.5rem;color:#FFFFFF;line-height:1.2;'>Nolasco Capital</div>
+  <div style='font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-top:4px;'>Granada · Gestión Patrimonial</div>
 </div>
-<hr style='border:0;border-top:1px solid #1a3a5c;margin:0 0 0.6rem 0;'>
+<hr style='border:0;border-top:1px solid rgba(255,255,255,0.1);margin:0 0 0.6rem 0;'>
 """, unsafe_allow_html=True)
 
     st.markdown(f"""
-<div style='padding:0.5rem 1rem;background:rgba(96,180,255,0.1);border-radius:6px;margin:0 1rem 1rem;'>
-    <div style='font-size:0.7rem;color:#3a6a8a;'>👤 Usuario</div>
+<div style='padding:0.5rem 1rem;background:rgba(255,255,255,0.07);border-radius:6px;margin:0 1rem 1rem;'>
+    <div style='font-size:0.7rem;color:rgba(255,255,255,0.45);'>👤 Usuario</div>
     <div style='font-size:0.85rem;color:#fff;margin-top:2px;'>{st.session_state.user_email}</div>
 </div>
 """, unsafe_allow_html=True)
@@ -267,32 +301,32 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
 
     def nav_group(label, grupo_id):
-        st.markdown(f"<div style='font-size:0.58rem;letter-spacing:0.15em;text-transform:uppercase;color:#3a6a8a;padding:0.5rem 1rem 0.3rem;'>{label}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-size:0.62rem;letter-spacing:0.15em;text-transform:uppercase;color:rgba(255,255,255,0.4);padding:0.5rem 1rem 0.3rem;'>{label}</div>", unsafe_allow_html=True)
         for icon, page, grupo in PAGES:
             if grupo != grupo_id: continue
             is_active = st.session_state.menu == page
             if is_active:
-                st.markdown(f"""<div style='background:rgba(96,180,255,0.15);border-left:3px solid #60B4FF;
+                st.markdown(f"""<div style='background:rgba(96,180,255,0.18);border-left:3px solid #60B4FF;
                     padding:0.55rem 1rem;border-radius:0 6px 6px 0;margin-bottom:2px;
                     display:flex;align-items:center;gap:10px;'>
-                    <span style='font-size:1rem;'>{icon}</span>
-                    <span style='font-size:0.9rem;font-weight:600;color:#fff;'>{page}</span>
+                    <span style='font-size:1.05rem;'>{icon}</span>
+                    <span style='font-size:0.95rem;font-weight:700;color:#FFFFFF;'>{page}</span>
                 </div>""", unsafe_allow_html=True)
             else:
                 if st.button(f"{icon}  {page}", key=f"nav_{page}", use_container_width=True):
                     st.session_state.menu = page; st.rerun()
 
     nav_group("Gestión", "Core")
-    st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.5rem 0;'>", unsafe_allow_html=True)
     nav_group("Servicios IA", "B2B2C")
-    st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.5rem 0;'>", unsafe_allow_html=True)
     nav_group("Herramientas", "Tools")
-    st.markdown("<hr style='border:0;border-top:1px solid #1a3a5c;margin:0.5rem 0;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.5rem 0;'>", unsafe_allow_html=True)
     nav_group("Configuración", "Config")
 
     st.markdown(f"""
-    <hr style='border:0;border-top:1px solid #1a3a5c;margin:0.8rem 0 0.4rem;'>
-    <div style='padding:0.3rem 1rem;font-size:0.68rem;color:#2a5070;'>
+    <hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.8rem 0 0.4rem;'>
+    <div style='padding:0.3rem 1rem;font-size:0.68rem;color:rgba(255,255,255,0.3);'>
         {len(df_inm)} activos · {datetime.now().strftime('%b %Y')}
     </div>""", unsafe_allow_html=True)
 
@@ -1348,6 +1382,10 @@ elif menu == "Diario Contable":
                 guardar_movimientos_completo(df_completo,user_id=st.session_state.get("user_id",""))
                 st.success(f"✓ Registradas {len(nuevos_ingresos)} rentas por {df_nuevos['Importe'].sum():,.0f}€")
 
+        st.markdown("""
+        <div style="background:#f8fafc;border:1.5px solid #d0dff0;border-radius:12px;
+                    padding:16px 18px 12px;margin:12px 0 16px;">
+        """, unsafe_allow_html=True)
         texto_ingresos=st.text_area("¿Quién ha pagado este mes?",placeholder="Ha pagado solo Huerto 1...",height=90,key="txt_ingresos")
         if st.button("🔍 Interpretar",type="primary",key="procesar_ing"):
             if texto_ingresos.strip():
@@ -1358,6 +1396,7 @@ elif menu == "Diario Contable":
                     st.warning("⚠️ No entendí quién pagó. Prueba: 'Ha pagado Huerto 1' o 'Todos han pagado'")
             else:
                 st.warning("Escribe algo primero")
+        st.markdown("</div>", unsafe_allow_html=True)
 
         if "ingresos_pendientes" in st.session_state and st.session_state["ingresos_pendientes"]:
             st.markdown("---"); st.markdown("**✏️ Revisa y corrige si es necesario — luego guarda:**")
@@ -2111,22 +2150,20 @@ elif menu == "Datos de la Cartera":
         col_cfg={"Tipo_Arrendamiento":st.column_config.SelectboxColumn("Tipo Arrend.",options=["Larga Duración","Temporada","Vacacional"],required=True),"Estado":st.column_config.SelectboxColumn("Estado",options=["Reformado","Bueno","Regular"],required=True),"Mobiliario":st.column_config.SelectboxColumn("Mobiliario",options=["S","N"],required=True),"Parking":st.column_config.SelectboxColumn("Parking",options=["S","N"],required=True)}
         df_ed=st.data_editor(df_inm,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=col_cfg)
         if st.button("✅ Guardar Cambios de Tabla",type="primary"):
-            # ── Detectar inmuebles borrados y eliminarlos de Supabase ──
             nombres_antes = set(st.session_state.df_inm_persistent["Nombre"].dropna().astype(str))
             nombres_despues = set(df_ed["Nombre"].dropna().astype(str)) if "Nombre" in df_ed.columns else nombres_antes
             borrados = nombres_antes - nombres_despues
+            errores_borrado = []
             for nombre_borrado in borrados:
-                ok = eliminar_inmueble(nombre_borrado, user_id=st.session_state.user_id)
-                if ok:
-                    st.success(f"✅ '{nombre_borrado}' eliminado de Supabase")
-                else:
-                    st.error(f"❌ No se pudo eliminar '{nombre_borrado}' de Supabase")
-            # ── Guardar el resto (upsert) ──
+                if not eliminar_inmueble(nombre_borrado, user_id=st.session_state.user_id):
+                    errores_borrado.append(nombre_borrado)
             st.session_state.df_inm_persistent = df_ed
-            guardar_inmuebles(df_ed, user_id=st.session_state.user_id)
-            if not borrados:
-                st.success("✓ Datos actualizados.")
+            guardado_ok = guardar_inmuebles(df_ed, user_id=st.session_state.user_id)
+            if guardado_ok and not errores_borrado:
+                st.session_state["_tabla_guardada_ok"] = True
             st.rerun()
+        if st.session_state.pop("_tabla_guardada_ok", False):
+            st.success("✅ Cambios guardados correctamente en Supabase")
 
     # ── BACKUPS ────────────────────────────────────────────────
     elif st.session_state.modo_cartera=="backup":
