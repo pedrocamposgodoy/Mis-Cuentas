@@ -86,7 +86,7 @@ from supabase_db import (
     leer_gastos_recurrentes, guardar_gasto_recurrente,
     actualizar_gasto_recurrente, eliminar_gasto_recurrente,
     generar_codigo_acceso, obtener_codigo_activo, revocar_codigo_acceso,
-    upsert_inmueble, guardar_logo_usuario, leer_logo_usuario
+    upsert_inmueble, guardar_logo_usuario, leer_logo_usuario, health_check
 )
 
 COLS_INM = [
@@ -217,6 +217,14 @@ div.stButton > button:hover { background: #0F4A8A !important; }
 if "df_inm_persistent" not in st.session_state:
     st.session_state.df_inm_persistent = leer_inmuebles(user_id=st.session_state.user_id)
 
+# ── Health check Supabase (una vez por sesión) ─────────────────
+if "supabase_ok" not in st.session_state:
+    hc = health_check()
+    st.session_state["supabase_ok"] = hc["ok"]
+    if not hc["ok"]:
+        st.error(f"⚠️ Sin conexión con Supabase: {hc.get('error','')}. Los datos no se guardarán.")
+        st.stop()
+
 # Cargar logo desde Supabase Storage (una vez por sesión)
 if "sidebar_logo_bytes" not in st.session_state:
     logo_cargado = leer_logo_usuario(st.session_state.user_id)
@@ -274,7 +282,10 @@ with st.sidebar:
     # ── LOGO personalizable ────────────────────────────────────
     logo_bytes = st.session_state.get("sidebar_logo_bytes")
     if logo_bytes:
-        st.image(logo_bytes, use_container_width=True)
+        # Mostrar con ancho controlado, centrado
+        st.markdown('<div style="padding:8px 16px 4px;">', unsafe_allow_html=True)
+        st.image(logo_bytes, width=120)
+        st.markdown('</div>', unsafe_allow_html=True)
         if st.button("🗑️ Quitar logo", key="btn_quitar_logo", use_container_width=True):
             st.session_state.pop("sidebar_logo_bytes", None)
             guardar_logo_usuario(st.session_state.user_id, b"", "png")
