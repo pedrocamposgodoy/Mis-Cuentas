@@ -1,6 +1,6 @@
 """
 supabase_db.py — Módulo de Base de Datos Supabase para Nolasco Capital
-VERSIÓN FINAL - Usa access_token del usuario para pasar correctamente el RLS
+VERSIÓN BLINDADA - Validación user_id en todas las operaciones de escritura.
 """
 import requests
 import pandas as pd
@@ -9,6 +9,52 @@ import streamlit as st
 # ─── CREDENCIALES ───────────────────────────────────────────────
 SUPABASE_URL = "https://odxixtgqcyddfqaapqgi.supabase.co"
 SUPABASE_KEY = "sb_publishable_Obgti7yMfXw8wCUL2FbTtA_EWeyHuM9"
+
+# ─── TABLAS PERMITIDAS (solo estas se pueden tocar) ─────────────
+_TABLAS_ESCRITURA = frozenset({
+    "inmuebles", "movimientos", "gastos_recurrentes",
+    "consentimientos", "leads_inmobiliarias", "user_profiles",
+    "codigos_acceso_temporal",
+})
+
+# ─── GUARD: validar user_id antes de cualquier escritura ────────
+def _validar_user_id(user_id, operacion: str = "") -> bool:
+    """
+    Valida que user_id es un UUID válido no vacío.
+    Si falla, muestra error y devuelve False.
+    Llama esto al inicio de TODA función que escriba en Supabase.
+    """
+    if not user_id:
+        st.error(f"🔒 Operación bloqueada ({operacion}): user_id vacío. Cierra sesión y vuelve a entrar.")
+        return False
+    uid_str = str(user_id).strip()
+    if uid_str in ('', 'None', 'nan', 'null'):
+        st.error(f"🔒 Operación bloqueada ({operacion}): user_id inválido '{uid_str}'.")
+        return False
+    # Validación básica de formato UUID (8-4-4-4-12)
+    partes = uid_str.split('-')
+    if len(partes) != 5:
+        st.error(f"🔒 Operación bloqueada ({operacion}): user_id no es UUID válido.")
+        return False
+    return True
+
+# ─── HEALTH CHECK ───────────────────────────────────────────────
+def health_check() -> dict:
+    """
+    Verifica la conexión con Supabase.
+    Devuelve {'ok': True} o {'ok': False, 'error': '...'}.
+    Llamar al arrancar la app (una vez por sesión).
+    """
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/inmuebles?select=id&limit=1",
+            headers=_headers(), timeout=8
+        )
+        if r.status_code in [200, 206]:
+            return {'ok': True}
+        return {'ok': False, 'error': f"HTTP {r.status_code}: {r.text[:200]}"}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
 
 # ─── COLUMNAS ESPERADAS ─────────────────────────────────────────
 COLS_INM = [
@@ -153,13 +199,12 @@ RENAME_MOV_TO_DB = {v: k for k, v in RENAME_MOV_TO_APP.items()}
 # ─── FUNCIONES DE LECTURA ────────────────────────────────────────
 
 def leer_inmuebles(user_id=None):
-    """Lee inmuebles del usuario desde Supabase."""
+    """Lee inmuebles del usuario desde Supabase. Requiere user_id."""
+    if not _validar_user_id(user_id, "leer_inmuebles"):
+        return pd.DataFrame(columns=COLS_INM)
     try:
-        url = f"{SUPABASE_URL}/rest/v1/inmuebles?select=*&order=id.asc"
-        if user_id:
-            url += f"&user_id=eq.{user_id}"
-
-        r = requests.get(url, headers=_headers())
+        url = f"{SUPABASE_URL}/rest/v1/inmuebles?select=*&order=id.asc&user_id=eq.{user_id}"
+        r = requests.get(url, headers=_headers(), timeout=15)
         if r.status_code == 200:
             data = r.json()
             if data:
@@ -170,24 +215,21 @@ def leer_inmuebles(user_id=None):
                         df[col] = DEFAULTS_FISCAL.get(col, "")
                 _limpiar_numericos_inm(df)
                 return df
-            else:
-                # Usuario nuevo sin inmuebles — devolver DataFrame vacío
-                return pd.DataFrame(columns=COLS_INM)
-        else:
             return pd.DataFrame(columns=COLS_INM)
+        st.warning(f"⚠️ Error leyendo inmuebles: HTTP {r.status_code}")
+        return pd.DataFrame(columns=COLS_INM)
     except Exception as e:
         st.error(f"Error leyendo inmuebles: {e}")
         return pd.DataFrame(columns=COLS_INM)
 
 
 def leer_movimientos(user_id=None):
-    """Lee movimientos del usuario desde Supabase."""
+    """Lee movimientos del usuario desde Supabase. Requiere user_id."""
+    if not _validar_user_id(user_id, "leer_movimientos"):
+        return pd.DataFrame(columns=COLS_MOV)
     try:
-        url = f"{SUPABASE_URL}/rest/v1/movimientos?select=*&order=fecha.desc"
-        if user_id:
-            url += f"&user_id=eq.{user_id}"
-
-        r = requests.get(url, headers=_headers())
+        url = f"{SUPABASE_URL}/rest/v1/movimientos?select=*&order=fecha.desc&user_id=eq.{user_id}"
+        r = requests.get(url, headers=_headers(), timeout=15)
         if r.status_code == 200:
             data = r.json()
             if data:
@@ -199,10 +241,9 @@ def leer_movimientos(user_id=None):
                 if "Importe" in df.columns:
                     df["Importe"] = pd.to_numeric(df["Importe"], errors='coerce').fillna(0)
                 return df
-            else:
-                return pd.DataFrame(columns=COLS_MOV)
-        else:
             return pd.DataFrame(columns=COLS_MOV)
+        st.warning(f"⚠️ Error leyendo movimientos: HTTP {r.status_code}")
+        return pd.DataFrame(columns=COLS_MOV)
     except Exception as e:
         st.error(f"Error leyendo movimientos: {e}")
         return pd.DataFrame(columns=COLS_MOV)
@@ -291,6 +332,8 @@ def agregar_movimientos(nuevos, user_id):
 
 def eliminar_inmueble(nombre, user_id):
     """Elimina un inmueble por nombre y user_id."""
+    if not _validar_user_id(user_id, "eliminar_inmueble"):
+        return False
     try:
         from urllib.parse import quote
         nombre_enc = quote(str(nombre), safe='')
@@ -301,9 +344,8 @@ def eliminar_inmueble(nombre, user_id):
         )
         if r.status_code in [200, 204]:
             return True
-        else:
-            st.error(f"❌ No se pudo eliminar '{nombre}': {r.status_code} — {r.text[:200]}")
-            return False
+        st.error(f"❌ No se pudo eliminar '{nombre}': {r.status_code} — {r.text[:200]}")
+        return False
     except Exception as e:
         st.error(f"Error eliminando inmueble: {e}")
         return False
@@ -480,7 +522,9 @@ def _df_inm_to_records(df, user_id):
 
 
 def guardar_inmuebles(df, user_id):
-    """Guarda inmuebles usando upsert — nunca borra, solo crea o actualiza."""
+    """Guarda inmuebles — PATCH si tienen id, POST si son nuevos."""
+    if not _validar_user_id(user_id, "guardar_inmuebles"):
+        return False
     try:
         h = {
             'apikey': SUPABASE_KEY,
