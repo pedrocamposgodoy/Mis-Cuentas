@@ -1155,15 +1155,22 @@ def eliminar_factura(user_id: str, mov_id, ruta: str) -> bool:
             "Content-Type": "application/json",
         }
 
-        # 1. Borrar de Storage
+        # 1. Borrar de Storage — endpoint bulk delete de Supabase
         r_del = requests.delete(
             f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
             headers=h_base,
             timeout=10
         )
-        # 200 o 404 (ya no existía) = ok
+        # Supabase Storage bulk delete (endpoint correcto)
         if r_del.status_code not in (200, 204, 404):
-            return False
+            r_del = requests.post(
+                f"{SUPABASE_URL}/storage/v1/object/facturas",
+                headers={**h_base, "Content-Type": "application/json"},
+                json={"prefixes": [ruta]},
+                timeout=10
+            )
+        # 200, 204 = borrado. 404 = ya no existía. Ambos son ok.
+        # Continuamos aunque falle Storage — lo importante es limpiar la BD
 
         # 2. Limpiar campos en movimiento
         r_patch = requests.patch(
