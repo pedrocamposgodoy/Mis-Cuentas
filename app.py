@@ -1507,7 +1507,15 @@ elif menu == "Diario Contable":
 </div>""", unsafe_allow_html=True)
 
                     # Panel expandible
-                    with st.expander("Ver detalle / Factura / Editar"):
+                    # Cerrar expander tras acción (guardar/eliminar/subir)
+                    _exp_key = f"exp_open_{idx}"
+                    if st.session_state.get("dc_cerrar_exp") == idx:
+                        st.session_state.pop("dc_cerrar_exp", None)
+                        st.session_state[_exp_key] = False
+                    _exp_abierto = st.session_state.get(_exp_key, False)
+                    with st.expander("Ver detalle / Factura / Editar", expanded=_exp_abierto):
+                        # Marcar como abierto al interactuar
+                        st.session_state[_exp_key] = True
                         col_det, col_fac = st.columns([1, 1])
 
                         with col_det:
@@ -1557,6 +1565,7 @@ elif menu == "Diario Contable":
                                         if _r.status_code in (200, 204):
                                             st.success("✅ Guardado")
                                             st.session_state.df_mov_persistent = leer_movimientos(uid_dc)
+                                            st.session_state["dc_cerrar_exp"] = idx
                                             st.rerun()
                                         else:
                                             st.error(f"❌ Error {_r.status_code}")
@@ -1584,6 +1593,7 @@ elif menu == "Diario Contable":
                                         if _r.status_code in (200, 204):
                                             st.success("✅ Eliminado")
                                             st.session_state.df_mov_persistent = leer_movimientos(uid_dc)
+                                            st.session_state["dc_cerrar_exp"] = idx
                                             st.rerun()
                                         else:
                                             st.error(f"❌ Error {_r.status_code}")
@@ -1621,6 +1631,7 @@ elif menu == "Diario Contable":
                                     if mov_id and actualizar_estado_fiscal_movimiento(uid_dc, mov_id, nuevo_estado):
                                         st.success("✅ Estado actualizado")
                                         st.session_state.df_mov_persistent = leer_movimientos(uid_dc)
+                                        st.session_state["dc_cerrar_exp"] = idx
                                         st.rerun()
                                     else:
                                         st.error("❌ Error actualizando estado")
@@ -1634,6 +1645,7 @@ elif menu == "Diario Contable":
                                         if ok_del:
                                             st.success("✅ Factura eliminada")
                                             st.session_state.df_mov_persistent = leer_movimientos(uid_dc)
+                                            st.session_state["dc_cerrar_exp"] = idx
                                             st.rerun()
                                         else:
                                             st.error("❌ Error eliminando factura")
@@ -1664,6 +1676,7 @@ elif menu == "Diario Contable":
                                         if res["ok"]:
                                             st.success("✅ Factura subida correctamente")
                                             st.session_state.df_mov_persistent = leer_movimientos(uid_dc)
+                                            st.session_state["dc_cerrar_exp"] = idx
                                             st.rerun()
                                         else:
                                             st.error(f"❌ {res['error']}")
