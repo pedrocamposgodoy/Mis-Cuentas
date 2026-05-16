@@ -1514,8 +1514,6 @@ elif menu == "Diario Contable":
                         st.session_state[_exp_key] = False
                     _exp_abierto = st.session_state.get(_exp_key, False)
                     with st.expander("Ver detalle / Factura / Editar", expanded=_exp_abierto):
-                        # Marcar como abierto al interactuar
-                        st.session_state[_exp_key] = True
                         col_det, col_fac = st.columns([1, 1])
 
                         with col_det:
