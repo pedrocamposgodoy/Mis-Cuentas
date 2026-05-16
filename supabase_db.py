@@ -74,7 +74,8 @@ COLS_INM = [
     "Imputacion_Rentas"
 ]
 
-COLS_MOV = ["Fecha","Apartamento","Concepto","Categoría","Tipo","Importe","Deducible"]
+COLS_MOV = ["Fecha","Apartamento","Concepto","Categoría","Tipo","Importe","Deducible",
+            "factura_url","tiene_factura","estado_fiscal"]
 
 DEFAULTS_FISCAL = {
     "Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N",
@@ -224,7 +225,7 @@ def leer_inmuebles(user_id=None):
 
 
 def leer_movimientos(user_id=None):
-    """Lee movimientos del usuario desde Supabase. Requiere user_id."""
+    """Lee movimientos del usuario desde Supabase. Incluye columnas de facturas."""
     if not _validar_user_id(user_id, "leer_movimientos"):
         return pd.DataFrame(columns=COLS_MOV)
     try:
@@ -235,11 +236,20 @@ def leer_movimientos(user_id=None):
             if data:
                 df = pd.DataFrame(data)
                 df = df.rename(columns={k: v for k, v in RENAME_MOV_TO_APP.items() if k in df.columns})
-                for col in COLS_MOV:
+                # Columnas base
+                for col in ["Fecha","Apartamento","Concepto","Categoría","Tipo","Importe","Deducible"]:
                     if col not in df.columns:
                         df[col] = ""
+                # Columnas de facturas — defaults seguros
+                if "factura_url"   not in df.columns: df["factura_url"]   = None
+                if "tiene_factura" not in df.columns: df["tiene_factura"] = False
+                if "estado_fiscal" not in df.columns: df["estado_fiscal"] = "pendiente"
+                # id de Supabase — necesario para PATCH individual de movimiento
+                if "id" not in df.columns: df["id"] = None
                 if "Importe" in df.columns:
                     df["Importe"] = pd.to_numeric(df["Importe"], errors='coerce').fillna(0)
+                df["tiene_factura"] = df["tiene_factura"].fillna(False).astype(bool)
+                df["estado_fiscal"] = df["estado_fiscal"].fillna("pendiente").astype(str)
                 return df
             return pd.DataFrame(columns=COLS_MOV)
         st.warning(f"⚠️ Error leyendo movimientos: HTTP {r.status_code}")
@@ -354,17 +364,25 @@ def eliminar_inmueble(nombre, user_id):
 # ─── HELPERS INTERNOS ────────────────────────────────────────────
 
 def _df_mov_to_records(df, user_id):
-    """Convierte DataFrame de movimientos a lista de dicts para Supabase."""
+    """Convierte DataFrame de movimientos a lista de dicts para Supabase.
+    Preserva columnas de facturas si existen.
+    """
     df2 = df.copy()
     df2 = df2.rename(columns={k: v for k, v in RENAME_MOV_TO_DB.items() if k in df2.columns})
-    # Solo columnas válidas de la tabla
-    cols_db = ['fecha', 'apartamento', 'concepto', 'categoria', 'tipo', 'importe', 'deducible']
+    # Columnas válidas de la tabla — incluyendo las nuevas de facturas
+    cols_db = [
+        'fecha', 'apartamento', 'concepto', 'categoria', 'tipo', 'importe', 'deducible',
+        'factura_url', 'tiene_factura', 'estado_fiscal'
+    ]
     cols_presentes = [c for c in cols_db if c in df2.columns]
     df2 = df2[cols_presentes]
     df2 = df2.where(pd.notna(df2), None)
     # Convertir fechas a string
     if 'fecha' in df2.columns:
         df2['fecha'] = pd.to_datetime(df2['fecha'], errors='coerce').dt.strftime('%Y-%m-%d')
+    # Booleano tiene_factura: None → False
+    if 'tiene_factura' in df2.columns:
+        df2['tiene_factura'] = df2['tiene_factura'].fillna(False).astype(bool)
     records = df2.to_dict(orient='records')
     for r in records:
         r['user_id'] = user_id
@@ -1008,3 +1026,185 @@ def leer_logo_usuario(user_id: str) -> bytes | None:
         return None
     except Exception:
         return None
+
+
+# ================================================================
+# FACTURAS — Supabase Storage + PATCH individual de movimiento
+# Bucket: facturas (privado)
+# Ruta:   facturas/{user_id}/{mov_id}.pdf
+# ================================================================
+
+def subir_factura(user_id: str, mov_id, archivo_bytes: bytes,
+                  extension: str = "pdf") -> dict:
+    """
+    Sube una factura a Supabase Storage y actualiza el movimiento.
+    - mov_id: id del movimiento en Supabase (int)
+    - archivo_bytes: contenido binario del PDF/imagen
+    - extension: 'pdf', 'jpg', 'png', 'jpeg'
+    Devuelve: {'ok': True, 'url': '...'} o {'ok': False, 'error': '...'}
+    """
+    if not _validar_user_id(user_id, "subir_factura"):
+        return {"ok": False, "error": "user_id inválido"}
+    try:
+        ruta = f"{user_id}/{mov_id}.{extension}"
+        content_type = "application/pdf" if extension == "pdf" else f"image/{extension}"
+
+        # 1. Subir a Storage (upsert: sobreescribe si ya existe)
+        h_storage = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": content_type,
+            "x-upsert": "true",
+        }
+        r_upload = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
+            headers=h_storage,
+            data=archivo_bytes,
+            timeout=30
+        )
+        if r_upload.status_code not in (200, 201):
+            return {"ok": False, "error": f"Storage {r_upload.status_code}: {r_upload.text[:200]}"}
+
+        # 2. Construir URL pública firmada (1 hora = 3600 s)
+        r_sign = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/sign/facturas/{ruta}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                "Content-Type": "application/json",
+            },
+            json={"expiresIn": 3600},
+            timeout=10
+        )
+        if r_sign.status_code == 200:
+            signed_url = r_sign.json().get("signedURL", "")
+            factura_url = f"{SUPABASE_URL}/storage/v1{signed_url}" if signed_url.startswith("/") else signed_url
+        else:
+            # Fallback: URL pública directa (solo funciona si el bucket es público)
+            factura_url = f"{SUPABASE_URL}/storage/v1/object/public/facturas/{ruta}"
+
+        # 3. PATCH el movimiento — actualizar factura_url, tiene_factura, estado_fiscal
+        h_patch = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        }
+        r_patch = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
+            headers=h_patch,
+            json={
+                "factura_url": ruta,          # guardamos la ruta, no la URL firmada (caduca)
+                "tiene_factura": True,
+                "estado_fiscal": "con_factura",
+            },
+            timeout=10
+        )
+        if r_patch.status_code not in (200, 204):
+            return {"ok": False, "error": f"PATCH movimiento {r_patch.status_code}: {r_patch.text[:200]}"}
+
+        return {"ok": True, "url": factura_url, "ruta": ruta}
+
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def obtener_url_factura(user_id: str, ruta: str, expira_segundos: int = 3600) -> str | None:
+    """
+    Genera una URL firmada temporal para ver/descargar una factura.
+    - ruta: valor guardado en movimientos.factura_url (ej: "uuid/123.pdf")
+    - expira_segundos: validez de la URL (default 1 hora)
+    Devuelve la URL o None si falla.
+    """
+    if not ruta:
+        return None
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/sign/facturas/{ruta}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                "Content-Type": "application/json",
+            },
+            json={"expiresIn": expira_segundos},
+            timeout=10
+        )
+        if r.status_code == 200:
+            signed = r.json().get("signedURL", "")
+            if signed.startswith("/"):
+                return f"{SUPABASE_URL}/storage/v1{signed}"
+            return signed
+        return None
+    except Exception:
+        return None
+
+
+def eliminar_factura(user_id: str, mov_id, ruta: str) -> bool:
+    """
+    Elimina una factura de Storage y limpia los campos en el movimiento.
+    - mov_id: id del movimiento en Supabase
+    - ruta: valor guardado en movimientos.factura_url
+    Devuelve True si todo fue bien.
+    """
+    if not _validar_user_id(user_id, "eliminar_factura"):
+        return False
+    try:
+        h_base = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": "application/json",
+        }
+
+        # 1. Borrar de Storage
+        r_del = requests.delete(
+            f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
+            headers=h_base,
+            timeout=10
+        )
+        # 200 o 404 (ya no existía) = ok
+        if r_del.status_code not in (200, 204, 404):
+            return False
+
+        # 2. Limpiar campos en movimiento
+        r_patch = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
+            headers={**h_base, "Prefer": "return=minimal"},
+            json={
+                "factura_url": None,
+                "tiene_factura": False,
+                "estado_fiscal": "pendiente",
+            },
+            timeout=10
+        )
+        return r_patch.status_code in (200, 204)
+
+    except Exception:
+        return False
+
+
+def actualizar_estado_fiscal_movimiento(user_id: str, mov_id, estado: str) -> bool:
+    """
+    Actualiza solo el estado_fiscal de un movimiento.
+    estados válidos: 'pendiente' | 'con_factura' | 'validado'
+    Útil para que el asesor marque como validado desde su panel.
+    """
+    if not _validar_user_id(user_id, "actualizar_estado_fiscal"):
+        return False
+    estados_validos = {"pendiente", "con_factura", "validado"}
+    if estado not in estados_validos:
+        return False
+    try:
+        r = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json={"estado_fiscal": estado},
+            timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
