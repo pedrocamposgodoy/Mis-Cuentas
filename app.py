@@ -1339,8 +1339,9 @@ elif menu == "Diario Contable":
         # ── ESTILOS TARJETAS ───────────────────────────────────────────
         st.markdown("""
 <style>
-.dc-card{background:#fff;border:1px solid #D0DFF0;border-radius:12px;
-         padding:14px 18px;margin-bottom:8px;transition:border-color .15s;}
+.dc-card{background:#fff;border:1px solid #D0DFF0;border-radius:12px 12px 0 0;
+         padding:14px 18px;margin-bottom:0;transition:border-color .15s;
+         border-bottom:none;}
 .dc-card:hover{border-color:#185FA5;}
 .dc-tag-ing{background:#EAF3DE;color:#27500A;font-size:11px;padding:2px 8px;
             border-radius:20px;font-weight:600;}
@@ -1352,6 +1353,28 @@ elif menu == "Diario Contable":
 .dc-importe-ing{font-size:1.15rem;font-weight:700;color:#1a7a40;}
 .dc-importe-gas{font-size:1.15rem;font-weight:700;color:#C0392B;}
 .dc-label{font-size:0.68rem;color:#5A7A9A;text-transform:uppercase;letter-spacing:.06em;}
+
+/* Expander pegado a la tarjeta — aspecto acordeón */
+.dc-card + div [data-testid="stExpander"] {
+    border:1px solid #D0DFF0 !important;
+    border-top:none !important;
+    border-radius:0 0 12px 12px !important;
+    margin-bottom:12px !important;
+    margin-top:0 !important;
+}
+.dc-card + div [data-testid="stExpander"] > div:first-child {
+    border-radius:0 0 12px 12px !important;
+    padding:6px 18px !important;
+    background:#F8FAFC !important;
+    border-top:1px dashed #D0DFF0 !important;
+}
+/* Ocultar el label vacío del expander */
+.dc-card + div [data-testid="stExpander"] summary p {display:none !important;}
+/* Flecha centrada */
+.dc-card + div [data-testid="stExpander"] summary {
+    justify-content:center !important;
+    min-height:28px !important;
+}
 </style>""", unsafe_allow_html=True)
 
         # ── FILTROS ────────────────────────────────────────────────────
@@ -1509,7 +1532,7 @@ elif menu == "Diario Contable":
                     # Panel expandible
                     # Key dinámica — cambia tras acción, fuerza expander cerrado
                     _render_v = st.session_state.get("dc_render_v", 0)
-                    with st.expander("Ver detalle / Factura / Editar",
+                    with st.expander("",
                                      expanded=False,
                                      key=f"exp_{idx}_{_render_v}"):
                         col_det, col_fac = st.columns([1, 1])
