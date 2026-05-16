@@ -1324,69 +1324,409 @@ elif menu == "Diario Contable":
     tab1,tab2,tab3,tab4=st.tabs(["📋 Registro de Operaciones","📥 Registrar Ingresos","📤 Registrar Gastos","💳 Gastos Fijos"])
 
     with tab1:
-        col_f1,col_f2,col_f3=st.columns([2,2,1])
-        with col_f1:
-            años_disponibles=sorted(pd.to_datetime(df_mov["Fecha"],errors="coerce").dt.year.dropna().unique(),reverse=True)
-            año_filtro=st.selectbox("📅 Año",["Todos"]+[int(a) for a in años_disponibles],key="filtro_año")
-        with col_f2:
-            meses_nombres=["Todos","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
-            mes_filtro=st.selectbox("📅 Mes",meses_nombres,key="filtro_mes")
-        with col_f3:
-            st.markdown("<div style='height:28px'></div>",unsafe_allow_html=True)
-            if st.button("🔄 Limpiar",use_container_width=True,key="limpiar_filtros"):
-                for k in ["filtro_año","filtro_mes"]:
-                    if k in st.session_state: del st.session_state[k]
-                st.rerun()
+        # ── LISTAS GLOBALES ────────────────────────────────────────────
+        l_inm  = df_inm["Nombre"].tolist() + ["Global"]
+        l_cat  = ["Ingresos","Financiero","Tributario","Suministros","Seguros",
+                  "Mantenimiento","Estructura","Comunidad","Otros"]
+        meses_nombres = ["Todos","Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                         "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
-        df_filtrado=df_mov.copy()
-        df_filtrado["Fecha"]=pd.to_datetime(df_filtrado["Fecha"],errors="coerce")
-        if año_filtro!="Todos": df_filtrado=df_filtrado[df_filtrado["Fecha"].dt.year==año_filtro]
-        if mes_filtro!="Todos":
-            mes_num=meses_nombres.index(mes_filtro)
-            df_filtrado=df_filtrado[df_filtrado["Fecha"].dt.month==mes_num]
+        # ── TOGGLE MODO (cabecera) ─────────────────────────────────────
+        col_titulo, col_modo = st.columns([5, 1])
+        with col_titulo:
+            st.markdown(
+                "<div style='font-size:0.72rem;font-weight:600;letter-spacing:0.08em;"
+                "text-transform:uppercase;color:#9CA3AF;margin-bottom:4px;'>"
+                "Vista de operaciones</div>",
+                unsafe_allow_html=True
+            )
+        with col_modo:
+            modo_diario = st.radio(
+                "Modo",
+                ["📱 Simple", "⚙️ Avanzado"],
+                horizontal=True,
+                key="modo_diario",
+                label_visibility="collapsed"
+            )
 
-        st.caption(f"📊 Mostrando {len(df_filtrado)} de {len(df_mov)} operaciones")
-        l_inm=df_inm["Nombre"].tolist()+["Global"]
-        l_cat=["Ingresos","Financiero","Tributario","Suministros","Seguros","Mantenimiento","Estructura","Comunidad","Otros"]
-        df_filtrado=df_filtrado.sort_values("Fecha",ascending=False).reset_index(drop=True)
-        cols_visibles=[c for c in ["Fecha","Apartamento","Concepto","Categoría","Tipo","Importe","Deducible"] if c in df_filtrado.columns]
-        df_mostrar=df_filtrado[cols_visibles].copy()
+        # ==============================================================
+        # FUNCIÓN INTERNA: guardar con feedback visual verde/rojo
+        # ==============================================================
+        def _guardar_diario(df_editado, filtro_año_val, filtro_mes_val,
+                            mes_nombres_local, uid):
+            """
+            Valida y guarda movimientos en Supabase.
+            Devuelve (ok: bool, mensaje: str).
+            """
+            # Validaciones básicas
+            if df_editado is None or len(df_editado) == 0:
+                return False, "No hay operaciones que guardar."
 
-        config={
-            "Fecha":st.column_config.DateColumn("Fecha",format="DD/MM/YYYY"),
-            "Apartamento":st.column_config.SelectboxColumn("Inmueble",options=l_inm,required=True),
-            "Concepto":st.column_config.TextColumn("Concepto"),
-            "Categoría":st.column_config.SelectboxColumn("Categoría",options=l_cat,required=True),
-            "Tipo":st.column_config.SelectboxColumn("Tipo",options=["Ingreso","Gasto"],required=True),
-            "Deducible":st.column_config.SelectboxColumn("Fiscal",options=["S","N"],required=True),
-            "Importe":st.column_config.NumberColumn("Importe (€)",format="%.2f",min_value=0),
-        }
-        df_ed=st.data_editor(df_mostrar,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=config,key="tabla_diario")
-        t_ing=df_ed[df_ed["Tipo"]=="Ingreso"]["Importe"].sum()
-        t_gas=df_ed[df_ed["Tipo"]=="Gasto"]["Importe"].sum()
-        m1,m2,m3=st.columns(3)
-        m1.metric("Ingresos Registrados",f"{t_ing:,.2f} €")
-        m2.metric("Gastos Registrados",f"−{t_gas:,.2f} €")
-        m3.metric("Balance Total",f"{t_ing-t_gas:,.2f} €")
+            # Limpiar filas completamente vacías (sin Importe ni Concepto)
+            df_val = df_editado.copy()
+            df_val = df_val[
+                ~(df_val["Importe"].isna() &
+                  df_val["Concepto"].isna() &
+                  df_val["Apartamento"].isna())
+            ]
 
-        if st.button("💾 Guardar Cambios",key="guardar_tabla"):
-            if año_filtro!="Todos" or mes_filtro!="Todos":
-                df_completo=st.session_state.df_mov_persistent.copy()
-                df_completo["Fecha"]=pd.to_datetime(df_completo["Fecha"],errors="coerce")
-                mascara=pd.Series([True]*len(df_completo))
-                if año_filtro!="Todos": mascara=mascara&(df_completo["Fecha"].dt.year!=año_filtro)
-                if mes_filtro!="Todos":
-                    mes_num=meses_nombres.index(mes_filtro)
-                    mascara=mascara&(df_completo["Fecha"].dt.month!=mes_num)
-                df_final=pd.concat([df_completo[mascara],df_ed],ignore_index=True)
-                df_final=df_final.sort_values("Fecha",ascending=False).reset_index(drop=True)
+            # Detectar filas con campos críticos vacíos
+            campos_criticos = ["Fecha", "Apartamento", "Tipo", "Importe"]
+            filas_malas = []
+            for col in campos_criticos:
+                if col in df_val.columns:
+                    mask = df_val[col].isna() | (df_val[col].astype(str).str.strip() == "")
+                    filas_malas += df_val[mask].index.tolist()
+            if filas_malas:
+                n = len(set(filas_malas))
+                return False, f"⚠️ {n} fila(s) incompletas: rellena Fecha, Inmueble, Tipo e Importe."
+
+            # Importe > 0
+            df_val["Importe"] = pd.to_numeric(df_val["Importe"], errors="coerce").fillna(0)
+            cero = df_val[df_val["Importe"] <= 0]
+            if len(cero) > 0:
+                return False, f"⚠️ {len(cero)} fila(s) con importe 0 o negativo. Corrígelas antes de guardar."
+
+            # Reconstruir df completo si hay filtros activos
+            if filtro_año_val != "Todos" or filtro_mes_val != "Todos":
+                df_completo = st.session_state.df_mov_persistent.copy()
+                df_completo["Fecha"] = pd.to_datetime(df_completo["Fecha"], errors="coerce")
+                mascara = pd.Series([True] * len(df_completo))
+                if filtro_año_val != "Todos":
+                    mascara = mascara & (df_completo["Fecha"].dt.year != int(filtro_año_val))
+                if filtro_mes_val != "Todos":
+                    m_num = mes_nombres_local.index(filtro_mes_val)
+                    mascara = mascara & (df_completo["Fecha"].dt.month != m_num)
+                df_final = pd.concat([df_completo[mascara], df_val], ignore_index=True)
+                df_final = df_final.sort_values("Fecha", ascending=False).reset_index(drop=True)
             else:
-                df_final=df_ed
-            st.session_state.df_mov_persistent=df_final
-            guardar_movimientos_completo(df_final,user_id=st.session_state.get("user_id",""))
-            total_movs=len(st.session_state.df_mov_persistent)
-            total_ingresos=st.session_state.df_mov_persistent[st.session_state.df_mov_persistent["Tipo"]=="Ingreso"]["Importe"].sum()
-            st.success(f"✓ Guardado: {total_movs} operaciones | Ingresos totales: {total_ingresos:,.0f}€"); st.rerun()
+                df_final = df_val
+
+            # Guardar en Supabase
+            st.session_state.df_mov_persistent = df_final
+            ok = guardar_movimientos_completo(df_final, user_id=uid)
+            if ok is False:
+                # guardar_movimientos_completo devuelve False en error
+                return False, "❌ Error al guardar en Supabase. Inténtalo de nuevo."
+
+            total_movs    = len(df_final)
+            total_ingresos = df_final[df_final["Tipo"] == "Ingreso"]["Importe"].sum()
+            total_gastos   = df_final[df_final["Tipo"] == "Gasto"]["Importe"].sum()
+            return True, (f"✓ Guardado: {total_movs} operaciones · "
+                          f"Ingresos {total_ingresos:,.0f} € · "
+                          f"Gastos {total_gastos:,.0f} €")
+
+        # ==============================================================
+        # MODO SIMPLE
+        # ==============================================================
+        if modo_diario == "📱 Simple":
+
+            # ── FILTROS SIMPLES ────────────────────────────────────────
+            st.markdown(
+                "<div style='font-size:0.7rem;font-weight:600;letter-spacing:0.1em;"
+                "text-transform:uppercase;color:#9CA3AF;margin:12px 0 8px;'>"
+                "Filtros</div>",
+                unsafe_allow_html=True
+            )
+            fs1, fs2, fs3, fs4, fs5 = st.columns([1.5, 1.5, 2, 2, 0.8])
+            with fs1:
+                años_disp = sorted(
+                    pd.to_datetime(df_mov["Fecha"], errors="coerce").dt.year.dropna().unique(),
+                    reverse=True
+                )
+                f_año = st.selectbox("Año", ["Todos"] + [int(a) for a in años_disp],
+                                     key="s_año")
+            with fs2:
+                f_mes = st.selectbox("Mes", meses_nombres, key="s_mes")
+            with fs3:
+                f_inm = st.selectbox("Inmueble", ["Todos"] + df_inm["Nombre"].tolist(),
+                                     key="s_inm")
+            with fs4:
+                f_buscar = st.text_input("Buscar concepto", placeholder="Reparación, comunidad...",
+                                         key="s_buscar", label_visibility="visible")
+            with fs5:
+                st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
+                if st.button("🔄", use_container_width=True, key="s_limpiar",
+                             help="Limpiar filtros"):
+                    for k in ["s_año","s_mes","s_inm","s_buscar"]:
+                        if k in st.session_state: del st.session_state[k]
+                    st.rerun()
+
+            # ── APLICAR FILTROS ────────────────────────────────────────
+            df_s = df_mov.copy()
+            df_s["Fecha"] = pd.to_datetime(df_s["Fecha"], errors="coerce")
+            if f_año != "Todos":
+                df_s = df_s[df_s["Fecha"].dt.year == int(f_año)]
+            if f_mes != "Todos":
+                df_s = df_s[df_s["Fecha"].dt.month == meses_nombres.index(f_mes)]
+            if f_inm != "Todos":
+                df_s = df_s[df_s["Apartamento"] == f_inm]
+            if f_buscar.strip():
+                df_s = df_s[df_s["Concepto"].str.contains(f_buscar.strip(), case=False, na=False)]
+            df_s = df_s.sort_values("Fecha", ascending=False).reset_index(drop=True)
+
+            st.caption(f"📊 {len(df_s)} operaciones" +
+                       (f" de {len(df_mov)} totales" if len(df_s) != len(df_mov) else ""))
+
+            # ── TABLA SIMPLE (6 columnas) ──────────────────────────────
+            cols_simple = [c for c in
+                           ["Fecha","Apartamento","Concepto","Tipo","Importe","Deducible"]
+                           if c in df_s.columns]
+            df_simple = df_s[cols_simple].copy()
+
+            config_simple = {
+                "Fecha":      st.column_config.DateColumn("📅 Fecha", format="DD/MM/YYYY"),
+                "Apartamento":st.column_config.SelectboxColumn("🏠 Inmueble",
+                               options=l_inm, required=True),
+                "Concepto":   st.column_config.TextColumn("📝 Concepto", width="large"),
+                "Tipo":       st.column_config.SelectboxColumn("Tipo",
+                               options=["Ingreso","Gasto"], required=True),
+                "Importe":    st.column_config.NumberColumn("💶 Importe (€)",
+                               format="%.2f €", min_value=0),
+                "Deducible":  st.column_config.SelectboxColumn("✅ Fiscal",
+                               options=["S","N"], required=True),
+            }
+
+            df_ed_simple = st.data_editor(
+                df_simple,
+                num_rows="dynamic",
+                use_container_width=True,
+                hide_index=True,
+                column_config=config_simple,
+                key="tabla_simple"
+            )
+
+            # ── RESUMEN DINÁMICO 3 CARDS ───────────────────────────────
+            st.markdown("<div style='margin:1rem 0 0.5rem;'></div>", unsafe_allow_html=True)
+            t_ing_s = df_ed_simple[df_ed_simple["Tipo"] == "Ingreso"]["Importe"].sum()
+            t_gas_s = df_ed_simple[df_ed_simple["Tipo"] == "Gasto"]["Importe"].sum()
+            bal_s   = t_ing_s - t_gas_s
+            bal_color = GREEN if bal_s >= 0 else RED
+
+            r1, r2, r3 = st.columns(3)
+            r1.markdown(
+                f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                f"border-top:3px solid {GREEN};border-radius:10px;padding:1rem;text-align:center;'>"
+                f"<div style='font-size:0.7rem;color:{TEXT_SEC};text-transform:uppercase;"
+                f"letter-spacing:0.06em;margin-bottom:6px;'>Ingresos</div>"
+                f"<div style='font-size:1.6rem;font-weight:600;color:{GREEN};'>"
+                f"+{t_ing_s:,.0f} €</div></div>",
+                unsafe_allow_html=True
+            )
+            r2.markdown(
+                f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                f"border-top:3px solid {RED};border-radius:10px;padding:1rem;text-align:center;'>"
+                f"<div style='font-size:0.7rem;color:{TEXT_SEC};text-transform:uppercase;"
+                f"letter-spacing:0.06em;margin-bottom:6px;'>Gastos</div>"
+                f"<div style='font-size:1.6rem;font-weight:600;color:{RED};'>"
+                f"−{t_gas_s:,.0f} €</div></div>",
+                unsafe_allow_html=True
+            )
+            r3.markdown(
+                f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                f"border-top:3px solid {bal_color};border-radius:10px;padding:1rem;text-align:center;'>"
+                f"<div style='font-size:0.7rem;color:{TEXT_SEC};text-transform:uppercase;"
+                f"letter-spacing:0.06em;margin-bottom:6px;'>Balance</div>"
+                f"<div style='font-size:1.6rem;font-weight:600;color:{bal_color};'>"
+                f"{bal_s:+,.0f} €</div></div>",
+                unsafe_allow_html=True
+            )
+
+            # ── BOTÓN GUARDAR SIMPLE ───────────────────────────────────
+            st.markdown("<div style='margin-top:1.2rem;'></div>", unsafe_allow_html=True)
+            if st.button("💾 Guardar Cambios",
+                         type="primary",
+                         use_container_width=True,
+                         key="guardar_simple"):
+                # Reconstruir con columna Categoría si falta (tabla simple no la muestra)
+                df_para_guardar = df_ed_simple.copy()
+                if "Categoría" not in df_para_guardar.columns:
+                    df_para_guardar["Categoría"] = "Otros"
+                ok, msg = _guardar_diario(
+                    df_para_guardar, f_año, f_mes, meses_nombres,
+                    st.session_state.get("user_id","")
+                )
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    if msg.startswith("⚠️"):
+                        st.warning(msg)
+                    else:
+                        st.error(msg)
+
+        # ==============================================================
+        # MODO AVANZADO
+        # ==============================================================
+        else:
+
+            # ── FILTROS AVANZADOS ──────────────────────────────────────
+            st.markdown(
+                "<div style='font-size:0.7rem;font-weight:600;letter-spacing:0.1em;"
+                "text-transform:uppercase;color:#9CA3AF;margin:12px 0 8px;'>"
+                "Filtros avanzados</div>",
+                unsafe_allow_html=True
+            )
+            fa1, fa2, fa3, fa4 = st.columns([1.5, 1.5, 2, 2])
+            with fa1:
+                años_disp2 = sorted(
+                    pd.to_datetime(df_mov["Fecha"], errors="coerce").dt.year.dropna().unique(),
+                    reverse=True
+                )
+                f_año2 = st.selectbox("Año", ["Todos"] + [int(a) for a in años_disp2],
+                                      key="a_año")
+            with fa2:
+                f_mes2 = st.selectbox("Mes", meses_nombres, key="a_mes")
+            with fa3:
+                f_inm2 = st.selectbox("Inmueble", ["Todos"] + df_inm["Nombre"].tolist(),
+                                      key="a_inm")
+            with fa4:
+                f_cat2 = st.selectbox("Categoría",
+                                      ["Todas"] + l_cat,
+                                      key="a_cat")
+
+            fb1, fb2, fb3, fb4 = st.columns([2, 2, 2, 1])
+            with fb1:
+                f_tipo2 = st.selectbox("Tipo", ["Todos","Ingreso","Gasto"], key="a_tipo")
+            with fb2:
+                f_ded2  = st.selectbox("¿Deducible?", ["Todos","S","N"], key="a_ded")
+            with fb3:
+                f_buscar2 = st.text_input("Buscar concepto",
+                                           placeholder="Reparación, seguro...",
+                                           key="a_buscar",
+                                           label_visibility="visible")
+            with fb4:
+                st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
+                if st.button("🔄 Limpiar", use_container_width=True, key="a_limpiar"):
+                    for k in ["a_año","a_mes","a_inm","a_cat","a_tipo","a_ded","a_buscar"]:
+                        if k in st.session_state: del st.session_state[k]
+                    st.rerun()
+
+            # ── APLICAR FILTROS AVANZADOS ──────────────────────────────
+            df_a = df_mov.copy()
+            df_a["Fecha"] = pd.to_datetime(df_a["Fecha"], errors="coerce")
+            if f_año2  != "Todos": df_a = df_a[df_a["Fecha"].dt.year == int(f_año2)]
+            if f_mes2  != "Todos": df_a = df_a[df_a["Fecha"].dt.month == meses_nombres.index(f_mes2)]
+            if f_inm2  != "Todos": df_a = df_a[df_a["Apartamento"] == f_inm2]
+            if f_cat2  != "Todas": df_a = df_a[df_a["Categoría"] == f_cat2]
+            if f_tipo2 != "Todos": df_a = df_a[df_a["Tipo"] == f_tipo2]
+            if f_ded2  != "Todos": df_a = df_a[df_a["Deducible"] == f_ded2]
+            if f_buscar2.strip():
+                df_a = df_a[df_a["Concepto"].str.contains(f_buscar2.strip(), case=False, na=False)]
+            df_a = df_a.sort_values("Fecha", ascending=False).reset_index(drop=True)
+
+            st.caption(f"📊 {len(df_a)} operaciones" +
+                       (f" de {len(df_mov)} totales" if len(df_a) != len(df_mov) else ""))
+
+            # ── TABLA AVANZADA (9 columnas) ────────────────────────────
+            cols_avanz = [c for c in
+                          ["Fecha","Apartamento","Concepto","Categoría","Tipo","Importe",
+                           "Deducible"]
+                          if c in df_a.columns]
+            df_avanz = df_a[cols_avanz].copy()
+
+            config_avanz = {
+                "Fecha":      st.column_config.DateColumn("📅 Fecha", format="DD/MM/YYYY"),
+                "Apartamento":st.column_config.SelectboxColumn("🏠 Inmueble",
+                               options=l_inm, required=True),
+                "Concepto":   st.column_config.TextColumn("📝 Concepto", width="large"),
+                "Categoría":  st.column_config.SelectboxColumn("🗂 Categoría",
+                               options=l_cat, required=True),
+                "Tipo":       st.column_config.SelectboxColumn("↕ Tipo",
+                               options=["Ingreso","Gasto"], required=True),
+                "Importe":    st.column_config.NumberColumn("💶 Importe (€)",
+                               format="%.2f €", min_value=0),
+                "Deducible":  st.column_config.SelectboxColumn("✅ Fiscal",
+                               options=["S","N"], required=True),
+            }
+
+            df_ed_avanz = st.data_editor(
+                df_avanz,
+                num_rows="dynamic",
+                use_container_width=True,
+                hide_index=True,
+                column_config=config_avanz,
+                key="tabla_avanzada"
+            )
+
+            # ── ESTADÍSTICAS POR CATEGORÍA ─────────────────────────────
+            st.markdown(
+                f"<div style='font-size:0.7rem;font-weight:600;letter-spacing:0.1em;"
+                f"text-transform:uppercase;color:#9CA3AF;margin:1.2rem 0 0.6rem;'>"
+                f"Análisis del período</div>",
+                unsafe_allow_html=True
+            )
+
+            t_ing_a   = df_ed_avanz[df_ed_avanz["Tipo"]=="Ingreso"]["Importe"].sum()
+            t_gas_a   = df_ed_avanz[df_ed_avanz["Tipo"]=="Gasto"]["Importe"].sum()
+            bal_a     = t_ing_a - t_gas_a
+            ded_si    = df_ed_avanz[(df_ed_avanz["Tipo"]=="Gasto") &
+                                    (df_ed_avanz["Deducible"]=="S")]["Importe"].sum()
+            ded_no    = df_ed_avanz[(df_ed_avanz["Tipo"]=="Gasto") &
+                                    (df_ed_avanz["Deducible"]=="N")]["Importe"].sum()
+            pct_ded   = (ded_si / t_gas_a * 100) if t_gas_a > 0 else 0
+            bal_color_a = GREEN if bal_a >= 0 else RED
+
+            k1,k2,k3,k4,k5 = st.columns(5)
+            for col_k, label, valor, color in [
+                (k1, "Ingresos",    f"+{t_ing_a:,.0f} €",   GREEN),
+                (k2, "Gastos",      f"−{t_gas_a:,.0f} €",   RED),
+                (k3, "Balance",     f"{bal_a:+,.0f} €",      bal_color_a),
+                (k4, "Deducibles",  f"{ded_si:,.0f} €",      ACCENT),
+                (k5, "% Deducible", f"{pct_ded:.0f}%",       ACCENT),
+            ]:
+                col_k.markdown(
+                    f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                    f"border-top:3px solid {color};border-radius:10px;padding:0.8rem;"
+                    f"text-align:center;'>"
+                    f"<div style='font-size:0.65rem;color:{TEXT_SEC};text-transform:uppercase;"
+                    f"letter-spacing:0.06em;margin-bottom:4px;'>{label}</div>"
+                    f"<div style='font-size:1.2rem;font-weight:600;color:{color};'>"
+                    f"{valor}</div></div>",
+                    unsafe_allow_html=True
+                )
+
+            # Desglose por categoría (solo gastos)
+            if t_gas_a > 0:
+                st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
+                df_cats = (df_ed_avanz[df_ed_avanz["Tipo"]=="Gasto"]
+                           .groupby("Categoría", as_index=False)["Importe"]
+                           .sum()
+                           .sort_values("Importe", ascending=False))
+                if not df_cats.empty:
+                    cols_cat = st.columns(min(len(df_cats), 4))
+                    for idx_c, (_, crow) in enumerate(df_cats.head(4).iterrows()):
+                        pct_c = crow["Importe"] / t_gas_a * 100 if t_gas_a > 0 else 0
+                        cols_cat[idx_c].markdown(
+                            f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                            f"border-radius:8px;padding:0.7rem;text-align:center;'>"
+                            f"<div style='font-size:0.65rem;color:{TEXT_SEC};margin-bottom:3px;'>"
+                            f"{crow['Categoría']}</div>"
+                            f"<div style='font-size:1rem;font-weight:600;color:{TEXT_PRI};'>"
+                            f"{crow['Importe']:,.0f} €</div>"
+                            f"<div style='font-size:0.7rem;color:{TEXT_SEC};'>{pct_c:.0f}% del gasto</div>"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+
+            # ── BOTÓN GUARDAR AVANZADO ─────────────────────────────────
+            st.markdown("<div style='margin-top:1.2rem;'></div>", unsafe_allow_html=True)
+            if st.button("💾 Guardar Cambios",
+                         type="primary",
+                         use_container_width=True,
+                         key="guardar_avanzado"):
+                ok, msg = _guardar_diario(
+                    df_ed_avanz, f_año2, f_mes2, meses_nombres,
+                    st.session_state.get("user_id","")
+                )
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    if msg.startswith("⚠️"):
+                        st.warning(msg)
+                    else:
+                        st.error(msg)
 
     with tab2:
         st.markdown('<div class="nc-ingresos-box">', unsafe_allow_html=True)
