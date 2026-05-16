@@ -1879,9 +1879,9 @@ elif menu == "Diario Contable":
                 with st.container():
                     st.markdown(f'<div style="background:{color};border-left:4px solid {bcolor};padding:0.6rem 1rem;border-radius:6px;margin-bottom:4px;"><b>{icon} {r["Apartamento"]}</b></div>',unsafe_allow_html=True)
                     c1,c2,c3=st.columns([2,1,1])
-                    with c1: nuevo_importe=st.number_input("Importe (€)",value=float(r["Importe"]),min_value=0.0,step=10.0,key=f"imp_{i}",label_visibility="collapsed")
-                    with c2: nuevo_estado=st.selectbox("Estado",["Cobrado","Pendiente"],index=0 if r["Estado"]=="Cobrado" else 1,key=f"est_{i}",label_visibility="collapsed")
-                    with c3: incluir=st.checkbox("Incluir",value=True,key=f"inc_{i}")
+                    with c1: nuevo_importe=st.number_input("Importe (€)",value=float(r["Importe"]),min_value=0.0,step=10.0,key=f"ing_imp_{i}",label_visibility="collapsed")
+                    with c2: nuevo_estado=st.selectbox("Estado",["Cobrado","Pendiente"],index=0 if r["Estado"]=="Cobrado" else 1,key=f"ing_est_{i}",label_visibility="collapsed")
+                    with c3: incluir=st.checkbox("Incluir",value=True,key=f"ing_inc_{i}")
                     if incluir:
                         fila=r.copy(); fila["Importe"]=nuevo_importe; fila["Estado"]=nuevo_estado; editados.append(fila)
             st.session_state["ingresos_editados"]=editados
