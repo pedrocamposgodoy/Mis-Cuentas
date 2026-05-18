@@ -839,14 +839,67 @@ def importar_excel_asesor(archivo_excel, user_id, upsert_inmueble_fn,
     except Exception as e:
         return {"error": f"No se pudo leer el Excel: {e}"}
 
-    if "CONTABILIDAD" not in wb.sheetnames:
-        return {"error": "El Excel no tiene hoja CONTABILIDAD."}
+    # ── Evaluar fórmulas simples que data_only no resolvió ──────
+    def _eval_formula(val):
+        """
+        Evalúa fórmulas Excel simples que data_only=True no pudo calcular.
+        Soporta: =A*B, =A+B+C*D (solo constantes numéricas, sin referencias a celdas).
+        Devuelve el valor numérico o el valor original si no puede evaluarlo.
+        """
+        if val is None or not isinstance(val, str):
+            return val
+        if not val.startswith("="):
+            return val
+        expr = val[1:].strip()
+        # Solo evaluar si la expresión contiene solo dígitos, operadores y puntos
+        import re as _re
+        # Rechazar si hay letras (referencias a celdas como B2, SUM, etc.)
+        if _re.search(r'[A-Za-z]', expr):
+            return None  # no podemos evaluar referencias a celdas
+        try:
+            # Evaluar solo operaciones aritméticas seguras
+            result = eval(expr, {"__builtins__": {}}, {})
+            return float(result)
+        except Exception:
+            return None
 
-    ws = wb["CONTABILIDAD"]
-    filas_raw = list(ws.iter_rows(min_row=1, values_only=True))
+    # ── Buscar hoja principal (CONTABILIDAD o primera hoja compatible) ──
+    hoja_principal = None
+    if "CONTABILIDAD" in wb.sheetnames:
+        hoja_principal = "CONTABILIDAD"
+    else:
+        # Buscar la primera hoja que tenga estructura compatible:
+        # fila 1 col A = None, resto de cols = nombres de inmuebles
+        for sname in wb.sheetnames:
+            ws_test = wb[sname]
+            filas_test = list(ws_test.iter_rows(min_row=1, max_row=3, values_only=True))
+            if not filas_test:
+                continue
+            fila1 = filas_test[0]
+            # Criterio: col A vacía o con texto de concepto, y al menos 2 cols con texto
+            nombres_test = [v for i, v in enumerate(fila1)
+                           if i > 0 and v and str(v).strip()
+                           and str(v).strip() not in ("TOTALES","MENSUAL","")]
+            if len(nombres_test) >= 2:
+                hoja_principal = sname
+                break
+
+    if not hoja_principal:
+        return {"error": "No se encontró hoja principal de datos. "
+                         "El Excel debe tener una hoja CONTABILIDAD o "
+                         "una hoja con nombres de inmuebles en la fila 1."}
+
+    ws = wb[hoja_principal]
+    filas_raw_orig = list(ws.iter_rows(min_row=1, values_only=True))
+
+    # Evaluar fórmulas no resueltas en todas las filas
+    filas_raw = []
+    for fila in filas_raw_orig:
+        fila_eval = tuple(_eval_formula(v) for v in fila)
+        filas_raw.append(fila_eval)
 
     if not filas_raw:
-        return {"error": "La hoja CONTABILIDAD está vacía."}
+        return {"error": f"La hoja '{hoja_principal}' está vacía."}
 
     # ── Fila 1 = nombres de inmuebles (col A = None, cols B... = nombres) ──
     cabecera = filas_raw[0]
@@ -863,29 +916,47 @@ def importar_excel_asesor(archivo_excel, user_id, upsert_inmueble_fn,
         return {"error": "No se encontraron inmuebles en la fila 1 de CONTABILIDAD."}
 
     # ── Mapeo concepto → campo Supabase ─────────────────────────
-    MAPA = {
-        "Referencia catastral":       "Ref_Catastral",
-        "Superficie":                 "M2_Construidos",
-        "Valor catastral":            "Valor_Catastral",
-        "Titular":                    "Titular",
-        "Nombre inquilino":           "Inquilino",
-        "DNI inquilino":              "NIF_Inquilino",
-        "Fecha contrato":             "Fecha_Inicio_Contrato",
-        "Fecha adquisicion vivienda": "Fecha_Adquisicion",
-        "INGRESOS":                   "_ingresos_anuales",
-        "Mensuales":                  "Renta",
-        "IBI":                        "IBI_Anual",
-        "Comunidad":                  "_comunidad_anual",
-        "Seguro vida":                "Seguro_Vida",
-        "Seguro hogar":               "Seguro_Anual",
-        "Amortizacion prestamo":      "Intereses_Hipoteca",
-        "Ascensor":                   "Gasto_Ascensor",
-        "Alarma":                     "_alarma",
-        "Gastos Mantenimiento":       "_reparaciones",
-        "IBI Cocheras":               "IBI_Cocheras",
-        "Comunidad Cocheras":         "Comunidad_Cocheras",
-        "Inmueble accesorio (garaje)":"Ref_Catastral_Cochera",
+    # Mapa flexible: clave en minúsculas para matching case-insensitive
+    MAPA_RAW = {
+        "referencia catastral":        "Ref_Catastral",
+        "superficie":                  "M2_Construidos",
+        "valor catastral":             "Valor_Catastral",
+        "titular":                     "Titular",
+        "nombre inquilino":            "Inquilino",
+        "dni inquilino":               "NIF_Inquilino",
+        "nif inquilino":               "NIF_Inquilino",
+        "fecha contrato":              "Fecha_Inicio_Contrato",
+        "fecha inicio contrato":       "Fecha_Inicio_Contrato",
+        "fecha adquisicion vivienda":  "Fecha_Adquisicion",
+        "fecha adquisicion":           "Fecha_Adquisicion",
+        "ingresos":                    "_ingresos_anuales",
+        "ingreso":                     "_ingresos_anuales",
+        "mensuales":                   "Renta",
+        "renta":                       "Renta",
+        "renta mensual":               "Renta",
+        "ibi":                         "IBI_Anual",
+        "comunidad":                   "_comunidad_anual",
+        "seguro vida":                 "Seguro_Vida",
+        "seguro hogar":                "Seguro_Anual",
+        "seguro":                      "Seguro_Anual",
+        "amortizacion prestamo":       "Intereses_Hipoteca",
+        "intereses prestamo":          "Intereses_Hipoteca",
+        "intereses hipoteca":          "Intereses_Hipoteca",
+        "amortizacion":                "_amortizacion_fiscal",
+        "ascensor":                    "Gasto_Ascensor",
+        "alarma":                      "_alarma",
+        "gastos mantenimiento":        "_reparaciones",
+        "ibi cocheras":                "IBI_Cocheras",
+        "comunidad cocheras":          "Comunidad_Cocheras",
+        "inmueble accesorio (garaje)": "Ref_Catastral_Cochera",
+        "inmueble accesorio":          "Ref_Catastral_Cochera",
     }
+    # Función de lookup case-insensitive + strip
+    def _lookup_concepto(concepto):
+        k = concepto.strip().lower()
+        return MAPA_RAW.get(k)
+
+    MAPA = MAPA_RAW  # backward compat
 
     # ── Extraer datos por inmueble ───────────────────────────────
     datos = {nombre: {} for nombre in nombres_inmuebles}
@@ -894,9 +965,10 @@ def importar_excel_asesor(archivo_excel, user_id, upsert_inmueble_fn,
         if not fila or not fila[0]:
             continue
         concepto = str(fila[0]).strip()
-        if concepto not in MAPA:
+        # Lookup case-insensitive
+        campo = _lookup_concepto(concepto)
+        if not campo:
             continue
-        campo = MAPA[concepto]
         for idx, col_j in enumerate(col_indices):
             if col_j < len(fila):
                 val = fila[col_j]
@@ -1087,19 +1159,7 @@ def importar_excel_asesor(archivo_excel, user_id, upsert_inmueble_fn,
         "movimientos":  len(movimientos_nuevos),
         "total":        len(creados) + len(actualizados),
     }
-    if not OPENPYXL_OK:
-        return {"error": "Instala openpyxl: pip install openpyxl"}
 
-    try:
-        wb = openpyxl.load_workbook(archivo_excel, data_only=True)
-    except Exception as e:
-        return {"error": f"No se pudo leer el Excel: {e}"}
-
-    if "CONTABILIDAD" not in wb.sheetnames:
-        return {"error": "El Excel no tiene hoja CONTABILIDAD. "
-                         "Asegúrate de usar el Excel generado por Nolasco Capital."}
-
-    ws = wb["CONTABILIDAD"]
 
     # ── Leer filas y columnas ────────────────────────────────────
     # Fila 3 = cabecera: col A = "CONCEPTO", cols B... = nombres inmuebles
