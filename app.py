@@ -2094,8 +2094,7 @@ elif menu == "Gastos":
 # ================================================================
 elif menu == "Cash Flow":
     df_gastos_rec_cf = leer_gastos_recurrentes(user_id=st.session_state.user_id)
-    _df_facs_cf = leer_facturas_emitidas(st.session_state.user_id)
-    render_cashflow(df_mov, df_inm, df_gastos_rec_cf, safe_float, df_facturas=_df_facs_cf)
+    render_cashflow(df_mov, df_inm, df_gastos_rec_cf, safe_float)
 # ================================================================
 # PANTALLA: SUMINISTROS
 # Auditoría de potencia eléctrica, comparador de tarifas
