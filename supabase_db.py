@@ -1212,3 +1212,352 @@ def actualizar_estado_fiscal_movimiento(user_id: str, mov_id, estado: str) -> bo
         return r.status_code in (200, 204)
     except Exception:
         return False
+
+
+# ================================================================
+# FACTURAS — Supabase Storage
+# ================================================================
+
+def subir_factura(user_id: str, mov_id, archivo_bytes: bytes,
+                  extension: str = "pdf") -> dict:
+    if not _validar_user_id(user_id, "subir_factura"):
+        return {"ok": False, "error": "user_id inválido"}
+    try:
+        ruta = f"{user_id}/{mov_id}.{extension}"
+        content_type = "application/pdf" if extension == "pdf" else f"image/{extension}"
+        h_storage = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": content_type,
+            "x-upsert": "true",
+        }
+        r_upload = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
+            headers=h_storage, data=archivo_bytes, timeout=30
+        )
+        if r_upload.status_code not in (200, 201):
+            return {"ok": False, "error": f"Storage {r_upload.status_code}: {r_upload.text[:200]}"}
+        r_sign = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/sign/facturas/{ruta}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                "Content-Type": "application/json",
+            },
+            json={"expiresIn": 3600}, timeout=10
+        )
+        if r_sign.status_code == 200:
+            signed_url = r_sign.json().get("signedURL", "")
+            factura_url = f"{SUPABASE_URL}/storage/v1{signed_url}" if signed_url.startswith("/") else signed_url
+        else:
+            factura_url = f"{SUPABASE_URL}/storage/v1/object/public/facturas/{ruta}"
+        h_patch = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        }
+        r_patch = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
+            headers=h_patch,
+            json={"factura_url": ruta, "tiene_factura": True, "estado_fiscal": "con_factura"},
+            timeout=10
+        )
+        if r_patch.status_code not in (200, 204):
+            return {"ok": False, "error": f"PATCH movimiento {r_patch.status_code}: {r_patch.text[:200]}"}
+        return {"ok": True, "url": factura_url, "ruta": ruta}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def obtener_url_factura(user_id: str, ruta: str, expira_segundos: int = 3600) -> str | None:
+    if not ruta:
+        return None
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/sign/facturas/{ruta}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                "Content-Type": "application/json",
+            },
+            json={"expiresIn": expira_segundos}, timeout=10
+        )
+        if r.status_code == 200:
+            signed = r.json().get("signedURL", "")
+            if signed.startswith("/"):
+                return f"{SUPABASE_URL}/storage/v1{signed}"
+            return signed
+        return None
+    except Exception:
+        return None
+
+
+def eliminar_factura(user_id: str, mov_id, ruta: str) -> bool:
+    if not _validar_user_id(user_id, "eliminar_factura"):
+        return False
+    try:
+        h_base = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": "application/json",
+        }
+        r_del = requests.delete(
+            f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
+            headers=h_base, timeout=10
+        )
+        if r_del.status_code not in (200, 204, 404):
+            r_del = requests.post(
+                f"{SUPABASE_URL}/storage/v1/object/facturas",
+                headers={**h_base, "Content-Type": "application/json"},
+                json={"prefixes": [ruta]}, timeout=10
+            )
+        r_patch = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
+            headers={**h_base, "Prefer": "return=minimal"},
+            json={"factura_url": None, "tiene_factura": False, "estado_fiscal": "pendiente"},
+            timeout=10
+        )
+        return r_patch.status_code in (200, 204)
+    except Exception:
+        return False
+
+
+def actualizar_estado_fiscal_movimiento(user_id: str, mov_id, estado: str) -> bool:
+    if not _validar_user_id(user_id, "actualizar_estado_fiscal"):
+        return False
+    if estado not in {"pendiente", "con_factura", "validado"}:
+        return False
+    try:
+        r = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json={"estado_fiscal": estado}, timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
+
+
+# ================================================================
+# PERFIL DE USUARIO
+# ================================================================
+
+def leer_perfil_usuario(user_id: str) -> dict:
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/user_profiles?user_id=eq.{user_id}&select=*",
+            headers=_headers(), timeout=10
+        )
+        if r.status_code == 200 and r.json():
+            return r.json()[0]
+        return {}
+    except Exception:
+        return {}
+
+
+def guardar_perfil_usuario(user_id: str, datos: dict) -> bool:
+    if not _validar_user_id(user_id, "guardar_perfil_usuario"):
+        return False
+    try:
+        payload = {k: v for k, v in datos.items()
+                   if k in ("nombre_fiscal","nif","direccion","ciudad",
+                            "cp","telefono","iban","siguiente_numero","prefijo_factura")}
+        payload["user_id"] = user_id
+        h = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates,return=minimal"
+        }
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/user_profiles?on_conflict=user_id",
+            headers=h, json=payload, timeout=10
+        )
+        return r.status_code in (200, 201, 204)
+    except Exception:
+        return False
+
+
+def cambiar_contrasena(access_token: str, nueva_contrasena: str) -> dict:
+    try:
+        r = requests.put(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json"
+            },
+            json={"password": nueva_contrasena}, timeout=10
+        )
+        if r.status_code == 200:
+            return {"ok": True}
+        return {"ok": False, "error": r.json().get("msg", "Error desconocido")}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def cambiar_email(access_token: str, nuevo_email: str) -> dict:
+    try:
+        r = requests.put(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json"
+            },
+            json={"email": nuevo_email}, timeout=10
+        )
+        if r.status_code == 200:
+            return {"ok": True}
+        return {"ok": False, "error": r.json().get("msg", "Error desconocido")}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ================================================================
+# PLANTILLAS DE FACTURA
+# ================================================================
+
+def leer_plantillas_factura(user_id: str) -> pd.DataFrame:
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/plantillas_factura"
+            f"?user_id=eq.{user_id}&activa=eq.true&select=*&order=inmueble.asc",
+            headers=_headers(), timeout=10
+        )
+        if r.status_code == 200 and r.json():
+            return pd.DataFrame(r.json())
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+def guardar_plantilla_factura(user_id: str, datos: dict) -> dict:
+    if not _validar_user_id(user_id, "guardar_plantilla_factura"):
+        return {"ok": False, "error": "user_id inválido"}
+    try:
+        payload = {**datos, "user_id": user_id, "activa": True}
+        h = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates,return=representation"
+        }
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/plantillas_factura?on_conflict=user_id,inmueble",
+            headers=h, json=payload, timeout=10
+        )
+        if r.status_code in (200, 201):
+            return {"ok": True, "data": r.json()}
+        return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ================================================================
+# FACTURAS EMITIDAS
+# ================================================================
+
+def leer_facturas_emitidas(user_id: str) -> pd.DataFrame:
+    try:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
+            f"?user_id=eq.{user_id}&select=*&order=fecha.desc",
+            headers=_headers(), timeout=10
+        )
+        if r.status_code == 200 and r.json():
+            df = pd.DataFrame(r.json())
+            for col in ["base_imponible","importe_iva","importe_retencion","total",
+                        "pct_iva","pct_retencion"]:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+            return df
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+def crear_factura_emitida(user_id: str, datos: dict) -> dict:
+    if not _validar_user_id(user_id, "crear_factura_emitida"):
+        return {"ok": False, "error": "user_id inválido"}
+    try:
+        payload = {**datos, "user_id": user_id}
+        h = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+        }
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/facturas_emitidas",
+            headers=h, json=payload, timeout=10
+        )
+        if r.status_code in (200, 201):
+            fac_id = r.json()[0]["id"]
+            perfil = leer_perfil_usuario(user_id)
+            nuevo_num = int(perfil.get("siguiente_numero", 1)) + 1
+            guardar_perfil_usuario(user_id, {"siguiente_numero": nuevo_num})
+            return {"ok": True, "id": fac_id}
+        return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def actualizar_estado_factura(user_id: str, factura_id: int, estado: str) -> bool:
+    if not _validar_user_id(user_id, "actualizar_estado_factura"):
+        return False
+    if estado not in ("emitida", "cobrada", "anulada"):
+        return False
+    try:
+        r = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
+            f"?id=eq.{factura_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            json={"estado": estado}, timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
+
+
+def guardar_pdf_factura(user_id: str, factura_id: int,
+                        numero: str, pdf_bytes: bytes) -> bool:
+    try:
+        ruta = f"{user_id}/{numero}.pdf"
+        h_storage = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": "application/pdf",
+            "x-upsert": "true"
+        }
+        r_up = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
+            headers=h_storage, data=pdf_bytes, timeout=30
+        )
+        if r_up.status_code not in (200, 201):
+            return False
+        r_patch = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
+            f"?id=eq.{factura_id}&user_id=eq.{user_id}",
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            },
+            json={"pdf_url": ruta}, timeout=10
+        )
+        return r_patch.status_code in (200, 204)
+    except Exception:
+        return False
