@@ -135,146 +135,146 @@ def _calcular_kpis(df_hist: pd.DataFrame, df_proy: pd.DataFrame):
 # GRÁFICO PLOTLY
 # ──────────────────────────────────────────────────────────────
 def _render_grafico(df_hist: pd.DataFrame, df_proy: pd.DataFrame):
+    """
+    Histograma comparativo mensual:
+    - Barras agrupadas: Ingresos (verde) | Gastos (rojo) — datos reales
+    - Barras punteadas/semitransparentes: proyección meses futuros
+    - Línea de Saldo encima (azul)
+    """
     fig = go.Figure()
 
-    # ── HISTÓRICO ──────────────────────────────────────────
+    # ── Combinar etiquetas (histórico + proyección) ─────────
+    meses_hist = [MESES[int(m)-1] for m in df_hist["mes"]] if len(df_hist) > 0 else []
+    meses_proy = [MESES[int(m)-1] for m in df_proy["mes"]] if len(df_proy) > 0 else []
+    todos_meses = meses_hist + meses_proy
+
+    # ── BARRAS HISTÓRICAS ───────────────────────────────────
     if len(df_hist) > 0:
-        etiquetas_hist = [MESES[m - 1] for m in df_hist["mes"]]
-
-        fig.add_trace(go.Scatter(
-            x=etiquetas_hist, y=df_hist["ingresos"],
-            name="Ingresos reales", mode="lines+markers",
-            line=dict(color=GREEN, width=2.5),
-            marker=dict(size=7, color=GREEN),
-            hovertemplate="%{x}: %{y:,.0f} €<extra>Ingresos</extra>"
+        fig.add_trace(go.Bar(
+            x=meses_hist,
+            y=df_hist["ingresos"],
+            name="Ingresos reales",
+            marker_color=GREEN,
+            marker_line_width=0,
+            opacity=0.9,
+            offsetgroup="A",
+            hovertemplate="<b>%{x}</b><br>Ingresos: %{y:,.0f} €<extra></extra>"
         ))
-        fig.add_trace(go.Scatter(
-            x=etiquetas_hist, y=df_hist["gastos"],
-            name="Gastos reales", mode="lines+markers",
-            line=dict(color=RED, width=2.5),
-            marker=dict(size=7, color=RED),
-            hovertemplate="%{x}: %{y:,.0f} €<extra>Gastos</extra>"
-        ))
-        fig.add_trace(go.Scatter(
-            x=etiquetas_hist, y=df_hist["saldo"],
-            name="Saldo real", mode="lines+markers",
-            line=dict(color=ACCENT, width=3),
-            marker=dict(size=8, color=ACCENT),
-            fill="tozeroy",
-            fillcolor="rgba(24,95,165,0.07)",
-            hovertemplate="%{x}: %{y:,.0f} €<extra>Saldo</extra>"
+        fig.add_trace(go.Bar(
+            x=meses_hist,
+            y=df_hist["gastos"],
+            name="Gastos reales",
+            marker_color=RED,
+            marker_line_width=0,
+            opacity=0.9,
+            offsetgroup="B",
+            hovertemplate="<b>%{x}</b><br>Gastos: %{y:,.0f} €<extra></extra>"
         ))
 
-    # ── PROYECCIÓN ─────────────────────────────────────────
+    # ── BARRAS PROYECTADAS (semitransparentes) ──────────────
     if len(df_proy) > 0:
-        # Conectar con último punto histórico si existe
-        if len(df_hist) > 0:
-            ultimo_hist = df_hist.iloc[-1]
-            conector_x = [MESES[int(ultimo_hist["mes"]) - 1], MESES[int(df_proy.iloc[0]["mes"]) - 1]]
-            conector_ing = [ultimo_hist["ingresos"], df_proy.iloc[0]["ingresos"]]
-            conector_gas = [ultimo_hist["gastos"],   df_proy.iloc[0]["gastos"]]
-            conector_sal = [ultimo_hist["saldo"],    df_proy.iloc[0]["saldo"]]
-            fig.add_trace(go.Scatter(x=conector_x, y=conector_ing, mode="lines",
-                line=dict(color=GREEN, width=2, dash="dot"), showlegend=False, hoverinfo="skip"))
-            fig.add_trace(go.Scatter(x=conector_x, y=conector_gas, mode="lines",
-                line=dict(color=RED,   width=2, dash="dot"), showlegend=False, hoverinfo="skip"))
-            fig.add_trace(go.Scatter(x=conector_x, y=conector_sal, mode="lines",
-                line=dict(color=ACCENT,width=2.5,dash="dot"), showlegend=False, hoverinfo="skip"))
+        fig.add_trace(go.Bar(
+            x=meses_proy,
+            y=df_proy["ingresos"],
+            name="Ingresos estimados",
+            marker_color=GREEN,
+            marker_line_color=GREEN,
+            marker_line_width=1.5,
+            opacity=0.35,
+            offsetgroup="A",
+            hovertemplate="<b>%{x}</b><br>Ingresos est.: %{y:,.0f} €<extra></extra>"
+        ))
+        fig.add_trace(go.Bar(
+            x=meses_proy,
+            y=df_proy["gastos"],
+            name="Gastos estimados",
+            marker_color=RED,
+            marker_line_color=RED,
+            marker_line_width=1.5,
+            opacity=0.35,
+            offsetgroup="B",
+            hovertemplate="<b>%{x}</b><br>Gastos est.: %{y:,.0f} €<extra></extra>"
+        ))
 
-        etiquetas_proy = [MESES[m - 1] for m in df_proy["mes"]]
+    # ── LÍNEA DE SALDO (encima de las barras) ───────────────
+    if len(df_hist) > 0:
+        saldos_hist = list(df_hist["saldo"])
+        saldos_proy = list(df_proy["saldo"]) if len(df_proy) > 0 else []
+
+        # Colores del marcador de saldo: verde si positivo, rojo si negativo
+        colores_saldo = [GREEN if s >= 0 else RED for s in saldos_hist + saldos_proy]
+
         fig.add_trace(go.Scatter(
-            x=etiquetas_proy, y=df_proy["ingresos"],
-            name="Ingresos proyectados", mode="lines+markers",
-            line=dict(color=GREEN, width=2, dash="dot"),
-            marker=dict(size=6, color=GREEN, symbol="circle-open"),
-            hovertemplate="%{x}: %{y:,.0f} € (proy.)<extra>Ingresos</extra>"
+            x=todos_meses,
+            y=saldos_hist + saldos_proy,
+            name="Saldo neto",
+            mode="lines+markers",
+            line=dict(color=ACCENT, width=2.5, dash="solid"),
+            marker=dict(
+                size=9,
+                color=colores_saldo,
+                line=dict(color="white", width=1.5)
+            ),
+            hovertemplate="<b>%{x}</b><br>Saldo: %{y:,.0f} €<extra></extra>",
+            yaxis="y"
         ))
-        fig.add_trace(go.Scatter(
-            x=etiquetas_proy, y=df_proy["gastos"],
-            name="Gastos proyectados", mode="lines+markers",
-            line=dict(color=RED, width=2, dash="dot"),
-            marker=dict(size=6, color=RED, symbol="circle-open"),
-            hovertemplate="%{x}: %{y:,.0f} € (proy.)<extra>Gastos</extra>"
-        ))
-        fig.add_trace(go.Scatter(
-            x=etiquetas_proy, y=df_proy["saldo"],
-            name="Saldo proyectado", mode="lines+markers",
-            line=dict(color=ACCENT, width=2.5, dash="dot"),
-            marker=dict(size=7, color=ACCENT, symbol="circle-open"),
-            fill="tozeroy", fillcolor="rgba(24,95,165,0.04)",
-            hovertemplate="%{x}: %{y:,.0f} € (proy.)<extra>Saldo</extra>"
-        ))
+
+    # ── LÍNEA CERO ──────────────────────────────────────────
+    fig.add_hline(
+        y=0,
+        line_dash="dot",
+        line_color="rgba(0,0,0,0.15)",
+        line_width=1
+    )
+
+    # ── SEPARADOR real/proyección ────────────────────────────
+    if len(df_hist) > 0 and len(df_proy) > 0:
+        sep_x = MESES[int(df_hist.iloc[-1]["mes"]) - 1]
+        fig.add_vline(
+            x=sep_x,
+            line_dash="dot",
+            line_color="rgba(0,0,0,0.2)",
+            line_width=1.5,
+            annotation_text="← Real | Estimado →",
+            annotation_position="top",
+            annotation_font_size=10,
+            annotation_font_color="#9CA3AF"
+        )
 
     fig.update_layout(
-        height=340,
-        margin=dict(l=10, r=10, t=10, b=10),
+        barmode="group",
+        bargap=0.18,
+        bargroupgap=0.04,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", y=1.08, x=0, font=dict(size=11)),
-        xaxis=dict(showgrid=False, tickfont=dict(size=11), color="#5A7A9A"),
-        yaxis=dict(showgrid=True, gridcolor="rgba(0,0,0,0.06)", tickformat=",.0f",
-                   ticksuffix=" €", tickfont=dict(size=10), color="#5A7A9A"),
+        margin=dict(l=10, r=10, t=20, b=40),
+        height=380,
+        xaxis=dict(
+            showgrid=False,
+            tickfont=dict(size=12, family="DM Sans"),
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="rgba(0,0,0,0.05)",
+            tickformat=",.0f",
+            ticksuffix=" €",
+            tickfont=dict(size=11),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11)
+        ),
         hovermode="x unified",
+        font=dict(family="DM Sans", size=12),
     )
-    # Línea divisoria histórico / proyección
-    # Nota: add_vline no funciona con eje categórico en Plotly reciente.
-    # Usamos add_shape con coordenadas de papel para el eje X.
-    if len(df_hist) > 0 and len(df_proy) > 0:
-        # Calcular posición relativa del último mes histórico en el eje categórico
-        total_meses = len(df_hist) + len(df_proy)
-        x_rel = (len(df_hist) - 0.5) / total_meses  # fracción del eje [0,1]
-        fig.add_shape(
-            type="line",
-            xref="paper", yref="paper",
-            x0=x_rel, x1=x_rel,
-            y0=0, y1=1,
-            line=dict(color="rgba(0,0,0,0.18)", width=1.5, dash="dash"),
-        )
-        fig.add_annotation(
-            xref="paper", yref="paper",
-            x=x_rel + 0.01, y=0.98,
-            text="Hoy",
-            showarrow=False,
-            font=dict(size=10, color="#5A7A9A"),
-            xanchor="left",
-        )
 
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True)
 
 
-# ──────────────────────────────────────────────────────────────
-# KPI CARDS
-# ──────────────────────────────────────────────────────────────
-def _render_kpis(kpis: dict):
-    c1, c2, c3, c4 = st.columns(4)
-    cards = [
-        (c1, "Saldo medio mensual", kpis["saldo_medio"],
-         "#185FA5", kpis["saldo_medio"] >= 0),
-        (c2, "Mejor mes del año", kpis["mejor_mes"],
-         "#1a7a40", True),
-        (c3, "Peor mes del año", kpis["peor_mes"],
-         "#C0392B", kpis["peor_mes"] >= 0),
-        (c4, "Tendencia anual", kpis["tendencia"],
-         "#1a7a40" if kpis["tendencia"] >= 0 else "#C0392B",
-         kpis["tendencia"] >= 0),
-    ]
-    for col, label, valor, color, positivo in cards:
-        flecha = "▲" if positivo else "▼"
-        col.markdown(f"""
-        <div style="background:#fff;border-radius:14px;padding:16px 18px;
-                    box-shadow:0 2px 12px rgba(0,0,0,0.06);
-                    border:0.5px solid rgba(0,0,0,0.05);height:100%">
-            <p style="font-size:10px;font-weight:600;letter-spacing:0.08em;
-                      text-transform:uppercase;color:#9CA3AF;margin:0 0 6px">{label}</p>
-            <p style="font-family:'DM Serif Display',serif;font-size:1.5rem;font-weight:700;
-                      color:{color};margin:0;line-height:1">{flecha} {abs(valor):,.0f} €</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-
-# ──────────────────────────────────────────────────────────────
-# TABLA MES A MES
-# ──────────────────────────────────────────────────────────────
 def _render_tabla(df_hist: pd.DataFrame, df_proy: pd.DataFrame):
     st.markdown('<div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;'
                 'text-transform:uppercase;color:#9CA3AF;margin:20px 0 8px">Detalle mensual</div>',
