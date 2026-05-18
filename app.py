@@ -2570,7 +2570,7 @@ elif menu == "Datos de la Cartera":
             with col3:
                 _m2_val=max(10.0,safe_float(datos.get("M2_Construidos"),80.0))
                 m2=st.number_input("M² Construidos *",value=_m2_val,min_value=0.0,step=5.0)
-                habitaciones=st.number_input("Habitaciones *",value=safe_int(datos.get("Habitaciones"),2),min_value=1,max_value=10)
+                habitaciones=st.number_input("Habitaciones *",value=max(1,safe_int(datos.get("Habitaciones"),2)),min_value=1,max_value=10)
                 planta=st.number_input("Planta",value=safe_int(datos.get("Planta"),1),min_value=0,max_value=20)
             with col4:
                 cp=st.text_input("Código Postal *",value=str(datos.get("CP","18005")),max_chars=5)
@@ -2579,13 +2579,13 @@ elif menu == "Datos de la Cartera":
             with col5:
                 mobiliario=st.selectbox("Mobiliario",["S","N"],index=0 if datos.get("Mobiliario")=="S" else 1)
                 parking=st.selectbox("Parking",["S","N"],index=0 if datos.get("Parking")=="S" else 1)
-                año_construccion=st.number_input("Año Construcción",value=safe_int(datos.get("Año_Construccion"),2000),min_value=1900,max_value=2030)
+                año_construccion=st.number_input("Año Construcción",value=max(1900,safe_int(datos.get("Año_Construccion"),2000)),min_value=1900,max_value=2030)
             st.markdown("### 📝 Información Adicional")
             col6,col7=st.columns(2)
             with col6:
                 ref_catastral=st.text_input("Ref. Catastral",value=datos.get("Ref_Catastral",""))
                 titular=st.text_input("Titular",value=datos.get("Titular",""))
-                año_reforma=st.number_input("Año Última Reforma",value=safe_int(datos.get("Año_Reforma"),2020),min_value=1900,max_value=2030)
+                año_reforma=st.number_input("Año Última Reforma",value=max(1900,safe_int(datos.get("Año_Reforma"),2020)),min_value=1900,max_value=2030)
             with col7:
                 tipo_arrendamiento=st.selectbox("Tipo Arrendamiento",["Larga Duración","Temporada","Vacacional"],index=safe_index(["Larga Duración","Temporada","Vacacional"],datos.get("Tipo_Arrendamiento"),0))
                 cochera_vinculada=st.selectbox("Cochera Vinculada",["N","S"],index=0 if datos.get("Cochera_Vinculada")=="N" else 1)
