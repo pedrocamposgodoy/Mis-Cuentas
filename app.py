@@ -2736,14 +2736,24 @@ elif menu == "Datos de la Cartera":
                 from fiscal_export import importar_excel_asesor
                 with st.spinner("Importando datos del Excel..."):
                     resultado=importar_excel_asesor(archivo_excel=uploaded_excel,user_id=st.session_state.user_id,upsert_inmueble_fn=upsert_inmueble,agregar_movimientos_fn=agregar_movimientos,leer_inmuebles_fn=leer_inmuebles)
-                if "error" in resultado: st.error(f"❌ {resultado['error']}")
+                if "error" in resultado:
+                    st.error(f"❌ {resultado['error']}")
                 else:
-                    st.success(f"✅ Import completado — {resultado['total']} inmuebles procesados")
+                    n_ok = len(resultado["creados"]) + len(resultado["actualizados"])
+                    n_err = len(resultado.get("errores", []))
+                    if n_ok > 0:
+                        st.success(f"✅ Import completado — {n_ok} inmuebles procesados")
+                    if n_err > 0:
+                        st.warning(f"⚠️ {n_err} inmueble(s) fallaron al guardar en Supabase:")
+                        for err in resultado.get("errores", []):
+                            st.code(err, language=None)
                     col_r1,col_r2,col_r3=st.columns(3)
-                    col_r1.metric("Creados nuevos",len(resultado["creados"]))
-                    col_r2.metric("Actualizados",len(resultado["actualizados"]))
-                    col_r3.metric("Movimientos añadidos",resultado["movimientos"])
-                    st.session_state.df_inm_persistent=leer_inmuebles(user_id=st.session_state.user_id); st.rerun()
+                    col_r1.metric("Creados nuevos", len(resultado["creados"]))
+                    col_r2.metric("Actualizados", len(resultado["actualizados"]))
+                    col_r3.metric("Movimientos añadidos", resultado["movimientos"])
+                    if n_ok > 0:
+                        st.session_state.df_inm_persistent=leer_inmuebles(user_id=st.session_state.user_id)
+                        st.rerun()
 
 # ================================================================
 # PANTALLA: MI PERFIL
