@@ -88,7 +88,12 @@ from supabase_db import (
     generar_codigo_acceso, obtener_codigo_activo, revocar_codigo_acceso,
     upsert_inmueble, guardar_logo_usuario, leer_logo_usuario, health_check,
     subir_factura, obtener_url_factura, eliminar_factura,
-    actualizar_estado_fiscal_movimiento
+    actualizar_estado_fiscal_movimiento,
+    leer_perfil_usuario, guardar_perfil_usuario,
+    cambiar_contrasena, cambiar_email,
+    leer_plantillas_factura, guardar_plantilla_factura,
+    leer_facturas_emitidas, crear_factura_emitida,
+    actualizar_estado_factura, guardar_pdf_factura
 )
 
 COLS_INM = [
@@ -268,8 +273,9 @@ if "ficha_sel" not in st.session_state:  st.session_state.ficha_sel = None
 PAGES = [
     ("📊", "Torre de Control",              "Core"),
     ("🏠", "Fichas (Benchmark)",            "Core"),
+    ("📥", "Ingresos · Rentas",             "Core"),
     ("📝", "Diario Contable",               "Core"),
-    ("💵", "Cash Flow",                     "Core"),   # ← NUEVO
+    ("💵", "Cash Flow",                     "Core"),
     ("⚡", "Suministros",                   "Core"),
     ("💰", "Fiscalidad",                    "Core"),
     ("💎", "Macrofinanzas",                 "Core"),
@@ -278,33 +284,16 @@ PAGES = [
     ("🔗", "Compartir con Asesor",           "B2B2C"),
     ("⚖️", "Legal",                         "Tools"),
     ("📂", "Datos de la Cartera",           "Config"),
+    ("👤", "Mi Perfil",                     "Config"),
 ]
 
 with st.sidebar:
-    # ── LOGO personalizable ────────────────────────────────────
+    # ── LOGO (solo lectura — editar en Mi Perfil) ──────────────
     logo_bytes = st.session_state.get("sidebar_logo_bytes")
     if logo_bytes:
-        # Mostrar con ancho controlado, centrado
         st.markdown('<div style="padding:8px 16px 4px;">', unsafe_allow_html=True)
         st.image(logo_bytes, width=120)
         st.markdown('</div>', unsafe_allow_html=True)
-        if st.button("🗑️ Quitar logo", key="btn_quitar_logo", use_container_width=True):
-            st.session_state.pop("sidebar_logo_bytes", None)
-            guardar_logo_usuario(st.session_state.user_id, b"", "png")
-            st.rerun()
-    else:
-        with st.expander("🖼️ Subir logo", expanded=False):
-            logo_file = st.file_uploader("PNG o JPG", type=["png","jpg","jpeg"],
-                                          key="upload_logo", label_visibility="collapsed")
-            if logo_file:
-                ext = logo_file.name.split(".")[-1].lower()
-                b = logo_file.read()
-                ok = guardar_logo_usuario(st.session_state.user_id, b, ext)
-                if ok:
-                    st.session_state["sidebar_logo_bytes"] = b
-                    st.rerun()
-                else:
-                    st.error("❌ Error al guardar logo. Crea la tabla user_profiles en Supabase.")
 
     st.markdown("""
 <div style='padding:0.8rem 1.4rem 1rem;'>
@@ -2664,3 +2653,690 @@ elif menu == "Datos de la Cartera":
                     col_r2.metric("Actualizados",len(resultado["actualizados"]))
                     col_r3.metric("Movimientos añadidos",resultado["movimientos"])
                     st.session_state.df_inm_persistent=leer_inmuebles(user_id=st.session_state.user_id); st.rerun()
+
+# ================================================================
+# PANTALLA: MI PERFIL
+# Datos fiscales del emisor + logo + cambio contraseña/email
+# ================================================================
+elif menu == "Mi Perfil":
+    st.markdown('<div class="nc-brand-header">👤 Mi Perfil</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Datos personales · Datos fiscales · Seguridad</div>', unsafe_allow_html=True)
+
+    uid_perfil = st.session_state.user_id
+
+    # Cargar perfil actual
+    if "perfil_datos" not in st.session_state:
+        st.session_state.perfil_datos = leer_perfil_usuario(uid_perfil)
+    p = st.session_state.perfil_datos
+
+    tab_fiscal, tab_logo, tab_seguridad = st.tabs([
+        "🏛️ Datos Fiscales", "🖼️ Logo", "🔐 Seguridad"
+    ])
+
+    # ── TAB 1: DATOS FISCALES ──────────────────────────────────
+    with tab_fiscal:
+        st.markdown('<div class="nc-section-title">Datos del emisor de facturas</div>', unsafe_allow_html=True)
+        st.caption("Estos datos aparecerán en todas las facturas que generes.")
+
+        with st.form("form_perfil_fiscal"):
+            col1, col2 = st.columns(2)
+            with col1:
+                nombre_fiscal = st.text_input("Nombre fiscal completo *",
+                    value=p.get("nombre_fiscal",""), placeholder="Pedro Campos Godoy")
+                nif = st.text_input("NIF / DNI *",
+                    value=p.get("nif",""), placeholder="24237110D")
+                telefono = st.text_input("Teléfono",
+                    value=p.get("telefono",""), placeholder="600 000 000")
+            with col2:
+                direccion = st.text_input("Dirección completa *",
+                    value=p.get("direccion",""), placeholder="Calle Mayor, 1")
+                ciudad = st.text_input("Ciudad",
+                    value=p.get("ciudad","Granada"), placeholder="Granada")
+                cp = st.text_input("Código Postal",
+                    value=p.get("cp",""), placeholder="18001")
+
+            iban = st.text_input("IBAN (cuenta bancaria para transferencias)",
+                value=p.get("iban",""),
+                placeholder="ES76 2100 2673 6202 1018 4323")
+
+            col_pref1, col_pref2 = st.columns(2)
+            with col_pref1:
+                prefijo = st.text_input("Prefijo facturas",
+                    value=p.get("prefijo_factura","F"),
+                    help="Ej: F → F260001. Ej: NC → NC260001")
+            with col_pref2:
+                sig_num = st.number_input("Siguiente número de factura",
+                    value=int(p.get("siguiente_numero",1)),
+                    min_value=1, step=1,
+                    help="Se incrementa automáticamente al generar cada factura")
+
+            submitted = st.form_submit_button("💾 Guardar datos fiscales",
+                                               type="primary", use_container_width=True)
+            if submitted:
+                if not nombre_fiscal.strip() or not nif.strip():
+                    st.warning("⚠️ Nombre fiscal y NIF son obligatorios.")
+                else:
+                    ok = guardar_perfil_usuario(uid_perfil, {
+                        "nombre_fiscal": nombre_fiscal.strip(),
+                        "nif": nif.strip().upper(),
+                        "direccion": direccion.strip(),
+                        "ciudad": ciudad.strip(),
+                        "cp": cp.strip(),
+                        "telefono": telefono.strip(),
+                        "iban": iban.strip(),
+                        "prefijo_factura": prefijo.strip() or "F",
+                        "siguiente_numero": int(sig_num)
+                    })
+                    if ok:
+                        st.success("✅ Datos fiscales guardados correctamente")
+                        st.session_state.perfil_datos = leer_perfil_usuario(uid_perfil)
+                    else:
+                        st.error("❌ Error al guardar. Inténtalo de nuevo.")
+
+    # ── TAB 2: LOGO ────────────────────────────────────────────
+    with tab_logo:
+        st.markdown('<div class="nc-section-title">Logo de empresa</div>', unsafe_allow_html=True)
+        st.caption("Aparece en el sidebar y en las facturas generadas.")
+
+        logo_actual = st.session_state.get("sidebar_logo_bytes")
+        if logo_actual:
+            col_img, col_btn = st.columns([1, 3])
+            with col_img:
+                st.image(logo_actual, width=150)
+            with col_btn:
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+                if st.button("🗑️ Eliminar logo", key="btn_del_logo"):
+                    guardar_logo_usuario(uid_perfil, b"", "png")
+                    st.session_state.pop("sidebar_logo_bytes", None)
+                    st.success("✅ Logo eliminado")
+                    st.rerun()
+
+        st.markdown("---")
+        logo_file = st.file_uploader(
+            "Subir nuevo logo (PNG o JPG, max 2MB)",
+            type=["png","jpg","jpeg"],
+            key="upload_logo_perfil"
+        )
+        if logo_file:
+            if logo_file.size > 2_000_000:
+                st.warning("⚠️ El archivo supera 2MB. Usa una imagen más pequeña.")
+            else:
+                ext = logo_file.name.split(".")[-1].lower()
+                b = logo_file.read()
+                if st.button("📤 Subir logo", type="primary", key="btn_up_logo"):
+                    ok = guardar_logo_usuario(uid_perfil, b, ext)
+                    if ok:
+                        st.session_state["sidebar_logo_bytes"] = b
+                        st.success("✅ Logo actualizado")
+                        st.rerun()
+                    else:
+                        st.error("❌ Error al subir el logo.")
+
+    # ── TAB 3: SEGURIDAD ───────────────────────────────────────
+    with tab_seguridad:
+        st.markdown('<div class="nc-section-title">Acceso y seguridad</div>', unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div style='background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;
+                    padding:1rem 1.2rem;margin-bottom:1.5rem;'>
+            <div style='font-size:0.72rem;color:{TEXT_SEC};text-transform:uppercase;
+                        letter-spacing:.06em;margin-bottom:4px;'>Email actual</div>
+            <div style='font-size:1rem;font-weight:600;color:{TEXT_PRI};'>
+                {st.session_state.user_email}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+        col_s1, col_s2 = st.columns(2)
+
+        with col_s1:
+            st.markdown("**Cambiar contraseña**")
+            nueva_pass = st.text_input("Nueva contraseña",
+                type="password", key="nueva_pass",
+                placeholder="Mínimo 6 caracteres")
+            nueva_pass2 = st.text_input("Repetir contraseña",
+                type="password", key="nueva_pass2",
+                placeholder="Repite la contraseña")
+            if st.button("🔐 Cambiar contraseña", use_container_width=True,
+                          key="btn_change_pass"):
+                if not nueva_pass or len(nueva_pass) < 6:
+                    st.warning("⚠️ Mínimo 6 caracteres.")
+                elif nueva_pass != nueva_pass2:
+                    st.warning("⚠️ Las contraseñas no coinciden.")
+                else:
+                    token = st.session_state.get("access_token","")
+                    res = cambiar_contrasena(token, nueva_pass)
+                    if res["ok"]:
+                        st.success("✅ Contraseña actualizada")
+                    else:
+                        st.error(f"❌ {res.get('error','Error desconocido')}")
+
+        with col_s2:
+            st.markdown("**Cambiar email**")
+            nuevo_email = st.text_input("Nuevo email",
+                key="nuevo_email", placeholder="nuevo@email.com")
+            if st.button("✉️ Cambiar email", use_container_width=True,
+                          key="btn_change_email"):
+                if not nuevo_email.strip() or "@" not in nuevo_email:
+                    st.warning("⚠️ Introduce un email válido.")
+                else:
+                    token = st.session_state.get("access_token","")
+                    res = cambiar_email(token, nuevo_email.strip())
+                    if res["ok"]:
+                        st.success("✅ Email actualizado. Revisa tu bandeja para confirmar.")
+                    else:
+                        st.error(f"❌ {res.get('error','Error desconocido')}")
+
+
+# ================================================================
+# PANTALLA: INGRESOS · RENTAS
+# Plantillas por inmueble + generación de facturas + PDF
+# ================================================================
+elif menu == "Ingresos · Rentas":
+    st.markdown('<div class="nc-brand-header">📥 Ingresos · Rentas</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Facturas de arrendamiento · Numeración correlativa · PDF</div>', unsafe_allow_html=True)
+
+    uid_ing = st.session_state.user_id
+
+    # Verificar datos del emisor
+    perfil_ing = leer_perfil_usuario(uid_ing)
+    if not perfil_ing.get("nombre_fiscal") or not perfil_ing.get("nif"):
+        st.warning("⚠️ Antes de generar facturas, completa tus datos fiscales en **👤 Mi Perfil**.")
+        if st.button("→ Ir a Mi Perfil", type="primary"):
+            st.session_state.menu = "Mi Perfil"; st.rerun()
+        st.stop()
+
+    tab_generar, tab_historial, tab_plantillas = st.tabs([
+        "🧾 Generar Factura", "📋 Historial", "⚙️ Plantillas"
+    ])
+
+    # ── TAB 1: GENERAR FACTURA ─────────────────────────────────
+    with tab_generar:
+        st.markdown('<div class="nc-section-title">Nueva factura de renta</div>', unsafe_allow_html=True)
+
+        # Cargar plantillas
+        df_plantillas = leer_plantillas_factura(uid_ing)
+        if df_plantillas.empty:
+            st.info("📋 Aún no tienes plantillas configuradas. Ve a **⚙️ Plantillas** para crearlas.")
+        else:
+            # Selector de inmueble
+            inmuebles_con_plantilla = df_plantillas["inmueble"].tolist()
+            inm_sel = st.selectbox("Selecciona inmueble", inmuebles_con_plantilla,
+                                    key="ing_inm_sel")
+            plantilla = df_plantillas[df_plantillas["inmueble"] == inm_sel].iloc[0]
+
+            # Datos pre-rellenados de la plantilla
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                meses_es = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                             "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+                mes_fac = st.selectbox("Mes de la renta", meses_es,
+                                        index=datetime.now().month - 1,
+                                        key="ing_mes")
+                año_fac = st.number_input("Año", value=datetime.now().year,
+                                           min_value=2020, max_value=2030,
+                                           key="ing_año")
+            with col_f2:
+                fecha_fac = st.date_input("Fecha factura",
+                                           value=date.today(), key="ing_fecha")
+            with col_f3:
+                fecha_venc = st.date_input("Fecha vencimiento",
+                                            value=date.today(), key="ing_venc")
+
+            st.markdown("---")
+
+            # Datos editables (pre-rellenados de plantilla)
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                st.markdown("**Inquilino**")
+                inquilino = st.text_input("Nombre", value=str(plantilla.get("inquilino","")),
+                                           key="ing_inq")
+                nif_inq = st.text_input("NIF", value=str(plantilla.get("nif_inquilino","")),
+                                         key="ing_nif")
+                dir_inq = st.text_area("Dirección", value=str(plantilla.get("direccion_inquilino","")),
+                                        key="ing_dir", height=80)
+            with col_d2:
+                st.markdown("**Importes**")
+                base = st.number_input("Base imponible (€)",
+                    value=float(plantilla.get("base_imponible",0)),
+                    min_value=0.0, step=10.0, format="%.2f", key="ing_base")
+                pct_iva = st.number_input("IVA (%)",
+                    value=float(plantilla.get("pct_iva",0)),
+                    min_value=0.0, max_value=21.0, step=1.0, key="ing_iva")
+                pct_ret = st.number_input("Retención IRPF (%)",
+                    value=float(plantilla.get("pct_retencion",0)),
+                    min_value=0.0, max_value=25.0, step=1.0, key="ing_ret")
+
+                imp_iva = round(base * pct_iva / 100, 2)
+                imp_ret = round(base * pct_ret / 100, 2)
+                total   = round(base + imp_iva - imp_ret, 2)
+
+                st.markdown(f"""
+                <div style='background:{CARD_BG};border:1px solid {BORDER};
+                            border-radius:10px;padding:1rem;margin-top:8px;'>
+                    <div style='display:flex;justify-content:space-between;margin-bottom:4px;'>
+                        <span style='font-size:0.82rem;color:{TEXT_SEC};'>Base imponible</span>
+                        <span style='font-size:0.9rem;'>{base:,.2f} €</span>
+                    </div>
+                    <div style='display:flex;justify-content:space-between;margin-bottom:4px;'>
+                        <span style='font-size:0.82rem;color:{TEXT_SEC};'>IVA {pct_iva:.0f}%</span>
+                        <span style='font-size:0.9rem;'>+{imp_iva:,.2f} €</span>
+                    </div>
+                    <div style='display:flex;justify-content:space-between;margin-bottom:8px;'>
+                        <span style='font-size:0.82rem;color:{TEXT_SEC};'>Retención {pct_ret:.0f}%</span>
+                        <span style='font-size:0.9rem;color:{RED};'>−{imp_ret:,.2f} €</span>
+                    </div>
+                    <div style='border-top:1px solid {BORDER};padding-top:8px;
+                                display:flex;justify-content:space-between;'>
+                        <span style='font-weight:700;'>TOTAL</span>
+                        <span style='font-size:1.2rem;font-weight:700;color:{ACCENT};'>
+                            {total:,.2f} €</span>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+            # Número de factura
+            prefijo_p = perfil_ing.get("prefijo_factura","F")
+            sig_n     = int(perfil_ing.get("siguiente_numero",1))
+            año_2d    = str(año_fac)[2:]
+            num_fac   = f"{prefijo_p}{año_2d}{sig_n:04d}"
+            concepto  = f"RENTA {inm_sel.upper()} · {mes_fac.upper()} {año_fac}"
+
+            st.markdown(f"""
+            <div style='background:#EAF3DE;border:1px solid #B5D4A0;border-radius:8px;
+                        padding:10px 14px;margin:12px 0;'>
+                <span style='font-size:0.8rem;color:#27500A;font-weight:600;'>
+                    📄 Número de factura: <strong>{num_fac}</strong> · Concepto: {concepto}
+                </span>
+            </div>""", unsafe_allow_html=True)
+
+            if st.button("🧾 Generar factura PDF", type="primary",
+                          use_container_width=True, key="btn_generar_fac"):
+                if not inquilino.strip():
+                    st.warning("⚠️ El nombre del inquilino es obligatorio.")
+                else:
+                    # Crear registro en Supabase
+                    datos_fac = {
+                        "numero": num_fac,
+                        "fecha": fecha_fac.strftime("%Y-%m-%d"),
+                        "vencimiento": fecha_venc.strftime("%Y-%m-%d"),
+                        "inmueble": inm_sel,
+                        "inquilino": inquilino.strip(),
+                        "nif_inquilino": nif_inq.strip(),
+                        "direccion_inquilino": dir_inq.strip(),
+                        "concepto": concepto,
+                        "base_imponible": base,
+                        "pct_iva": pct_iva,
+                        "importe_iva": imp_iva,
+                        "pct_retencion": pct_ret,
+                        "importe_retencion": imp_ret,
+                        "total": total,
+                        "estado": "emitida"
+                    }
+                    res_fac = crear_factura_emitida(uid_ing, datos_fac)
+
+                    if not res_fac["ok"]:
+                        st.error(f"❌ Error creando factura: {res_fac['error']}")
+                    else:
+                        fac_id = res_fac["id"]
+                        # Generar PDF con ReportLab
+                        if REPORTLAB_OK:
+                            pdf_buf = _generar_pdf_factura(
+                                perfil_ing, datos_fac, num_fac
+                            )
+                            if pdf_buf:
+                                pdf_bytes = pdf_buf.getvalue()
+                                guardar_pdf_factura(uid_ing, fac_id, num_fac, pdf_bytes)
+                                st.success(f"✅ Factura {num_fac} generada correctamente")
+                                st.download_button(
+                                    label=f"📥 Descargar {num_fac}.pdf",
+                                    data=pdf_bytes,
+                                    file_name=f"{num_fac}.pdf",
+                                    mime="application/pdf",
+                                    use_container_width=True
+                                )
+                                # Actualizar perfil en session_state
+                                st.session_state.pop("perfil_datos", None)
+                            else:
+                                st.warning("⚠️ Factura registrada pero el PDF falló. Descarga disponible en historial.")
+                        else:
+                            st.success(f"✅ Factura {num_fac} registrada (ReportLab no disponible para PDF)")
+
+    # ── TAB 2: HISTORIAL ───────────────────────────────────────
+    with tab_historial:
+        st.markdown('<div class="nc-section-title">Facturas emitidas</div>', unsafe_allow_html=True)
+
+        df_facs = leer_facturas_emitidas(uid_ing)
+        if df_facs.empty:
+            st.info("Aún no has generado ninguna factura.")
+        else:
+            # KPIs rápidos
+            total_emitido  = df_facs["total"].sum()
+            total_cobrado  = df_facs[df_facs["estado"]=="cobrada"]["total"].sum()
+            total_pendiente= df_facs[df_facs["estado"]=="emitida"]["total"].sum()
+
+            k1,k2,k3 = st.columns(3)
+            for col_k, lbl, val, color in [
+                (k1,"Total emitido",  f"{total_emitido:,.0f} €",   ACCENT),
+                (k2,"Cobrado",        f"{total_cobrado:,.0f} €",   GREEN),
+                (k3,"Pendiente",      f"{total_pendiente:,.0f} €", AMBER),
+            ]:
+                col_k.markdown(
+                    f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                    f"border-top:3px solid {color};border-radius:10px;padding:.8rem;"
+                    f"text-align:center;margin:8px 0;'>"
+                    f"<div style='font-size:0.68rem;color:{TEXT_SEC};text-transform:uppercase;"
+                    f"letter-spacing:.06em;margin-bottom:4px;'>{lbl}</div>"
+                    f"<div style='font-size:1.1rem;font-weight:700;color:{color};'>{val}</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+            # Lista de facturas
+            for _, fac in df_facs.iterrows():
+                est = str(fac.get("estado","emitida"))
+                if est == "cobrada":
+                    badge = f"<span style='background:#EAF3DE;color:#27500A;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'>✅ Cobrada</span>"
+                elif est == "anulada":
+                    badge = f"<span style='background:#FDECEA;color:#7F1D1D;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'>❌ Anulada</span>"
+                else:
+                    badge = f"<span style='background:#FFF9E6;color:#854F0B;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'>⏳ Emitida</span>"
+
+                fecha_s = str(fac.get("fecha",""))[:10]
+                st.markdown(f"""
+                <div style='background:{CARD_BG};border:1px solid {BORDER};
+                            border-radius:10px;padding:12px 16px;margin-bottom:6px;
+                            display:flex;justify-content:space-between;align-items:center;'>
+                    <div>
+                        <span style='font-weight:700;color:{TEXT_PRI};font-size:0.95rem;'>
+                            {fac.get("numero","")}
+                        </span>
+                        <span style='color:{TEXT_SEC};font-size:0.82rem;margin-left:10px;'>
+                            {fecha_s} · {fac.get("inmueble","")} · {fac.get("inquilino","")}
+                        </span>
+                        <br><span style='font-size:0.78rem;color:{TEXT_SEC};'>
+                            {fac.get("concepto","")}
+                        </span>
+                    </div>
+                    <div style='text-align:right;'>
+                        <div style='font-size:1.1rem;font-weight:700;color:{ACCENT};'>
+                            {float(fac.get("total",0)):,.2f} €
+                        </div>
+                        {badge}
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+                with st.expander("", expanded=False, key=f"fac_exp_{fac['id']}"):
+                    cf1, cf2, cf3 = st.columns(3)
+                    with cf1:
+                        nuevo_estado = st.selectbox(
+                            "Estado",
+                            ["emitida","cobrada","anulada"],
+                            index=["emitida","cobrada","anulada"].index(est) if est in ["emitida","cobrada","anulada"] else 0,
+                            key=f"fac_est_{fac['id']}"
+                        )
+                        if st.button("💾 Actualizar estado", key=f"fac_upd_{fac['id']}",
+                                     use_container_width=True):
+                            if actualizar_estado_factura(uid_ing, int(fac["id"]), nuevo_estado):
+                                st.success("✅ Estado actualizado"); st.rerun()
+                            else:
+                                st.error("❌ Error actualizando estado")
+                    with cf2:
+                        if fac.get("pdf_url"):
+                            url_pdf = obtener_url_factura(uid_ing, str(fac["pdf_url"]))
+                            if url_pdf:
+                                st.markdown(
+                                    f"<a href='{url_pdf}' target='_blank' "
+                                    f"style='display:inline-block;background:#E6F1FB;"
+                                    f"color:#0C447C;padding:8px 14px;border-radius:6px;"
+                                    f"font-size:13px;font-weight:600;text-decoration:none;"
+                                    f"border:1px solid #B5D4F4;margin-top:24px;'>👁️ Ver PDF</a>",
+                                    unsafe_allow_html=True)
+                    with cf3:
+                        st.markdown(f"**Base:** {float(fac.get('base_imponible',0)):,.2f} €")
+                        st.markdown(f"**IVA {float(fac.get('pct_iva',0)):.0f}%:** {float(fac.get('importe_iva',0)):,.2f} €")
+                        st.markdown(f"**Ret. {float(fac.get('pct_retencion',0)):.0f}%:** −{float(fac.get('importe_retencion',0)):,.2f} €")
+                        st.markdown(f"**Total: {float(fac.get('total',0)):,.2f} €**")
+
+    # ── TAB 3: PLANTILLAS ──────────────────────────────────────
+    with tab_plantillas:
+        st.markdown('<div class="nc-section-title">Plantillas por inmueble</div>', unsafe_allow_html=True)
+        st.caption("Configura una vez los datos de cada inmueble. Se pre-rellenan al generar facturas.")
+
+        df_plt = leer_plantillas_factura(uid_ing)
+
+        # Mostrar plantillas existentes
+        if not df_plt.empty:
+            for _, plt_row in df_plt.iterrows():
+                st.markdown(f"""
+                <div style='background:{CARD_BG};border:1px solid {BORDER};
+                            border-radius:10px;padding:12px 16px;margin-bottom:6px;'>
+                    <b>{plt_row.get("inmueble","")}</b>
+                    <span style='color:{TEXT_SEC};font-size:0.82rem;margin-left:10px;'>
+                        {plt_row.get("inquilino","")} · Base: {float(plt_row.get("base_imponible",0)):,.2f}€
+                        · IVA: {float(plt_row.get("pct_iva",0)):.0f}%
+                        · Ret: {float(plt_row.get("pct_retencion",0)):.0f}%
+                    </span>
+                </div>""", unsafe_allow_html=True)
+            st.markdown("---")
+
+        # Formulario nueva plantilla / editar
+        st.markdown("**Añadir o editar plantilla:**")
+
+        # Selector inmueble — de la cartera o manual
+        nombres_inm = df_inm["Nombre"].tolist() if not df_inm.empty else []
+        inm_plt = st.selectbox("Inmueble", nombres_inm, key="plt_inm") if nombres_inm else \
+                  st.text_input("Inmueble (escribe el nombre)", key="plt_inm_txt")
+
+        if inm_plt:
+            # Pre-rellenar si existe plantilla
+            plt_exist = df_plt[df_plt["inmueble"]==inm_plt].iloc[0].to_dict() \
+                        if not df_plt.empty and inm_plt in df_plt["inmueble"].values else {}
+            # Pre-rellenar desde ficha del inmueble si existe
+            inm_row = df_inm[df_inm["Nombre"]==inm_plt].iloc[0] if inm_plt in df_inm["Nombre"].values else {}
+
+            with st.form(f"form_plt_{inm_plt}"):
+                cp1, cp2 = st.columns(2)
+                with cp1:
+                    plt_inq = st.text_input("Inquilino *",
+                        value=plt_exist.get("inquilino",
+                              str(inm_row.get("Inquilino","")) if hasattr(inm_row,"get") else ""))
+                    plt_nif = st.text_input("NIF inquilino",
+                        value=plt_exist.get("nif_inquilino",
+                              str(inm_row.get("NIF_Inquilino","")) if hasattr(inm_row,"get") else ""))
+                    plt_dir = st.text_area("Dirección inquilino",
+                        value=plt_exist.get("direccion_inquilino",""), height=80)
+                with cp2:
+                    plt_base = st.number_input("Base imponible (€) *",
+                        value=float(plt_exist.get("base_imponible",
+                                    float(inm_row.get("Renta",0)) if hasattr(inm_row,"get") else 0)),
+                        min_value=0.0, step=10.0, format="%.2f")
+                    plt_iva = st.number_input("IVA (%)",
+                        value=float(plt_exist.get("pct_iva",
+                                    float(inm_row.get("Tipo_IVA",0)) if hasattr(inm_row,"get") else 0)),
+                        min_value=0.0, max_value=21.0, step=1.0)
+                    plt_ret = st.number_input("Retención IRPF (%)",
+                        value=float(plt_exist.get("pct_retencion",
+                                    float(inm_row.get("Retencion_IRPF_Pct",0)) if hasattr(inm_row,"get") else 0)),
+                        min_value=0.0, max_value=25.0, step=1.0)
+
+                sub_plt = st.form_submit_button("💾 Guardar plantilla",
+                                                 type="primary", use_container_width=True)
+                if sub_plt:
+                    if not plt_inq.strip():
+                        st.warning("⚠️ El nombre del inquilino es obligatorio.")
+                    else:
+                        res_plt = guardar_plantilla_factura(uid_ing, {
+                            "inmueble": inm_plt,
+                            "inquilino": plt_inq.strip(),
+                            "nif_inquilino": plt_nif.strip(),
+                            "direccion_inquilino": plt_dir.strip(),
+                            "base_imponible": plt_base,
+                            "pct_iva": plt_iva,
+                            "pct_retencion": plt_ret,
+                        })
+                        if res_plt["ok"]:
+                            st.success(f"✅ Plantilla de {inm_plt} guardada")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {res_plt['error']}")
+
+
+# ================================================================
+# FUNCIÓN: GENERAR PDF FACTURA EMITIDA (ReportLab)
+# ================================================================
+def _generar_pdf_factura(perfil: dict, datos: dict, numero: str):
+    """Genera PDF de factura de renta al estilo Nolasco Capital."""
+    if not REPORTLAB_OK:
+        return None
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.colors import HexColor, white
+        from reportlab.pdfgen import canvas as rl_canvas
+        from reportlab.platypus import Table, TableStyle
+
+        buffer = io.BytesIO()
+        c = rl_canvas.Canvas(buffer, pagesize=A4)
+        w, h = A4
+        azul   = HexColor("#0F2744")
+        acento = HexColor("#185FA5")
+        gris   = HexColor("#F4F7FB")
+        borde  = HexColor("#D0DFF0")
+        verde  = HexColor("#1a7a40")
+        rojo   = HexColor("#C0392B")
+
+        # ── CABECERA ────────────────────────────────────────────
+        c.setFillColor(azul); c.rect(0, h-100, w, 100, fill=True, stroke=False)
+        c.setFillColor(acento); c.roundRect(30, h-85, 55, 55, 6, fill=True, stroke=False)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 22); c.drawCentredString(57.5, h-65, "NC")
+        c.setFont("Helvetica", 7); c.drawCentredString(57.5, h-77, "CAPITAL")
+        c.setFont("Helvetica-Bold", 20); c.drawString(100, h-50, "Nolasco Capital")
+        c.setFont("Helvetica", 9); c.drawString(100, h-65, "GRANADA  |  GESTIÓN PATRIMONIAL INMOBILIARIA")
+        c.setFont("Helvetica", 8)
+        c.drawRightString(w-30, h-45, f"Nº: {numero}")
+        c.drawRightString(w-30, h-57, f"Fecha: {datos.get('fecha','')}")
+        c.drawRightString(w-30, h-69, f"Vencimiento: {datos.get('vencimiento','')}")
+        c.setStrokeColor(acento); c.setLineWidth(3); c.line(0, h-103, w, h-103)
+
+        # ── TÍTULO ──────────────────────────────────────────────
+        y = h-130
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 14)
+        c.drawString(30, y, "FACTURA")
+        c.setFont("Helvetica", 9); c.setFillColor(HexColor("#5A7A9A"))
+        c.drawString(30, y-16, f"Arrendamiento inmobiliario — {datos.get('concepto','')}")
+
+        # ── BLOQUE EMISOR / RECEPTOR ────────────────────────────
+        y -= 45
+        # Emisor
+        c.setFillColor(gris); c.roundRect(25, y-90, (w-60)/2-5, 90, 5, fill=True, stroke=False)
+        c.setStrokeColor(borde); c.roundRect(25, y-90, (w-60)/2-5, 90, 5, fill=False, stroke=True)
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 9); c.drawString(35, y-14, "EMISOR (Arrendador)")
+        c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
+        c.drawString(35, y-28, perfil.get("nombre_fiscal",""))
+        c.drawString(35, y-40, f"NIF: {perfil.get('nif','')}")
+        c.drawString(35, y-52, perfil.get("direccion",""))
+        c.drawString(35, y-64, f"{perfil.get('cp','')} {perfil.get('ciudad','')}")
+        if perfil.get("telefono"): c.drawString(35, y-76, f"Tel: {perfil.get('telefono','')}")
+
+        # Receptor
+        mid = 30 + (w-60)/2 + 5
+        c.setFillColor(HexColor("#FFFDF0")); c.roundRect(mid, y-90, (w-60)/2-5, 90, 5, fill=True, stroke=False)
+        c.setStrokeColor(borde); c.roundRect(mid, y-90, (w-60)/2-5, 90, 5, fill=False, stroke=True)
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 9); c.drawString(mid+10, y-14, "RECEPTOR (Arrendatario)")
+        c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
+        c.drawString(mid+10, y-28, datos.get("inquilino",""))
+        c.drawString(mid+10, y-40, f"NIF: {datos.get('nif_inquilino','')}")
+        dir_inq = datos.get("direccion_inquilino","")
+        # Dividir dirección en dos líneas si es larga
+        if len(dir_inq) > 45:
+            c.drawString(mid+10, y-52, dir_inq[:45])
+            c.drawString(mid+10, y-64, dir_inq[45:90])
+        else:
+            c.drawString(mid+10, y-52, dir_inq)
+
+        # ── TABLA CONCEPTOS ─────────────────────────────────────
+        y -= 110
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 11)
+        c.drawString(30, y, "Detalle de la factura")
+        c.setStrokeColor(acento); c.setLineWidth(2); c.line(30, y-4, 230, y-4)
+        y -= 20
+
+        data_tabla = [
+            ["Concepto", "Precio ud.", "Unidades", "Subtotal", "IVA", "Retención", "Total"],
+            [
+                datos.get("concepto",""),
+                f"{datos.get('base_imponible',0):,.2f}€",
+                "1",
+                f"{datos.get('base_imponible',0):,.2f}€",
+                f"{datos.get('pct_iva',0):.0f}%",
+                f"-{datos.get('pct_retencion',0):.0f}%",
+                f"{datos.get('total',0):,.2f}€"
+            ]
+        ]
+        t = Table(data_tabla, colWidths=[165,55,45,55,30,45,55])
+        t.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),azul),
+            ("TEXTCOLOR",(0,0),(-1,0),white),
+            ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+            ("FONTSIZE",(0,0),(-1,0),8),
+            ("FONTNAME",(0,1),(-1,-1),"Helvetica"),
+            ("FONTSIZE",(0,1),(-1,-1),8),
+            ("ALIGN",(1,0),(-1,-1),"RIGHT"),
+            ("GRID",(0,0),(-1,-1),0.4,borde),
+            ("LINEBELOW",(0,0),(-1,0),2,acento),
+            ("BACKGROUND",(0,1),(-1,-1),gris),
+            ("TOPPADDING",(0,0),(-1,-1),5),
+            ("BOTTOMPADDING",(0,0),(-1,-1),5),
+            ("LEFTPADDING",(0,0),(-1,-1),6),
+        ]))
+        t.wrapOn(c, w, h); t.drawOn(c, 25, y-35)
+        y -= 55
+
+        # ── RESUMEN FISCAL ──────────────────────────────────────
+        y -= 20
+        resumen = [
+            ["Base Imponible", f"{datos.get('base_imponible',0):,.2f} €"],
+            [f"IVA {datos.get('pct_iva',0):.0f}%", f"{datos.get('importe_iva',0):,.2f} €"],
+            [f"Retención {datos.get('pct_retencion',0):.0f}%", f"−{datos.get('importe_retencion',0):,.2f} €"],
+            ["TOTAL", f"{datos.get('total',0):,.2f} €"],
+        ]
+        tabla_res = Table(resumen, colWidths=[150, 100])
+        tabla_res.setStyle(TableStyle([
+            ("FONTNAME",(0,0),(-1,-2),"Helvetica"),
+            ("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),
+            ("FONTSIZE",(0,0),(-1,-1),9),
+            ("ALIGN",(1,0),(1,-1),"RIGHT"),
+            ("GRID",(0,0),(-1,-1),0.4,borde),
+            ("BACKGROUND",(0,-1),(-1,-1),acento),
+            ("TEXTCOLOR",(0,-1),(-1,-1),white),
+            ("TOPPADDING",(0,0),(-1,-1),5),
+            ("BOTTOMPADDING",(0,0),(-1,-1),5),
+            ("LEFTPADDING",(0,0),(-1,-1),8),
+        ]))
+        tabla_res.wrapOn(c, w, h)
+        tabla_res.drawOn(c, w-285, y-80)
+        y -= 100
+
+        # ── CONDICIONES DE PAGO ─────────────────────────────────
+        if perfil.get("iban"):
+            y -= 20
+            c.setFillColor(gris); c.roundRect(25, y-45, w-50, 45, 5, fill=True, stroke=False)
+            c.setStrokeColor(borde); c.roundRect(25, y-45, w-50, 45, 5, fill=False, stroke=True)
+            c.setFillColor(azul); c.setFont("Helvetica-Bold", 9)
+            c.drawString(35, y-14, "Condiciones de pago")
+            c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
+            c.drawString(35, y-28, "TRANSFERENCIA BANCARIA A CUENTA:")
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(35, y-40, f"Nº: {perfil.get('iban','')}")
+
+        # ── FOOTER ──────────────────────────────────────────────
+        c.setFillColor(azul); c.rect(0, 0, w, 30, fill=True, stroke=False)
+        c.setFillColor(white); c.setFont("Helvetica", 7)
+        c.drawString(30, 11, "Nolasco Capital  |  Granada  |  Gestión Patrimonial Inmobiliaria")
+        c.drawRightString(w-30, 11, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+
+        c.save()
+        buffer.seek(0)
+        return buffer
+    except Exception as e:
+        print(f"Error generando PDF factura: {e}")
+        return None
