@@ -934,18 +934,7 @@ def upsert_inmueble(registro: dict, user_id: str) -> dict:
         }
         nombre_encoded = requests.utils.quote(nombre, safe='')
 
-        # 1. Intentar PATCH — actualiza si ya existe (no necesita restricción UNIQUE)
-        r_patch = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre_encoded}&user_id=eq.{user_id}",
-            headers={**h_base, "Prefer": "return=minimal"},
-            json=rec_db,
-            timeout=10
-        )
-        if r_patch.status_code in (200, 204):
-            return {"ok": True, "accion": "actualizado"}
-
-        # 2. Si el PATCH no encontró filas (204 sin efecto) o falla, hacer POST (insertar nuevo)
-        # Verificar si realmente existe antes de insertar
+        # 1. Verificar si existe primero (GET)
         r_check = requests.get(
             f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre_encoded}&user_id=eq.{user_id}&select=id",
             headers=h_base,
@@ -954,19 +943,27 @@ def upsert_inmueble(registro: dict, user_id: str) -> dict:
         existe = r_check.status_code == 200 and len(r_check.json()) > 0
 
         if existe:
-            # Ya existe pero el PATCH falló — devolver el error del PATCH
+            # 2a. Existe → PATCH
+            r_patch = requests.patch(
+                f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre_encoded}&user_id=eq.{user_id}",
+                headers={**h_base, "Prefer": "return=minimal"},
+                json=rec_db,
+                timeout=10
+            )
+            if r_patch.status_code in (200, 204):
+                return {"ok": True, "accion": "actualizado"}
             return {"ok": False, "error": f"PATCH {r_patch.status_code}: {r_patch.text[:300]}"}
-
-        # No existe → INSERT
-        r_post = requests.post(
-            f"{SUPABASE_URL}/rest/v1/inmuebles",
-            headers={**h_base, "Prefer": "return=minimal"},
-            json=rec_db,
-            timeout=10
-        )
-        if r_post.status_code in (200, 201, 204):
-            return {"ok": True, "accion": "creado"}
-        return {"ok": False, "error": f"POST {r_post.status_code}: {r_post.text[:300]}"}
+        else:
+            # 2b. No existe → INSERT
+            r_post = requests.post(
+                f"{SUPABASE_URL}/rest/v1/inmuebles",
+                headers={**h_base, "Prefer": "return=minimal"},
+                json=rec_db,
+                timeout=10
+            )
+            if r_post.status_code in (200, 201, 204):
+                return {"ok": True, "accion": "creado"}
+            return {"ok": False, "error": f"POST {r_post.status_code}: {r_post.text[:300]}"}
 
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -1213,258 +1210,5 @@ def actualizar_estado_fiscal_movimiento(user_id: str, mov_id, estado: str) -> bo
             timeout=10
         )
         return r.status_code in (200, 204)
-    except Exception:
-        return False
-
-
-# ================================================================
-# PERFIL DE USUARIO — user_profiles (ampliado con datos fiscales)
-# ================================================================
-
-def leer_perfil_usuario(user_id: str) -> dict:
-    """Lee todos los datos del perfil desde user_profiles."""
-    try:
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/user_profiles?user_id=eq.{user_id}&select=*",
-            headers=_headers(), timeout=10
-        )
-        if r.status_code == 200 and r.json():
-            return r.json()[0]
-        return {}
-    except Exception:
-        return {}
-
-
-def guardar_perfil_usuario(user_id: str, datos: dict) -> bool:
-    """
-    Guarda o actualiza datos fiscales del perfil.
-    datos puede contener: nombre_fiscal, nif, direccion, ciudad,
-    cp, telefono, iban, siguiente_numero, prefijo_factura
-    """
-    if not _validar_user_id(user_id, "guardar_perfil_usuario"):
-        return False
-    try:
-        payload = {k: v for k, v in datos.items()
-                   if k in ("nombre_fiscal","nif","direccion","ciudad",
-                            "cp","telefono","iban","siguiente_numero","prefijo_factura")}
-        payload["user_id"] = user_id
-        h = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates,return=minimal"
-        }
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/user_profiles?on_conflict=user_id",
-            headers=h, json=payload, timeout=10
-        )
-        return r.status_code in (200, 201, 204)
-    except Exception:
-        return False
-
-
-def cambiar_contrasena(access_token: str, nueva_contrasena: str) -> dict:
-    """Cambia la contraseña del usuario autenticado."""
-    try:
-        r = requests.put(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json"
-            },
-            json={"password": nueva_contrasena},
-            timeout=10
-        )
-        if r.status_code == 200:
-            return {"ok": True}
-        return {"ok": False, "error": r.json().get("msg", "Error desconocido")}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-def cambiar_email(access_token: str, nuevo_email: str) -> dict:
-    """Cambia el email del usuario autenticado."""
-    try:
-        r = requests.put(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json"
-            },
-            json={"email": nuevo_email},
-            timeout=10
-        )
-        if r.status_code == 200:
-            return {"ok": True}
-        return {"ok": False, "error": r.json().get("msg", "Error desconocido")}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-# ================================================================
-# PLANTILLAS DE FACTURA — una por inmueble
-# ================================================================
-
-def leer_plantillas_factura(user_id: str) -> pd.DataFrame:
-    """Lee todas las plantillas activas del usuario."""
-    try:
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/plantillas_factura"
-            f"?user_id=eq.{user_id}&activa=eq.true&select=*&order=inmueble.asc",
-            headers=_headers(), timeout=10
-        )
-        if r.status_code == 200 and r.json():
-            return pd.DataFrame(r.json())
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
-
-def guardar_plantilla_factura(user_id: str, datos: dict) -> dict:
-    """
-    Inserta o actualiza una plantilla por inmueble (UNIQUE user_id+inmueble).
-    datos: inmueble, inquilino, nif_inquilino, direccion_inquilino,
-           base_imponible, pct_iva, pct_retencion
-    """
-    if not _validar_user_id(user_id, "guardar_plantilla_factura"):
-        return {"ok": False, "error": "user_id inválido"}
-    try:
-        payload = {**datos, "user_id": user_id, "activa": True}
-        h = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates,return=representation"
-        }
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/plantillas_factura"
-            f"?on_conflict=user_id,inmueble",
-            headers=h, json=payload, timeout=10
-        )
-        if r.status_code in (200, 201):
-            return {"ok": True, "data": r.json()}
-        return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-# ================================================================
-# FACTURAS EMITIDAS
-# ================================================================
-
-def leer_facturas_emitidas(user_id: str) -> pd.DataFrame:
-    """Lee todas las facturas emitidas del usuario, orden desc."""
-    try:
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
-            f"?user_id=eq.{user_id}&select=*&order=fecha.desc",
-            headers=_headers(), timeout=10
-        )
-        if r.status_code == 200 and r.json():
-            df = pd.DataFrame(r.json())
-            for col in ["base_imponible","importe_iva","importe_retencion","total",
-                        "pct_iva","pct_retencion"]:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-            return df
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
-
-def crear_factura_emitida(user_id: str, datos: dict) -> dict:
-    """
-    Crea una nueva factura emitida y actualiza siguiente_numero en perfil.
-    datos: numero, fecha, vencimiento, inmueble, inquilino, nif_inquilino,
-           direccion_inquilino, concepto, base_imponible, pct_iva, importe_iva,
-           pct_retencion, importe_retencion, total, estado
-    Devuelve: {'ok': True, 'id': N} o {'ok': False, 'error': '...'}
-    """
-    if not _validar_user_id(user_id, "crear_factura_emitida"):
-        return {"ok": False, "error": "user_id inválido"}
-    try:
-        payload = {**datos, "user_id": user_id}
-        h = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/json",
-            "Prefer": "return=representation"
-        }
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/facturas_emitidas",
-            headers=h, json=payload, timeout=10
-        )
-        if r.status_code in (200, 201):
-            fac_id = r.json()[0]["id"]
-            # Incrementar siguiente_numero en user_profiles
-            perfil = leer_perfil_usuario(user_id)
-            nuevo_num = int(perfil.get("siguiente_numero", 1)) + 1
-            guardar_perfil_usuario(user_id, {"siguiente_numero": nuevo_num})
-            return {"ok": True, "id": fac_id}
-        return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-def actualizar_estado_factura(user_id: str, factura_id: int, estado: str) -> bool:
-    """
-    Actualiza estado de una factura emitida.
-    estados: 'emitida' | 'cobrada' | 'anulada'
-    """
-    if not _validar_user_id(user_id, "actualizar_estado_factura"):
-        return False
-    if estado not in ("emitida", "cobrada", "anulada"):
-        return False
-    try:
-        r = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
-            f"?id=eq.{factura_id}&user_id=eq.{user_id}",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal"
-            },
-            json={"estado": estado},
-            timeout=10
-        )
-        return r.status_code in (200, 204)
-    except Exception:
-        return False
-
-
-def guardar_pdf_factura(user_id: str, factura_id: int,
-                        numero: str, pdf_bytes: bytes) -> bool:
-    """Sube el PDF de una factura emitida a Storage y actualiza pdf_url."""
-    try:
-        ruta = f"{user_id}/{numero}.pdf"
-        h_storage = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/pdf",
-            "x-upsert": "true"
-        }
-        r_up = requests.post(
-            f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
-            headers=h_storage, data=pdf_bytes, timeout=30
-        )
-        if r_up.status_code not in (200, 201):
-            return False
-        # Actualizar pdf_url en factura
-        r_patch = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
-            f"?id=eq.{factura_id}&user_id=eq.{user_id}",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal"
-            },
-            json={"pdf_url": ruta},
-            timeout=10
-        )
-        return r_patch.status_code in (200, 204)
     except Exception:
         return False
