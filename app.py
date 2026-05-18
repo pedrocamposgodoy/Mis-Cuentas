@@ -274,7 +274,7 @@ PAGES = [
     ("📊", "Torre de Control",              "Core"),
     ("🏠", "Fichas (Benchmark)",            "Core"),
     ("📥", "Ingresos · Rentas",             "Core"),
-    ("📝", "Diario Contable",               "Core"),
+    ("📝", "Gastos",                         "Core"),
     ("💵", "Cash Flow",                     "Core"),
     ("⚡", "Suministros",                   "Core"),
     ("💰", "Fiscalidad",                    "Core"),
@@ -291,9 +291,7 @@ with st.sidebar:
     # ── LOGO (solo lectura — editar en Mi Perfil) ──────────────
     logo_bytes = st.session_state.get("sidebar_logo_bytes")
     if logo_bytes:
-        st.markdown('<div style="padding:8px 16px 4px;">', unsafe_allow_html=True)
-        st.image(logo_bytes, width=120)
-        st.markdown('</div>', unsafe_allow_html=True)
+        st.image(logo_bytes, use_container_width=True)
 
     st.markdown("""
 <div style='padding:0.8rem 1.4rem 1rem;'>
@@ -1016,7 +1014,11 @@ if menu == "Torre de Control":
     st.markdown('<div class="nc-brand-header">Torre de Control</div>', unsafe_allow_html=True)
     st.markdown('<div class="nc-brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
 
-    total_ingresos_registrados = df_mov[df_mov["Tipo"]=="Ingreso"]["Importe"].sum()
+    # Ingresos = facturas emitidas cobradas (nueva tabla) + ingresos en movimientos (legacy)
+    _df_facs_tc = leer_facturas_emitidas(st.session_state.user_id)
+    _ing_facturas = _df_facs_tc[_df_facs_tc["estado"]=="cobrada"]["total"].sum() if not _df_facs_tc.empty else 0
+    _ing_movimientos = df_mov[df_mov["Tipo"]=="Ingreso"]["Importe"].sum()
+    total_ingresos_registrados = _ing_facturas + _ing_movimientos
     total_gastos_registrados   = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
     balance_real  = total_ingresos_registrados - total_gastos_registrados
     margen_real   = (balance_real / total_ingresos_registrados * 100) if total_ingresos_registrados > 0 else 0
@@ -1468,10 +1470,10 @@ elif menu == "Auditoría Mantenimiento":
 # Registro de ingresos y gastos, parseo inteligente de texto
 # Deps: df_inm, df_mov, guardar_movimientos(), parsear_ingresos()
 # ================================================================
-elif menu == "Diario Contable":
-    st.markdown('<div class="nc-brand-header">Diario Contable</div>',unsafe_allow_html=True)
-    st.markdown('<div class="nc-brand-sub">Registro de operaciones · Ingresos · Gastos</div>',unsafe_allow_html=True)
-    tab1,tab2,tab3,tab4=st.tabs(["📋 Registro de Operaciones","📥 Registrar Ingresos","📤 Registrar Gastos","💳 Gastos Fijos"])
+elif menu == "Gastos":
+    st.markdown('<div class="nc-brand-header">Gastos</div>',unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Registro de gastos · Facturas recibidas</div>',unsafe_allow_html=True)
+    tab1,tab2,tab3=st.tabs(["📋 Registro de Gastos","📤 Registrar Gasto","💳 Gastos Fijos"])
 
     with tab1:
         # ── IMPORTS LOCALES ────────────────────────────────────────────
@@ -1979,77 +1981,6 @@ elif menu == "Diario Contable":
                         st.error("❌ Error al guardar en Supabase. Inténtalo de nuevo.")
 
     with tab2:
-        st.markdown('<div class="nc-ingresos-box">', unsafe_allow_html=True)
-        st.markdown('<div class="nc-section-title">📥 Registrar Ingresos del Mes</div>', unsafe_allow_html=True)
-        col_quick1,col_quick2=st.columns([2,1])
-        with col_quick1:
-            st.markdown(f"""<div style="font-size:0.82rem;color:#5A7A9A;padding:8px 0;">
-            <b>Ejemplos que entiendo:</b><br>
-            · "Ha pagado solo Huerto 1" · "Todos han pagado"<br>
-            · "Todos han pagado menos Abarqueros" · "Falta Huerto 2 por pagar"
-            </div>""",unsafe_allow_html=True)
-        with col_quick2:
-            if st.button("⚡ Registrar TODAS las rentas",type="primary",use_container_width=True,key="registrar_todas_rentas"):
-                hoy=datetime.now().strftime("%Y-%m-%d")
-                nuevos_ingresos=[{"Fecha":hoy,"Apartamento":inm["Nombre"],"Concepto":"Renta Mensual","Categoría":"Ingresos","Tipo":"Ingreso","Importe":inm["Renta"],"Deducible":"N"} for _,inm in df_inm.iterrows()]
-                df_nuevos=pd.DataFrame(nuevos_ingresos)
-                df_completo=pd.concat([st.session_state.df_mov_persistent,df_nuevos],ignore_index=True)
-                df_completo["Fecha"]=pd.to_datetime(df_completo["Fecha"],errors="coerce")
-                df_completo=df_completo.sort_values("Fecha",ascending=False).reset_index(drop=True)
-                df_completo["Fecha"]=df_completo["Fecha"].dt.strftime("%Y-%m-%d")
-                st.session_state.df_mov_persistent=df_completo
-                guardar_movimientos_completo(df_completo,user_id=st.session_state.get("user_id",""))
-                st.success(f"✓ Registradas {len(nuevos_ingresos)} rentas por {df_nuevos['Importe'].sum():,.0f}€")
-
-        st.markdown("""
-        <div style="background:#f8fafc;border:1.5px solid #d0dff0;border-radius:12px;
-                    padding:16px 18px 12px;margin:12px 0 16px;">
-        """, unsafe_allow_html=True)
-        texto_ingresos=st.text_area("¿Quién ha pagado este mes?",placeholder="Ha pagado solo Huerto 1...",height=90,key="txt_ingresos")
-        if st.button("🔍 Interpretar",type="primary",key="procesar_ing"):
-            if texto_ingresos.strip():
-                registros=parsear_ingresos(texto_ingresos,df_inm)
-                if registros:
-                    st.session_state["ingresos_pendientes"]=registros; st.session_state["ingresos_editados"]=registros.copy()
-                else:
-                    st.warning("⚠️ No entendí quién pagó. Prueba: 'Ha pagado Huerto 1' o 'Todos han pagado'")
-            else:
-                st.warning("Escribe algo primero")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        if "ingresos_pendientes" in st.session_state and st.session_state["ingresos_pendientes"]:
-            st.markdown("---"); st.markdown("**✏️ Revisa y corrige si es necesario — luego guarda:**")
-            registros=st.session_state["ingresos_pendientes"]; editados=[]
-            for i,r in enumerate(registros):
-                color="#EDF7F1" if r["Estado"]=="Cobrado" else "#FDECEA"
-                bcolor=GREEN if r["Estado"]=="Cobrado" else RED
-                icon="✅" if r["Estado"]=="Cobrado" else "⏳"
-                with st.container():
-                    st.markdown(f'<div style="background:{color};border-left:4px solid {bcolor};padding:0.6rem 1rem;border-radius:6px;margin-bottom:4px;"><b>{icon} {r["Apartamento"]}</b></div>',unsafe_allow_html=True)
-                    c1,c2,c3=st.columns([2,1,1])
-                    with c1: nuevo_importe=st.number_input("Importe (€)",value=float(r["Importe"]),min_value=0.0,step=10.0,key=f"ing_imp_{i}",label_visibility="collapsed")
-                    with c2: nuevo_estado=st.selectbox("Estado",["Cobrado","Pendiente"],index=0 if r["Estado"]=="Cobrado" else 1,key=f"ing_est_{i}",label_visibility="collapsed")
-                    with c3: incluir=st.checkbox("Incluir",value=True,key=f"ing_inc_{i}")
-                    if incluir:
-                        fila=r.copy(); fila["Importe"]=nuevo_importe; fila["Estado"]=nuevo_estado; editados.append(fila)
-            st.session_state["ingresos_editados"]=editados
-            col_btn1,col_btn2=st.columns(2)
-            with col_btn1:
-                if st.button("💾 Guardar",type="primary",key="guardar_ingresos"):
-                    a_guardar=[r.copy() for r in st.session_state.get("ingresos_editados",[])]
-                    for r in a_guardar: r.pop("Estado",None)
-                    if a_guardar:
-                        guardar_movimientos(a_guardar)
-                        st.session_state.df_mov_persistent=leer_movimientos(st.session_state.get("user_id",""))
-                        st.session_state.pop("ingresos_pendientes",None); st.session_state.pop("ingresos_editados",None)
-                        st.success(f"✅ {len(a_guardar)} ingreso(s) guardados"); st.rerun()
-                    else: st.warning("No has seleccionado ningún registro")
-            with col_btn2:
-                if st.button("🗑️ Cancelar",key="cancelar_ingresos"):
-                    st.session_state.pop("ingresos_pendientes",None); st.session_state.pop("ingresos_editados",None); st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with tab3:
         if "gasto_guardado" not in st.session_state: st.session_state.gasto_guardado=False
         if st.session_state.gasto_guardado:
             st.success("✅ Gasto guardado correctamente.")
@@ -2077,7 +2008,7 @@ elif menu == "Diario Contable":
                     st.session_state.df_mov_persistent=leer_movimientos(st.session_state.get("user_id",""))
                     st.session_state.gasto_guardado=True; st.rerun()
 
-    with tab4:
+    with tab3:
         st.markdown('<div class="nc-section-title">💳 Gastos Fijos Mensuales</div>',unsafe_allow_html=True)
         uid=st.session_state.get("user_id","")
         if "df_gf" not in st.session_state or st.session_state.get("reload_gf",False):
@@ -2163,7 +2094,8 @@ elif menu == "Diario Contable":
 # ================================================================
 elif menu == "Cash Flow":
     df_gastos_rec_cf = leer_gastos_recurrentes(user_id=st.session_state.user_id)
-    render_cashflow(df_mov, df_inm, df_gastos_rec_cf, safe_float)
+    _df_facs_cf = leer_facturas_emitidas(st.session_state.user_id)
+    render_cashflow(df_mov, df_inm, df_gastos_rec_cf, safe_float, df_facturas=_df_facs_cf)
 # ================================================================
 # PANTALLA: SUMINISTROS
 # Auditoría de potencia eléctrica, comparador de tarifas
@@ -3017,7 +2949,7 @@ elif menu == "Ingresos · Rentas":
         st.stop()
 
     tab_generar, tab_historial, tab_plantillas = st.tabs([
-        "🧾 Generar Factura", "📋 Historial", "⚙️ Plantillas"
+        "🧾 Generar Factura", "📋 Diario de Ingresos", "⚙️ Plantillas"
     ])
 
     # ── TAB 1: GENERAR FACTURA ─────────────────────────────────
@@ -3238,18 +3170,57 @@ elif menu == "Ingresos · Rentas":
                 with st.expander("", expanded=False, key=f"fac_exp_{fac['id']}"):
                     cf1, cf2, cf3 = st.columns(3)
                     with cf1:
+                        # Edición campos clave
+                        nueva_fecha = st.date_input("Fecha factura",
+                            value=pd.to_datetime(fac.get("fecha", date.today())).date(),
+                            key=f"fac_fecha_{fac['id']}")
+                        nueva_base = st.number_input("Base imponible (€)",
+                            value=float(fac.get("base_imponible",0)),
+                            min_value=0.0, step=1.0, format="%.2f",
+                            key=f"fac_base_{fac['id']}")
+                        nuevo_concepto = st.text_input("Concepto",
+                            value=str(fac.get("concepto","")),
+                            key=f"fac_con_{fac['id']}")
                         nuevo_estado = st.selectbox(
                             "Estado",
                             ["emitida","cobrada","anulada"],
                             index=["emitida","cobrada","anulada"].index(est) if est in ["emitida","cobrada","anulada"] else 0,
                             key=f"fac_est_{fac['id']}"
                         )
-                        if st.button("💾 Actualizar estado", key=f"fac_upd_{fac['id']}",
-                                     use_container_width=True):
-                            if actualizar_estado_factura(uid_ing, int(fac["id"]), nuevo_estado):
-                                st.success("✅ Estado actualizado"); st.rerun()
+                        if st.button("💾 Guardar cambios", key=f"fac_upd_{fac['id']}",
+                                     use_container_width=True, type="primary"):
+                            import requests as _rq
+                            from supabase_db import SUPABASE_URL, SUPABASE_KEY
+                            _pct_iva = float(fac.get("pct_iva",0))
+                            _pct_ret = float(fac.get("pct_retencion",0))
+                            _imp_iva = round(nueva_base * _pct_iva / 100, 2)
+                            _imp_ret = round(nueva_base * _pct_ret / 100, 2)
+                            _total   = round(nueva_base + _imp_iva - _imp_ret, 2)
+                            _patch = {
+                                "fecha": nueva_fecha.strftime("%Y-%m-%d"),
+                                "base_imponible": nueva_base,
+                                "importe_iva": _imp_iva,
+                                "importe_retencion": _imp_ret,
+                                "total": _total,
+                                "concepto": nuevo_concepto,
+                                "estado": nuevo_estado,
+                            }
+                            _r = _rq.patch(
+                                f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
+                                f"?id=eq.{fac['id']}&user_id=eq.{uid_ing}",
+                                headers={
+                                    "apikey": SUPABASE_KEY,
+                                    "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                                    "Content-Type": "application/json",
+                                    "Prefer": "return=minimal"
+                                },
+                                json=_patch, timeout=10
+                            )
+                            if _r.status_code in (200, 204):
+                                st.success("✅ Factura actualizada correctamente")
+                                st.rerun()
                             else:
-                                st.error("❌ Error actualizando estado")
+                                st.error(f"❌ Error {_r.status_code}: {_r.text[:100]}")
                     with cf2:
                         if fac.get("pdf_url"):
                             url_pdf = obtener_url_factura(uid_ing, str(fac["pdf_url"]))
