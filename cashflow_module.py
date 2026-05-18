@@ -275,6 +275,36 @@ def _render_grafico(df_hist: pd.DataFrame, df_proy: pd.DataFrame):
     st.plotly_chart(fig, use_container_width=True)
 
 
+def _render_kpis(kpis: dict):
+    c1, c2, c3, c4 = st.columns(4)
+    cards = [
+        (c1, "Saldo medio mensual", kpis["saldo_medio"],
+         "#185FA5", kpis["saldo_medio"] >= 0),
+        (c2, "Mejor mes del año", kpis["mejor_mes"],
+         "#1a7a40", True),
+        (c3, "Peor mes del año", kpis["peor_mes"],
+         "#C0392B", kpis["peor_mes"] >= 0),
+        (c4, "Tendencia anual", kpis["tendencia"],
+         "#1a7a40" if kpis["tendencia"] >= 0 else "#C0392B",
+         kpis["tendencia"] >= 0),
+    ]
+    for col, label, valor, color, positivo in cards:
+        flecha = "▲" if positivo else "▼"
+        col.markdown(f"""
+        <div style="background:#fff;border-radius:14px;padding:16px 18px;
+                    box-shadow:0 2px 12px rgba(0,0,0,0.06);
+                    border:0.5px solid rgba(0,0,0,0.05);height:100%">
+            <p style="font-size:10px;font-weight:600;letter-spacing:0.08em;
+                      text-transform:uppercase;color:#9CA3AF;margin:0 0 6px">{label}</p>
+            <p style="font-family:'DM Serif Display',serif;font-size:1.5rem;font-weight:700;
+                      color:{color};margin:0;line-height:1">{flecha} {abs(valor):,.0f} €</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# ──────────────────────────────────────────────────────────────
+# TABLA MES A MES
+# ──────────────────────────────────────────────────────────────
 def _render_tabla(df_hist: pd.DataFrame, df_proy: pd.DataFrame):
     st.markdown('<div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;'
                 'text-transform:uppercase;color:#9CA3AF;margin:20px 0 8px">Detalle mensual</div>',
