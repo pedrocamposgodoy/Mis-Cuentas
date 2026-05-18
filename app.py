@@ -2967,6 +2967,9 @@ elif menu == "Ingresos · Rentas":
                                     key="ing_inm_sel")
             plantilla = df_plantillas[df_plantillas["inmueble"] == inm_sel].iloc[0]
 
+            # Key única por inmueble — fuerza re-render al cambiar inmueble
+            _k = inm_sel.replace(" ","_").replace(".","")[:20]
+
             # Datos pre-rellenados de la plantilla
             col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
@@ -2974,16 +2977,16 @@ elif menu == "Ingresos · Rentas":
                              "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
                 mes_fac = st.selectbox("Mes de la renta", meses_es,
                                         index=datetime.now().month - 1,
-                                        key="ing_mes")
+                                        key=f"ing_mes_{_k}")
                 año_fac = st.number_input("Año", value=datetime.now().year,
                                            min_value=2020, max_value=2030,
-                                           key="ing_año")
+                                           key=f"ing_año_{_k}")
             with col_f2:
                 fecha_fac = st.date_input("Fecha factura",
-                                           value=date.today(), key="ing_fecha")
+                                           value=date.today(), key=f"ing_fecha_{_k}")
             with col_f3:
                 fecha_venc = st.date_input("Fecha vencimiento",
-                                            value=date.today(), key="ing_venc")
+                                            value=date.today(), key=f"ing_venc_{_k}")
 
             st.markdown("---")
 
@@ -2991,23 +2994,23 @@ elif menu == "Ingresos · Rentas":
             col_d1, col_d2 = st.columns(2)
             with col_d1:
                 st.markdown("**Inquilino**")
-                inquilino = st.text_input("Nombre", value=str(plantilla.get("inquilino","")),
-                                           key="ing_inq")
-                nif_inq = st.text_input("NIF", value=str(plantilla.get("nif_inquilino","")),
-                                         key="ing_nif")
-                dir_inq = st.text_area("Dirección", value=str(plantilla.get("direccion_inquilino","")),
-                                        key="ing_dir", height=80)
+                inquilino = st.text_input("Nombre", value=str(plantilla.get("inquilino","") or ""),
+                                           key=f"ing_inq_{_k}")
+                nif_inq = st.text_input("NIF", value=str(plantilla.get("nif_inquilino","") or ""),
+                                         key=f"ing_nif_{_k}")
+                dir_inq = st.text_area("Dirección", value=str(plantilla.get("direccion_inquilino","") or ""),
+                                        key=f"ing_dir_{_k}", height=80)
             with col_d2:
                 st.markdown("**Importes**")
                 base = st.number_input("Base imponible (€)",
-                    value=float(plantilla.get("base_imponible",0)),
-                    min_value=0.0, step=10.0, format="%.2f", key="ing_base")
+                    value=float(plantilla.get("base_imponible",0) or 0),
+                    min_value=0.0, step=10.0, format="%.2f", key=f"ing_base_{_k}")
                 pct_iva = st.number_input("IVA (%)",
-                    value=float(plantilla.get("pct_iva",0)),
-                    min_value=0.0, max_value=21.0, step=1.0, key="ing_iva")
+                    value=float(plantilla.get("pct_iva",0) or 0),
+                    min_value=0.0, max_value=21.0, step=1.0, key=f"ing_iva_{_k}")
                 pct_ret = st.number_input("Retención IRPF (%)",
-                    value=float(plantilla.get("pct_retencion",0)),
-                    min_value=0.0, max_value=25.0, step=1.0, key="ing_ret")
+                    value=float(plantilla.get("pct_retencion",0) or 0),
+                    min_value=0.0, max_value=25.0, step=1.0, key=f"ing_ret_{_k}")
 
                 imp_iva = round(base * pct_iva / 100, 2)
                 imp_ret = round(base * pct_ret / 100, 2)
