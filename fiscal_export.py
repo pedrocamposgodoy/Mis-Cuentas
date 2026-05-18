@@ -1042,9 +1042,10 @@ def importar_excel_asesor(archivo_excel, user_id, upsert_inmueble_fn,
     # ── Procesar cada inmueble ───────────────────────────────────
     import pandas as _pd
     hoy = datetime.now().strftime("%Y-%m-%d")
-    creados      = []
-    actualizados = []
+    creados           = []
+    actualizados      = []
     movimientos_nuevos = []
+    errores_upsert    = []
 
     for nombre in nombres_inmuebles:
         d = datos[nombre]
@@ -1108,11 +1109,16 @@ def importar_excel_asesor(archivo_excel, user_id, upsert_inmueble_fn,
         # Upsert en Supabase
         try:
             res = upsert_inmueble_fn(registro, user_id)
-            if res.get("accion") == "creado":
+            if res.get("ok") is False:
+                # Guardar error para reportarlo
+                errores_upsert.append(f"{nombre}: {res.get('error','error desconocido')}")
+                actualizados.append(nombre)
+            elif res.get("accion") == "creado":
                 creados.append(nombre)
             else:
                 actualizados.append(nombre)
         except Exception as e:
+            errores_upsert.append(f"{nombre}: excepción — {str(e)}")
             actualizados.append(nombre)
 
         # Movimientos de reparación desde hojas individuales
@@ -1158,6 +1164,7 @@ def importar_excel_asesor(archivo_excel, user_id, upsert_inmueble_fn,
         "actualizados": actualizados,
         "movimientos":  len(movimientos_nuevos),
         "total":        len(creados) + len(actualizados),
+        "errores":      errores_upsert,
     }
 
 
