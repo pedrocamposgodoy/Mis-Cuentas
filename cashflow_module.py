@@ -227,18 +227,24 @@ def _render_grafico(df_hist: pd.DataFrame, df_proy: pd.DataFrame):
         line_width=1
     )
 
-    # ── SEPARADOR real/proyección ────────────────────────────
+    # ── SEPARADOR real/proyección (add_shape — compatible eje categórico) ──
     if len(df_hist) > 0 and len(df_proy) > 0:
-        sep_x = MESES[int(df_hist.iloc[-1]["mes"]) - 1]
-        fig.add_vline(
-            x=sep_x,
-            line_dash="dot",
-            line_color="rgba(0,0,0,0.2)",
-            line_width=1.5,
-            annotation_text="← Real | Estimado →",
-            annotation_position="top",
-            annotation_font_size=10,
-            annotation_font_color="#9CA3AF"
+        total_meses = len(df_hist) + len(df_proy)
+        x_rel = (len(df_hist) - 0.5) / total_meses
+        fig.add_shape(
+            type="line",
+            xref="paper", yref="paper",
+            x0=x_rel, x1=x_rel,
+            y0=0, y1=1,
+            line=dict(color="rgba(0,0,0,0.18)", width=1.5, dash="dash"),
+        )
+        fig.add_annotation(
+            xref="paper", yref="paper",
+            x=x_rel + 0.01, y=0.97,
+            text="← Real | Estimado →",
+            showarrow=False,
+            font=dict(size=10, color="#9CA3AF"),
+            xanchor="left",
         )
 
     fig.update_layout(
