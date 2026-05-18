@@ -2568,7 +2568,8 @@ elif menu == "Datos de la Cartera":
             st.markdown("### 🏠 Características")
             col3,col4,col5=st.columns(3)
             with col3:
-                m2=st.number_input("M² Construidos *",value=safe_float(datos.get("M2_Construidos"),80.0),min_value=10.0,step=5.0)
+                _m2_val=max(10.0,safe_float(datos.get("M2_Construidos"),80.0))
+                m2=st.number_input("M² Construidos *",value=_m2_val,min_value=0.0,step=5.0)
                 habitaciones=st.number_input("Habitaciones *",value=safe_int(datos.get("Habitaciones"),2),min_value=1,max_value=10)
                 planta=st.number_input("Planta",value=safe_int(datos.get("Planta"),1),min_value=0,max_value=20)
             with col4:
