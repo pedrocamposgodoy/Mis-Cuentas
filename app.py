@@ -596,6 +596,165 @@ def analisis_sensibilidad_renta(renta_actual, gastos_anuales, valor_construccion
 # ================================================================
 # SECCIÓN 10 — GENERADOR DE PDF (Modelo 100)
 # ================================================================
+def _generar_pdf_factura(perfil: dict, datos: dict, numero: str):
+    """Genera PDF de factura de renta al estilo Nolasco Capital."""
+    if not REPORTLAB_OK:
+        return None
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.colors import HexColor, white
+        from reportlab.pdfgen import canvas as rl_canvas
+        from reportlab.platypus import Table, TableStyle
+
+        buffer = io.BytesIO()
+        c = rl_canvas.Canvas(buffer, pagesize=A4)
+        w, h = A4
+        azul   = HexColor("#0F2744")
+        acento = HexColor("#185FA5")
+        gris   = HexColor("#F4F7FB")
+        borde  = HexColor("#D0DFF0")
+        verde  = HexColor("#1a7a40")
+        rojo   = HexColor("#C0392B")
+
+        # ── CABECERA ────────────────────────────────────────────
+        c.setFillColor(azul); c.rect(0, h-100, w, 100, fill=True, stroke=False)
+        c.setFillColor(acento); c.roundRect(30, h-85, 55, 55, 6, fill=True, stroke=False)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 22); c.drawCentredString(57.5, h-65, "NC")
+        c.setFont("Helvetica", 7); c.drawCentredString(57.5, h-77, "CAPITAL")
+        c.setFont("Helvetica-Bold", 20); c.drawString(100, h-50, "Nolasco Capital")
+        c.setFont("Helvetica", 9); c.drawString(100, h-65, "GRANADA  |  GESTIÓN PATRIMONIAL INMOBILIARIA")
+        c.setFont("Helvetica", 8)
+        c.drawRightString(w-30, h-45, f"Nº: {numero}")
+        c.drawRightString(w-30, h-57, f"Fecha: {datos.get('fecha','')}")
+        c.drawRightString(w-30, h-69, f"Vencimiento: {datos.get('vencimiento','')}")
+        c.setStrokeColor(acento); c.setLineWidth(3); c.line(0, h-103, w, h-103)
+
+        # ── TÍTULO ──────────────────────────────────────────────
+        y = h-130
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 14)
+        c.drawString(30, y, "FACTURA")
+        c.setFont("Helvetica", 9); c.setFillColor(HexColor("#5A7A9A"))
+        c.drawString(30, y-16, f"Arrendamiento inmobiliario — {datos.get('concepto','')}")
+
+        # ── BLOQUE EMISOR / RECEPTOR ────────────────────────────
+        y -= 45
+        # Emisor
+        c.setFillColor(gris); c.roundRect(25, y-90, (w-60)/2-5, 90, 5, fill=True, stroke=False)
+        c.setStrokeColor(borde); c.roundRect(25, y-90, (w-60)/2-5, 90, 5, fill=False, stroke=True)
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 9); c.drawString(35, y-14, "EMISOR (Arrendador)")
+        c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
+        c.drawString(35, y-28, perfil.get("nombre_fiscal",""))
+        c.drawString(35, y-40, f"NIF: {perfil.get('nif','')}")
+        c.drawString(35, y-52, perfil.get("direccion",""))
+        c.drawString(35, y-64, f"{perfil.get('cp','')} {perfil.get('ciudad','')}")
+        if perfil.get("telefono"): c.drawString(35, y-76, f"Tel: {perfil.get('telefono','')}")
+
+        # Receptor
+        mid = 30 + (w-60)/2 + 5
+        c.setFillColor(HexColor("#FFFDF0")); c.roundRect(mid, y-90, (w-60)/2-5, 90, 5, fill=True, stroke=False)
+        c.setStrokeColor(borde); c.roundRect(mid, y-90, (w-60)/2-5, 90, 5, fill=False, stroke=True)
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 9); c.drawString(mid+10, y-14, "RECEPTOR (Arrendatario)")
+        c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
+        c.drawString(mid+10, y-28, datos.get("inquilino",""))
+        c.drawString(mid+10, y-40, f"NIF: {datos.get('nif_inquilino','')}")
+        dir_inq = datos.get("direccion_inquilino","")
+        # Dividir dirección en dos líneas si es larga
+        if len(dir_inq) > 45:
+            c.drawString(mid+10, y-52, dir_inq[:45])
+            c.drawString(mid+10, y-64, dir_inq[45:90])
+        else:
+            c.drawString(mid+10, y-52, dir_inq)
+
+        # ── TABLA CONCEPTOS ─────────────────────────────────────
+        y -= 110
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 11)
+        c.drawString(30, y, "Detalle de la factura")
+        c.setStrokeColor(acento); c.setLineWidth(2); c.line(30, y-4, 230, y-4)
+        y -= 20
+
+        data_tabla = [
+            ["Concepto", "Precio ud.", "Unidades", "Subtotal", "IVA", "Retención", "Total"],
+            [
+                datos.get("concepto",""),
+                f"{datos.get('base_imponible',0):,.2f}€",
+                "1",
+                f"{datos.get('base_imponible',0):,.2f}€",
+                f"{datos.get('pct_iva',0):.0f}%",
+                f"-{datos.get('pct_retencion',0):.0f}%",
+                f"{datos.get('total',0):,.2f}€"
+            ]
+        ]
+        t = Table(data_tabla, colWidths=[165,55,45,55,30,45,55])
+        t.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),azul),
+            ("TEXTCOLOR",(0,0),(-1,0),white),
+            ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+            ("FONTSIZE",(0,0),(-1,0),8),
+            ("FONTNAME",(0,1),(-1,-1),"Helvetica"),
+            ("FONTSIZE",(0,1),(-1,-1),8),
+            ("ALIGN",(1,0),(-1,-1),"RIGHT"),
+            ("GRID",(0,0),(-1,-1),0.4,borde),
+            ("LINEBELOW",(0,0),(-1,0),2,acento),
+            ("BACKGROUND",(0,1),(-1,-1),gris),
+            ("TOPPADDING",(0,0),(-1,-1),5),
+            ("BOTTOMPADDING",(0,0),(-1,-1),5),
+            ("LEFTPADDING",(0,0),(-1,-1),6),
+        ]))
+        t.wrapOn(c, w, h); t.drawOn(c, 25, y-35)
+        y -= 55
+
+        # ── RESUMEN FISCAL ──────────────────────────────────────
+        y -= 20
+        resumen = [
+            ["Base Imponible", f"{datos.get('base_imponible',0):,.2f} €"],
+            [f"IVA {datos.get('pct_iva',0):.0f}%", f"{datos.get('importe_iva',0):,.2f} €"],
+            [f"Retención {datos.get('pct_retencion',0):.0f}%", f"−{datos.get('importe_retencion',0):,.2f} €"],
+            ["TOTAL", f"{datos.get('total',0):,.2f} €"],
+        ]
+        tabla_res = Table(resumen, colWidths=[150, 100])
+        tabla_res.setStyle(TableStyle([
+            ("FONTNAME",(0,0),(-1,-2),"Helvetica"),
+            ("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),
+            ("FONTSIZE",(0,0),(-1,-1),9),
+            ("ALIGN",(1,0),(1,-1),"RIGHT"),
+            ("GRID",(0,0),(-1,-1),0.4,borde),
+            ("BACKGROUND",(0,-1),(-1,-1),acento),
+            ("TEXTCOLOR",(0,-1),(-1,-1),white),
+            ("TOPPADDING",(0,0),(-1,-1),5),
+            ("BOTTOMPADDING",(0,0),(-1,-1),5),
+            ("LEFTPADDING",(0,0),(-1,-1),8),
+        ]))
+        tabla_res.wrapOn(c, w, h)
+        tabla_res.drawOn(c, w-285, y-80)
+        y -= 100
+
+        # ── CONDICIONES DE PAGO ─────────────────────────────────
+        if perfil.get("iban"):
+            y -= 20
+            c.setFillColor(gris); c.roundRect(25, y-45, w-50, 45, 5, fill=True, stroke=False)
+            c.setStrokeColor(borde); c.roundRect(25, y-45, w-50, 45, 5, fill=False, stroke=True)
+            c.setFillColor(azul); c.setFont("Helvetica-Bold", 9)
+            c.drawString(35, y-14, "Condiciones de pago")
+            c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
+            c.drawString(35, y-28, "TRANSFERENCIA BANCARIA A CUENTA:")
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(35, y-40, f"Nº: {perfil.get('iban','')}")
+
+        # ── FOOTER ──────────────────────────────────────────────
+        c.setFillColor(azul); c.rect(0, 0, w, 30, fill=True, stroke=False)
+        c.setFillColor(white); c.setFont("Helvetica", 7)
+        c.drawString(30, 11, "Nolasco Capital  |  Granada  |  Gestión Patrimonial Inmobiliaria")
+        c.drawRightString(w-30, 11, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+
+        c.save()
+        buffer.seek(0)
+        return buffer
+    except Exception as e:
+        print(f"Error generando PDF factura: {e}")
+        return None
+
+
 def generar_pdf_modelo100(inmueble_data, modelo):
     if not REPORTLAB_OK: return None
     buffer = io.BytesIO()
@@ -3195,160 +3354,3 @@ elif menu == "Ingresos · Rentas":
 # ================================================================
 # FUNCIÓN: GENERAR PDF FACTURA EMITIDA (ReportLab)
 # ================================================================
-def _generar_pdf_factura(perfil: dict, datos: dict, numero: str):
-    """Genera PDF de factura de renta al estilo Nolasco Capital."""
-    if not REPORTLAB_OK:
-        return None
-    try:
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.colors import HexColor, white
-        from reportlab.pdfgen import canvas as rl_canvas
-        from reportlab.platypus import Table, TableStyle
-
-        buffer = io.BytesIO()
-        c = rl_canvas.Canvas(buffer, pagesize=A4)
-        w, h = A4
-        azul   = HexColor("#0F2744")
-        acento = HexColor("#185FA5")
-        gris   = HexColor("#F4F7FB")
-        borde  = HexColor("#D0DFF0")
-        verde  = HexColor("#1a7a40")
-        rojo   = HexColor("#C0392B")
-
-        # ── CABECERA ────────────────────────────────────────────
-        c.setFillColor(azul); c.rect(0, h-100, w, 100, fill=True, stroke=False)
-        c.setFillColor(acento); c.roundRect(30, h-85, 55, 55, 6, fill=True, stroke=False)
-        c.setFillColor(white)
-        c.setFont("Helvetica-Bold", 22); c.drawCentredString(57.5, h-65, "NC")
-        c.setFont("Helvetica", 7); c.drawCentredString(57.5, h-77, "CAPITAL")
-        c.setFont("Helvetica-Bold", 20); c.drawString(100, h-50, "Nolasco Capital")
-        c.setFont("Helvetica", 9); c.drawString(100, h-65, "GRANADA  |  GESTIÓN PATRIMONIAL INMOBILIARIA")
-        c.setFont("Helvetica", 8)
-        c.drawRightString(w-30, h-45, f"Nº: {numero}")
-        c.drawRightString(w-30, h-57, f"Fecha: {datos.get('fecha','')}")
-        c.drawRightString(w-30, h-69, f"Vencimiento: {datos.get('vencimiento','')}")
-        c.setStrokeColor(acento); c.setLineWidth(3); c.line(0, h-103, w, h-103)
-
-        # ── TÍTULO ──────────────────────────────────────────────
-        y = h-130
-        c.setFillColor(azul); c.setFont("Helvetica-Bold", 14)
-        c.drawString(30, y, "FACTURA")
-        c.setFont("Helvetica", 9); c.setFillColor(HexColor("#5A7A9A"))
-        c.drawString(30, y-16, f"Arrendamiento inmobiliario — {datos.get('concepto','')}")
-
-        # ── BLOQUE EMISOR / RECEPTOR ────────────────────────────
-        y -= 45
-        # Emisor
-        c.setFillColor(gris); c.roundRect(25, y-90, (w-60)/2-5, 90, 5, fill=True, stroke=False)
-        c.setStrokeColor(borde); c.roundRect(25, y-90, (w-60)/2-5, 90, 5, fill=False, stroke=True)
-        c.setFillColor(azul); c.setFont("Helvetica-Bold", 9); c.drawString(35, y-14, "EMISOR (Arrendador)")
-        c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
-        c.drawString(35, y-28, perfil.get("nombre_fiscal",""))
-        c.drawString(35, y-40, f"NIF: {perfil.get('nif','')}")
-        c.drawString(35, y-52, perfil.get("direccion",""))
-        c.drawString(35, y-64, f"{perfil.get('cp','')} {perfil.get('ciudad','')}")
-        if perfil.get("telefono"): c.drawString(35, y-76, f"Tel: {perfil.get('telefono','')}")
-
-        # Receptor
-        mid = 30 + (w-60)/2 + 5
-        c.setFillColor(HexColor("#FFFDF0")); c.roundRect(mid, y-90, (w-60)/2-5, 90, 5, fill=True, stroke=False)
-        c.setStrokeColor(borde); c.roundRect(mid, y-90, (w-60)/2-5, 90, 5, fill=False, stroke=True)
-        c.setFillColor(azul); c.setFont("Helvetica-Bold", 9); c.drawString(mid+10, y-14, "RECEPTOR (Arrendatario)")
-        c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
-        c.drawString(mid+10, y-28, datos.get("inquilino",""))
-        c.drawString(mid+10, y-40, f"NIF: {datos.get('nif_inquilino','')}")
-        dir_inq = datos.get("direccion_inquilino","")
-        # Dividir dirección en dos líneas si es larga
-        if len(dir_inq) > 45:
-            c.drawString(mid+10, y-52, dir_inq[:45])
-            c.drawString(mid+10, y-64, dir_inq[45:90])
-        else:
-            c.drawString(mid+10, y-52, dir_inq)
-
-        # ── TABLA CONCEPTOS ─────────────────────────────────────
-        y -= 110
-        c.setFillColor(azul); c.setFont("Helvetica-Bold", 11)
-        c.drawString(30, y, "Detalle de la factura")
-        c.setStrokeColor(acento); c.setLineWidth(2); c.line(30, y-4, 230, y-4)
-        y -= 20
-
-        data_tabla = [
-            ["Concepto", "Precio ud.", "Unidades", "Subtotal", "IVA", "Retención", "Total"],
-            [
-                datos.get("concepto",""),
-                f"{datos.get('base_imponible',0):,.2f}€",
-                "1",
-                f"{datos.get('base_imponible',0):,.2f}€",
-                f"{datos.get('pct_iva',0):.0f}%",
-                f"-{datos.get('pct_retencion',0):.0f}%",
-                f"{datos.get('total',0):,.2f}€"
-            ]
-        ]
-        t = Table(data_tabla, colWidths=[165,55,45,55,30,45,55])
-        t.setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,0),azul),
-            ("TEXTCOLOR",(0,0),(-1,0),white),
-            ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
-            ("FONTSIZE",(0,0),(-1,0),8),
-            ("FONTNAME",(0,1),(-1,-1),"Helvetica"),
-            ("FONTSIZE",(0,1),(-1,-1),8),
-            ("ALIGN",(1,0),(-1,-1),"RIGHT"),
-            ("GRID",(0,0),(-1,-1),0.4,borde),
-            ("LINEBELOW",(0,0),(-1,0),2,acento),
-            ("BACKGROUND",(0,1),(-1,-1),gris),
-            ("TOPPADDING",(0,0),(-1,-1),5),
-            ("BOTTOMPADDING",(0,0),(-1,-1),5),
-            ("LEFTPADDING",(0,0),(-1,-1),6),
-        ]))
-        t.wrapOn(c, w, h); t.drawOn(c, 25, y-35)
-        y -= 55
-
-        # ── RESUMEN FISCAL ──────────────────────────────────────
-        y -= 20
-        resumen = [
-            ["Base Imponible", f"{datos.get('base_imponible',0):,.2f} €"],
-            [f"IVA {datos.get('pct_iva',0):.0f}%", f"{datos.get('importe_iva',0):,.2f} €"],
-            [f"Retención {datos.get('pct_retencion',0):.0f}%", f"−{datos.get('importe_retencion',0):,.2f} €"],
-            ["TOTAL", f"{datos.get('total',0):,.2f} €"],
-        ]
-        tabla_res = Table(resumen, colWidths=[150, 100])
-        tabla_res.setStyle(TableStyle([
-            ("FONTNAME",(0,0),(-1,-2),"Helvetica"),
-            ("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),
-            ("FONTSIZE",(0,0),(-1,-1),9),
-            ("ALIGN",(1,0),(1,-1),"RIGHT"),
-            ("GRID",(0,0),(-1,-1),0.4,borde),
-            ("BACKGROUND",(0,-1),(-1,-1),acento),
-            ("TEXTCOLOR",(0,-1),(-1,-1),white),
-            ("TOPPADDING",(0,0),(-1,-1),5),
-            ("BOTTOMPADDING",(0,0),(-1,-1),5),
-            ("LEFTPADDING",(0,0),(-1,-1),8),
-        ]))
-        tabla_res.wrapOn(c, w, h)
-        tabla_res.drawOn(c, w-285, y-80)
-        y -= 100
-
-        # ── CONDICIONES DE PAGO ─────────────────────────────────
-        if perfil.get("iban"):
-            y -= 20
-            c.setFillColor(gris); c.roundRect(25, y-45, w-50, 45, 5, fill=True, stroke=False)
-            c.setStrokeColor(borde); c.roundRect(25, y-45, w-50, 45, 5, fill=False, stroke=True)
-            c.setFillColor(azul); c.setFont("Helvetica-Bold", 9)
-            c.drawString(35, y-14, "Condiciones de pago")
-            c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
-            c.drawString(35, y-28, "TRANSFERENCIA BANCARIA A CUENTA:")
-            c.setFont("Helvetica-Bold", 9)
-            c.drawString(35, y-40, f"Nº: {perfil.get('iban','')}")
-
-        # ── FOOTER ──────────────────────────────────────────────
-        c.setFillColor(azul); c.rect(0, 0, w, 30, fill=True, stroke=False)
-        c.setFillColor(white); c.setFont("Helvetica", 7)
-        c.drawString(30, 11, "Nolasco Capital  |  Granada  |  Gestión Patrimonial Inmobiliaria")
-        c.drawRightString(w-30, 11, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-
-        c.save()
-        buffer.seek(0)
-        return buffer
-    except Exception as e:
-        print(f"Error generando PDF factura: {e}")
-        return None
