@@ -1561,3 +1561,92 @@ def guardar_pdf_factura(user_id: str, factura_id: int,
         return r_patch.status_code in (200, 204)
     except Exception:
         return False
+
+
+# ================================================================
+# FACTURAS RECTIFICATIVAS
+# ================================================================
+
+def crear_factura_rectificativa(user_id: str, fac_original: dict) -> dict:
+    """
+    Crea una factura rectificativa a partir de una factura original.
+    - Genera número REC26XXXX correlativo
+    - Importes en negativo
+    - Marca la original como 'anulada'
+    - Incrementa siguiente_numero_rec en user_profiles
+    """
+    if not _validar_user_id(user_id, "crear_factura_rectificativa"):
+        return {"ok": False, "error": "user_id inválido"}
+    try:
+        # Leer perfil para obtener siguiente número rectificativa
+        perfil = leer_perfil_usuario(user_id)
+        sig_rec = int(perfil.get("siguiente_numero_rec") or 1)
+        anio_2d = str(__import__('datetime').date.today().year)[2:]
+        num_rec = f"REC{anio_2d}{sig_rec:04d}"
+
+        # Construir payload rectificativa (importes en negativo)
+        base  = -abs(float(fac_original.get("base_imponible", 0)))
+        iva   = -abs(float(fac_original.get("importe_iva", 0)))
+        ret   = -abs(float(fac_original.get("importe_retencion", 0)))
+        total = round(base + iva - ret, 2)  # negativo
+
+        payload = {
+            "user_id":              user_id,
+            "numero":               num_rec,
+            "fecha":                str(__import__('datetime').date.today()),
+            "vencimiento":          str(__import__('datetime').date.today()),
+            "inmueble":             fac_original.get("inmueble", ""),
+            "inquilino":            fac_original.get("inquilino", ""),
+            "nif_inquilino":        fac_original.get("nif_inquilino", ""),
+            "direccion_inquilino":  fac_original.get("direccion_inquilino", ""),
+            "concepto":             f"ANULACIÓN {fac_original.get('numero','')} — {fac_original.get('concepto','')}",
+            "base_imponible":       base,
+            "pct_iva":              float(fac_original.get("pct_iva", 0)),
+            "importe_iva":          iva,
+            "pct_retencion":        float(fac_original.get("pct_retencion", 0)),
+            "importe_retencion":    ret,
+            "total":                total,
+            "estado":               "emitida",
+            "es_rectificativa":     True,
+            "factura_rectificada":  fac_original.get("numero", ""),
+        }
+
+        h = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+        }
+
+        # 1. Insertar rectificativa
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/facturas_emitidas",
+            headers=h, json=payload, timeout=10
+        )
+        if r.status_code not in (200, 201):
+            return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
+
+        rec_id = r.json()[0]["id"]
+
+        # 2. Marcar original como anulada
+        requests.patch(
+            f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
+            f"?id=eq.{fac_original['id']}&user_id=eq.{user_id}",
+            headers={**h, "Prefer": "return=minimal"},
+            json={"estado": "anulada"},
+            timeout=10
+        )
+
+        # 3. Incrementar siguiente_numero_rec
+        guardar_perfil_usuario(user_id, {"siguiente_numero_rec": sig_rec + 1})
+
+        return {
+            "ok": True,
+            "id": rec_id,
+            "numero": num_rec,
+            "total": total,
+            "payload": payload,
+        }
+
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
