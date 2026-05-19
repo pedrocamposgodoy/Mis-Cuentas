@@ -182,7 +182,7 @@ div.stButton > button:hover { background: #0F4A8A !important; }
                         st.session_state.user_logged_in = True
                         st.session_state.user_id = result['user_id']
                         st.session_state.user_email = result['email']
-                        for k in ["df_inm_persistent","df_mov_persistent"]:
+                        for k in ["df_inm_persistent","df_mov_persistent","sidebar_logo_bytes","supabase_ok","df_gastos_rec","datos_propietario"]:
                             if k in st.session_state: del st.session_state[k]
                         st.success(f"✅ Bienvenido {result['email']}")
                         st.rerun()
