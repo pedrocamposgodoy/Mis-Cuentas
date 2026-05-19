@@ -93,7 +93,8 @@ from supabase_db import (
     cambiar_contrasena, cambiar_email,
     leer_plantillas_factura, guardar_plantilla_factura,
     leer_facturas_emitidas, crear_factura_emitida,
-    actualizar_estado_factura, guardar_pdf_factura
+    actualizar_estado_factura, guardar_pdf_factura,
+    crear_factura_rectificativa
 )
 
 COLS_INM = [
@@ -594,7 +595,7 @@ def analisis_sensibilidad_renta(renta_actual, gastos_anuales, valor_construccion
 # ================================================================
 # SECCIÓN 10 — GENERADOR DE PDF (Modelo 100)
 # ================================================================
-def _generar_pdf_factura(perfil: dict, datos: dict, numero: str):
+def _generar_pdf_factura(perfil: dict, datos: dict, numero: str, es_rectificativa: bool = False):
     """Genera PDF de factura de renta al estilo Nolasco Capital."""
     if not REPORTLAB_OK:
         return None
@@ -631,7 +632,8 @@ def _generar_pdf_factura(perfil: dict, datos: dict, numero: str):
         # ── TÍTULO ──────────────────────────────────────────────
         y = h-130
         c.setFillColor(azul); c.setFont("Helvetica-Bold", 14)
-        c.drawString(30, y, "FACTURA")
+        _titulo_pdf = "FACTURA RECTIFICATIVA" if es_rectificativa else "FACTURA"
+        c.drawString(30, y, _titulo_pdf)
         c.setFont("Helvetica", 9); c.setFillColor(HexColor("#5A7A9A"))
         c.drawString(30, y-16, f"Arrendamiento inmobiliario — {datos.get('concepto','')}")
 
@@ -3124,10 +3126,16 @@ elif menu == "Ingresos · Rentas":
         if df_facs.empty:
             st.info("Aún no has generado ninguna factura.")
         else:
-            # KPIs rápidos
-            total_emitido  = df_facs["total"].sum()
-            total_cobrado  = df_facs[df_facs["estado"]=="cobrada"]["total"].sum()
-            total_pendiente= df_facs[df_facs["estado"]=="emitida"]["total"].sum()
+            # Asegurar columnas nuevas con defaults
+            if "es_rectificativa"   not in df_facs.columns: df_facs["es_rectificativa"]   = False
+            if "factura_rectificada" not in df_facs.columns: df_facs["factura_rectificada"] = None
+            df_facs["es_rectificativa"] = df_facs["es_rectificativa"].fillna(False).astype(bool)
+
+            # KPIs — excluir rectificativas y anuladas del total positivo
+            df_activas = df_facs[~df_facs["es_rectificativa"] & (df_facs["estado"] != "anulada")]
+            total_emitido   = df_activas["total"].sum()
+            total_cobrado   = df_activas[df_activas["estado"]=="cobrada"]["total"].sum()
+            total_pendiente = df_activas[df_activas["estado"]=="emitida"]["total"].sum()
 
             k1,k2,k3 = st.columns(3)
             for col_k, lbl, val, color in [
@@ -3146,19 +3154,34 @@ elif menu == "Ingresos · Rentas":
 
             st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-            # Lista de facturas
+            # ── LISTA DE FACTURAS ──────────────────────────────
             for _, fac in df_facs.iterrows():
-                est = str(fac.get("estado","emitida"))
-                if est == "cobrada":
+                est        = str(fac.get("estado","emitida"))
+                es_rec     = bool(fac.get("es_rectificativa", False))
+                fac_rect   = str(fac.get("factura_rectificada","") or "")
+                total_fac  = float(fac.get("total",0))
+                _render_v  = st.session_state.get("fac_render_v", 0)
+
+                # Badge de estado
+                if es_rec:
+                    badge = f"<span style='background:#E6F1FB;color:#0C447C;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'>🔄 Rectificativa</span>"
+                elif est == "cobrada":
                     badge = f"<span style='background:#EAF3DE;color:#27500A;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'>✅ Cobrada</span>"
                 elif est == "anulada":
                     badge = f"<span style='background:#FDECEA;color:#7F1D1D;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'>❌ Anulada</span>"
                 else:
                     badge = f"<span style='background:#FFF9E6;color:#854F0B;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'>⏳ Emitida</span>"
 
+                # Color total — negativo en rojo para rectificativas
+                color_total = RED if total_fac < 0 else ACCENT
+
+                # Referencia a factura original en rectificativas
+                ref_html = f"<br><span style='font-size:0.75rem;color:#0C447C;'>Rectifica: <b>{fac_rect}</b></span>" if es_rec and fac_rect else ""
+
                 fecha_s = str(fac.get("fecha",""))[:10]
                 st.markdown(f"""
-                <div style='background:{CARD_BG};border:1px solid {BORDER};
+                <div style='background:{CARD_BG};border:1px solid {"#B5D4F4" if es_rec else BORDER};
+                            border-left:3px solid {"#185FA5" if es_rec else "transparent"};
                             border-radius:10px;padding:12px 16px;margin-bottom:6px;
                             display:flex;justify-content:space-between;align-items:center;'>
                     <div>
@@ -3170,71 +3193,83 @@ elif menu == "Ingresos · Rentas":
                         </span>
                         <br><span style='font-size:0.78rem;color:{TEXT_SEC};'>
                             {fac.get("concepto","")}
-                        </span>
+                        </span>{ref_html}
                     </div>
                     <div style='text-align:right;'>
-                        <div style='font-size:1.1rem;font-weight:700;color:{ACCENT};'>
-                            {float(fac.get("total",0)):,.2f} €
+                        <div style='font-size:1.1rem;font-weight:700;color:{color_total};'>
+                            {total_fac:,.2f} €
                         </div>
                         {badge}
                     </div>
                 </div>""", unsafe_allow_html=True)
 
-                with st.expander("", expanded=False, key=f"fac_exp_{fac['id']}"):
+                with st.expander("", expanded=False,
+                                 key=f"fac_exp_{fac['id']}_{_render_v}"):
                     cf1, cf2, cf3 = st.columns(3)
+
                     with cf1:
-                        # Edición campos clave
-                        nueva_fecha = st.date_input("Fecha factura",
-                            value=pd.to_datetime(fac.get("fecha", date.today())).date(),
-                            key=f"fac_fecha_{fac['id']}")
-                        nueva_base = st.number_input("Base imponible (€)",
-                            value=float(fac.get("base_imponible",0)),
-                            min_value=0.0, step=1.0, format="%.2f",
-                            key=f"fac_base_{fac['id']}")
-                        nuevo_concepto = st.text_input("Concepto",
-                            value=str(fac.get("concepto","")),
-                            key=f"fac_con_{fac['id']}")
-                        nuevo_estado = st.selectbox(
-                            "Estado",
-                            ["emitida","cobrada","anulada"],
-                            index=["emitida","cobrada","anulada"].index(est) if est in ["emitida","cobrada","anulada"] else 0,
-                            key=f"fac_est_{fac['id']}"
-                        )
-                        if st.button("💾 Guardar cambios", key=f"fac_upd_{fac['id']}",
-                                     use_container_width=True, type="primary"):
-                            import requests as _rq
-                            from supabase_db import SUPABASE_URL, SUPABASE_KEY
-                            _pct_iva = float(fac.get("pct_iva",0))
-                            _pct_ret = float(fac.get("pct_retencion",0))
-                            _imp_iva = round(nueva_base * _pct_iva / 100, 2)
-                            _imp_ret = round(nueva_base * _pct_ret / 100, 2)
-                            _total   = round(nueva_base + _imp_iva - _imp_ret, 2)
-                            _patch = {
-                                "fecha": nueva_fecha.strftime("%Y-%m-%d"),
-                                "base_imponible": nueva_base,
-                                "importe_iva": _imp_iva,
-                                "importe_retencion": _imp_ret,
-                                "total": _total,
-                                "concepto": nuevo_concepto,
-                                "estado": nuevo_estado,
-                            }
-                            _r = _rq.patch(
-                                f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
-                                f"?id=eq.{fac['id']}&user_id=eq.{uid_ing}",
-                                headers={
-                                    "apikey": SUPABASE_KEY,
-                                    "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-                                    "Content-Type": "application/json",
-                                    "Prefer": "return=minimal"
-                                },
-                                json=_patch, timeout=10
+                        # Edición — bloqueada para anuladas y rectificativas
+                        _bloqueada = est == "anulada" or es_rec
+                        if _bloqueada:
+                            st.markdown(
+                                f"<div style='background:#F8F8F8;border-radius:8px;"
+                                f"padding:10px 12px;font-size:13px;color:{TEXT_SEC};'>"
+                                f"{'🔄 Factura rectificativa — no editable' if es_rec else '❌ Factura anulada — no editable'}"
+                                f"</div>", unsafe_allow_html=True)
+                        else:
+                            nueva_fecha = st.date_input("Fecha factura",
+                                value=pd.to_datetime(fac.get("fecha", date.today())).date(),
+                                key=f"fac_fecha_{fac['id']}")
+                            nueva_base = st.number_input("Base imponible (€)",
+                                value=float(fac.get("base_imponible",0)),
+                                min_value=0.0, step=1.0, format="%.2f",
+                                key=f"fac_base_{fac['id']}")
+                            nuevo_concepto = st.text_input("Concepto",
+                                value=str(fac.get("concepto","")),
+                                key=f"fac_con_{fac['id']}")
+                            nuevo_estado = st.selectbox(
+                                "Estado",
+                                ["emitida","cobrada"],
+                                index=0 if est == "emitida" else 1,
+                                key=f"fac_est_{fac['id']}"
                             )
-                            if _r.status_code in (200, 204):
-                                st.success("✅ Factura actualizada correctamente")
-                                st.rerun()
-                            else:
-                                st.error(f"❌ Error {_r.status_code}: {_r.text[:100]}")
+                            if st.button("💾 Guardar cambios", key=f"fac_upd_{fac['id']}",
+                                         use_container_width=True, type="primary"):
+                                import requests as _rq
+                                from supabase_db import SUPABASE_URL, SUPABASE_KEY
+                                _pct_iva = float(fac.get("pct_iva",0))
+                                _pct_ret = float(fac.get("pct_retencion",0))
+                                _imp_iva = round(nueva_base * _pct_iva / 100, 2)
+                                _imp_ret = round(nueva_base * _pct_ret / 100, 2)
+                                _total   = round(nueva_base + _imp_iva - _imp_ret, 2)
+                                _r = _rq.patch(
+                                    f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
+                                    f"?id=eq.{fac['id']}&user_id=eq.{uid_ing}",
+                                    headers={
+                                        "apikey": SUPABASE_KEY,
+                                        "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                                        "Content-Type": "application/json",
+                                        "Prefer": "return=minimal"
+                                    },
+                                    json={
+                                        "fecha": nueva_fecha.strftime("%Y-%m-%d"),
+                                        "base_imponible": nueva_base,
+                                        "importe_iva": _imp_iva,
+                                        "importe_retencion": _imp_ret,
+                                        "total": _total,
+                                        "concepto": nuevo_concepto,
+                                        "estado": nuevo_estado,
+                                    }, timeout=10
+                                )
+                                if _r.status_code in (200, 204):
+                                    st.success("✅ Guardado correctamente")
+                                    st.session_state["fac_render_v"] = st.session_state.get("fac_render_v",0)+1
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Error {_r.status_code}: {_r.text[:100]}")
+
                     with cf2:
+                        # Ver PDF
                         if fac.get("pdf_url"):
                             url_pdf = obtener_url_factura(uid_ing, str(fac["pdf_url"]))
                             if url_pdf:
@@ -3243,8 +3278,100 @@ elif menu == "Ingresos · Rentas":
                                     f"style='display:inline-block;background:#E6F1FB;"
                                     f"color:#0C447C;padding:8px 14px;border-radius:6px;"
                                     f"font-size:13px;font-weight:600;text-decoration:none;"
-                                    f"border:1px solid #B5D4F4;margin-top:24px;'>👁️ Ver PDF</a>",
+                                    f"border:1px solid #B5D4F4;'>👁️ Ver PDF</a>",
                                     unsafe_allow_html=True)
+
+                        # Botón anular — solo para facturas activas no rectificativas
+                        if not es_rec and est != "anulada":
+                            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                            if st.button("🔄 Anular con rectificativa",
+                                         key=f"btn_rect_{fac['id']}",
+                                         use_container_width=True):
+                                st.session_state[f"preview_rect_{fac['id']}"] = True
+
+                        # Preview de la rectificativa
+                        if st.session_state.get(f"preview_rect_{fac['id']}", False):
+                            _b  = -abs(float(fac.get("base_imponible",0)))
+                            _iv = -abs(float(fac.get("importe_iva",0)))
+                            _rt = -abs(float(fac.get("importe_retencion",0)))
+                            _tt = round(_b + _iv - _rt, 2)
+                            perfil_p = leer_perfil_usuario(uid_ing)
+                            _sig_r   = int(perfil_p.get("siguiente_numero_rec") or 1)
+                            _anio_2d = str(date.today().year)[2:]
+                            _num_rec = f"REC{_anio_2d}{_sig_r:04d}"
+
+                            st.markdown(f"""
+                            <div style='background:#EEF4FF;border:1.5px solid #185FA5;
+                                        border-radius:10px;padding:14px;margin-top:10px;
+                                        font-size:13px;'>
+                                <div style='font-weight:700;color:#0C447C;margin-bottom:8px;'>
+                                    📄 Preview Rectificativa
+                                </div>
+                                <div style='color:{TEXT_PRI};line-height:1.8;'>
+                                    <b>Nº:</b> {_num_rec}<br>
+                                    <b>Rectifica:</b> {fac.get("numero","")}<br>
+                                    <b>Inquilino:</b> {fac.get("inquilino","")}<br>
+                                    <b>Concepto:</b> ANULACIÓN {fac.get("numero","")} — {fac.get("concepto","")}<br>
+                                    <hr style='border:0;border-top:1px dashed #B5D4F4;margin:6px 0;'>
+                                    <b>Base:</b> {_b:,.2f} €<br>
+                                    <b>IVA {float(fac.get("pct_iva",0)):.0f}%:</b> {_iv:,.2f} €<br>
+                                    <b>Ret. {float(fac.get("pct_retencion",0)):.0f}%:</b> {_rt:,.2f} €<br>
+                                    <b style='font-size:14px;'>TOTAL: {_tt:,.2f} €</b>
+                                </div>
+                            </div>""", unsafe_allow_html=True)
+
+                            pr1, pr2 = st.columns(2)
+                            with pr1:
+                                if st.button("✅ Confirmar y generar",
+                                             key=f"conf_rect_{fac['id']}",
+                                             type="primary",
+                                             use_container_width=True):
+                                    _res = crear_factura_rectificativa(
+                                        uid_ing, fac.to_dict()
+                                    )
+                                    if _res["ok"]:
+                                        # Generar PDF rectificativa
+                                        if REPORTLAB_OK:
+                                            _datos_rec = {
+                                                **fac.to_dict(),
+                                                "numero": _res["numero"],
+                                                "fecha": str(date.today()),
+                                                "vencimiento": str(date.today()),
+                                                "concepto": f"ANULACIÓN {fac.get('numero','')} — {fac.get('concepto','')}",
+                                                "base_imponible": _b,
+                                                "importe_iva": _iv,
+                                                "importe_retencion": abs(_rt),
+                                                "total": _tt,
+                                                "es_rectificativa": True,
+                                            }
+                                            _pdf = _generar_pdf_factura(
+                                                perfil_p, _datos_rec, _res["numero"],
+                                                es_rectificativa=True
+                                            )
+                                            if _pdf:
+                                                _pdf_bytes = _pdf.getvalue()
+                                                guardar_pdf_factura(uid_ing, _res["id"],
+                                                                    _res["numero"], _pdf_bytes)
+                                                st.success(f"✅ Rectificativa {_res['numero']} generada")
+                                                st.download_button(
+                                                    f"📥 Descargar {_res['numero']}.pdf",
+                                                    data=_pdf_bytes,
+                                                    file_name=f"{_res['numero']}.pdf",
+                                                    mime="application/pdf",
+                                                    use_container_width=True
+                                                )
+                                        st.session_state.pop(f"preview_rect_{fac['id']}", None)
+                                        st.session_state["fac_render_v"] = st.session_state.get("fac_render_v",0)+1
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ {_res['error']}")
+                            with pr2:
+                                if st.button("❌ Cancelar",
+                                             key=f"cancel_rect_{fac['id']}",
+                                             use_container_width=True):
+                                    st.session_state.pop(f"preview_rect_{fac['id']}", None)
+                                    st.rerun()
+
                     with cf3:
                         st.markdown(f"**Base:** {float(fac.get('base_imponible',0)):,.2f} €")
                         st.markdown(f"**IVA {float(fac.get('pct_iva',0)):.0f}%:** {float(fac.get('importe_iva',0)):,.2f} €")
