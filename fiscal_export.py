@@ -1737,6 +1737,188 @@ def render_seccion_fiscal(df_inm, df_mov, safe_float_fn, calcular_modelo_100_fn)
 # MODELO 200 — Resumen IS para Sociedades Patrimoniales
 # ================================================================
 
+def _generar_pdf_is_individual(fila, nombre_sociedad="Sociedad",
+                               cif_sociedad="", año_fiscal=2025, perfil=None):
+    """PDF individual por inmueble — Modelo 200 IS."""
+    if not REPORTLAB_OK:
+        return None
+
+    from reportlab.platypus import SimpleDocTemplate, Spacer, Paragraph, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=(21*cm, 29.7*cm),
+                            leftMargin=1.8*cm, rightMargin=1.8*cm,
+                            topMargin=1.8*cm, bottomMargin=2*cm)
+
+    PURPLE = colors.HexColor("#534AB7")
+    DARK   = colors.HexColor("#0F172A")
+    GRAY   = colors.HexColor("#64748B")
+    GREEN_ = colors.HexColor("#059669")
+    LGRAY  = colors.HexColor("#F1F5F9")
+    WHITE  = colors.white
+
+    st_ = getSampleStyleSheet()
+    def _ps(name, size, color=DARK, bold=False, align=TA_LEFT):
+        return ParagraphStyle(name, parent=st_["Normal"],
+            fontSize=size, textColor=color,
+            fontName="Helvetica-Bold" if bold else "Helvetica",
+            alignment=align, spaceBefore=0, spaceAfter=4,
+            leading=size*1.4)
+
+    p_brand = _ps("brand", 15, PURPLE, bold=True)
+    p_sub   = _ps("sub",    9, GRAY)
+    p_meta  = _ps("meta",   8, GRAY, align=TA_RIGHT)
+    p_h2    = _ps("h2",    11, DARK, bold=True)
+    p_body  = _ps("body",   9, DARK)
+    p_small = _ps("small",  7, GRAY)
+
+    perfil = perfil or {}
+    elems = []
+
+    # Cabecera
+    from datetime import date as _d
+    hdr = [[
+        Paragraph("NC", _ps("logo", 14, WHITE, bold=True)),
+        [Paragraph("Nolasco Capital", p_brand),
+         Paragraph(f"Impuesto de Sociedades — Detalle Inmueble · Ejercicio {año_fiscal}", p_sub)],
+        [Paragraph(f"Generado: {_d.today().strftime('%d/%m/%Y')}", p_meta),
+         Paragraph(f"IS — Modelo 200", p_meta)]
+    ]]
+    hdr_tbl = Table(hdr, colWidths=[1.5*cm, 11*cm, 4*cm])
+    hdr_tbl.setStyle(TableStyle([
+        ("BACKGROUND",  (0,0),(0,0),  PURPLE),
+        ("VALIGN",      (0,0),(-1,-1),"MIDDLE"),
+        ("PADDING",     (0,0),(-1,-1), 4),
+        ("LINEBELOW",   (0,0),(-1,0),  1.5, PURPLE),
+    ]))
+    elems.append(hdr_tbl)
+    elems.append(Spacer(1, 10))
+
+    # Sujeto pasivo
+    elems.append(Paragraph("Sujeto Pasivo", p_h2))
+    elems.append(Spacer(1, 4))
+    soc_data = [
+        [Paragraph("<b>Sociedad</b>", p_body), Paragraph(nombre_sociedad, p_body),
+         Paragraph("<b>CIF</b>", p_body),      Paragraph(cif_sociedad, p_body)],
+        [Paragraph("<b>Domicilio</b>", p_body), Paragraph(perfil.get("direccion",""), p_body),
+         Paragraph("<b>CP/Ciudad</b>", p_body), Paragraph(f"{perfil.get('cp','')} {perfil.get('ciudad','')}".strip(), p_body)],
+    ]
+    soc_tbl = Table(soc_data, colWidths=[3*cm, 5.5*cm, 3*cm, 5*cm])
+    soc_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0),(0,-1), LGRAY),
+        ("BACKGROUND", (2,0),(2,-1), LGRAY),
+        ("FONTSIZE",   (0,0),(-1,-1), 8),
+        ("GRID",       (0,0),(-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+        ("PADDING",    (0,0),(-1,-1), 5),
+        ("VALIGN",     (0,0),(-1,-1), "MIDDLE"),
+    ]))
+    elems.append(soc_tbl)
+    elems.append(Spacer(1, 12))
+
+    # Datos del inmueble
+    elems.append(Paragraph("Identificación del inmueble", p_h2))
+    elems.append(Spacer(1, 4))
+    inm_data = [
+        [Paragraph("<b>Inmueble</b>", p_body),      Paragraph(fila.get("inmueble",""), p_body),
+         Paragraph("<b>Ref. Catastral</b>", p_body), Paragraph(fila.get("ref_catastral","—"), p_body)],
+        [Paragraph("<b>Inquilino</b>", p_body),      Paragraph(fila.get("inquilino",""), p_body),
+         Paragraph("<b>Tipo contrato</b>", p_body),  Paragraph(fila.get("tipo",""), p_body)],
+        [Paragraph("<b>Días arrendado</b>", p_body), Paragraph(str(fila.get("dias", 365)), p_body),
+         Paragraph("<b>CP</b>", p_body),             Paragraph(fila.get("cp",""), p_body)],
+    ]
+    inm_tbl = Table(inm_data, colWidths=[3*cm, 5.5*cm, 3*cm, 5*cm])
+    inm_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0),(0,-1), LGRAY),
+        ("BACKGROUND", (2,0),(2,-1), LGRAY),
+        ("FONTSIZE",   (0,0),(-1,-1), 8),
+        ("GRID",       (0,0),(-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+        ("PADDING",    (0,0),(-1,-1), 5),
+        ("VALIGN",     (0,0),(-1,-1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0,0),(-1,-1), [WHITE, LGRAY, WHITE]),
+    ]))
+    elems.append(inm_tbl)
+    elems.append(Spacer(1, 12))
+
+    # Casillas IS
+    ingresos  = fila.get("m200_318", fila.get("ingresos", 0))
+    gastos    = fila.get("m200_319", fila.get("total_gastos", 0))
+    amort     = fila.get("m200_320", fila.get("amortizacion", 0))
+    resultado = fila.get("m200_399", fila.get("rend_final", 0))
+    cuota_is  = round(max(resultado * 0.25, 0), 2)
+
+    # Desglose gastos
+    elems.append(Paragraph("Desglose de gastos deducibles", p_h2))
+    elems.append(Spacer(1, 4))
+    gastos_data = [
+        ["Concepto", "Importe (€)"],
+        ["Intereses hipoteca",           f"{fila.get('intereses', 0):,.2f} €"],
+        ["Reparación y conservación",    f"{fila.get('reparaciones', 0):,.2f} €"],
+        ["IBI y tributos",               f"{fila.get('ibi', 0):,.2f} €"],
+        ["Comunidad + Seguros",          f"{fila.get('comunidad_seguros', 0):,.2f} €"],
+        ["Suministros",                  f"{fila.get('suministros', 0):,.2f} €"],
+        ["Gastos jurídicos",             f"{fila.get('gastos_juridicos', 0):,.2f} €"],
+        ["Amortización fiscal (3%)",     f"{amort:,.2f} €"],
+        ["TOTAL GASTOS [319]",           f"{gastos:,.2f} €"],
+    ]
+    g_tbl = Table(gastos_data, colWidths=[12*cm, 4.5*cm])
+    g_tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0),(-1,0),   PURPLE),
+        ("TEXTCOLOR",     (0,0),(-1,0),   WHITE),
+        ("FONTNAME",      (0,0),(-1,0),   "Helvetica-Bold"),
+        ("FONTNAME",      (0,-1),(-1,-1), "Helvetica-Bold"),
+        ("BACKGROUND",    (0,-1),(-1,-1), LGRAY),
+        ("FONTSIZE",      (0,0),(-1,-1),   8),
+        ("ROWBACKGROUNDS",(0,1),(-1,-2),  [WHITE, LGRAY]),
+        ("GRID",          (0,0),(-1,-1),   0.3, colors.HexColor("#E2E8F0")),
+        ("ALIGN",         (1,0),(1,-1),   "RIGHT"),
+        ("PADDING",       (0,0),(-1,-1),   5),
+    ]))
+    elems.append(g_tbl)
+    elems.append(Spacer(1, 12))
+
+    # Casillas Modelo 200
+    elems.append(Paragraph("Casillas Modelo 200 — este inmueble", p_h2))
+    elems.append(Spacer(1, 4))
+    cas_data = [
+        ["Casilla", "Concepto", "Importe (€)"],
+        ["[318]", "Ingresos íntegros por arrendamiento",   f"{ingresos:,.2f} €"],
+        ["[319]", "Gastos fiscalmente deducibles",         f"{gastos:,.2f} €"],
+        ["[320]", "Amortizaciones del ejercicio",          f"{amort:,.2f} €"],
+        ["[399]", "Resultado neto arrendamiento",          f"{resultado:,.2f} €"],
+        ["IS 25%","Cuota IS estimada (tipo general 25%)",  f"{cuota_is:,.2f} €"],
+    ]
+    cas_tbl = Table(cas_data, colWidths=[2*cm, 10.5*cm, 4*cm])
+    cas_tbl.setStyle(TableStyle([
+        ("BACKGROUND",  (0,0),(-1,0),   PURPLE),
+        ("TEXTCOLOR",   (0,0),(-1,0),   WHITE),
+        ("FONTNAME",    (0,0),(-1,0),   "Helvetica-Bold"),
+        ("FONTNAME",    (0,-1),(-1,-1), "Helvetica-Bold"),
+        ("BACKGROUND",  (0,-1),(-1,-1), GREEN_),
+        ("TEXTCOLOR",   (0,-1),(-1,-1), WHITE),
+        ("FONTSIZE",    (0,0),(-1,-1),   9),
+        ("ROWBACKGROUNDS",(0,1),(-1,-2),[LGRAY, WHITE, LGRAY, WHITE]),
+        ("GRID",        (0,0),(-1,-1),   0.3, colors.HexColor("#E2E8F0")),
+        ("ALIGN",       (2,0),(2,-1),   "RIGHT"),
+        ("PADDING",     (0,0),(-1,-1),   6),
+    ]))
+    elems.append(cas_tbl)
+    elems.append(Spacer(1, 16))
+
+    elems.append(Paragraph(
+        f"Documento orientativo — {nombre_sociedad} · CIF {cif_sociedad} · "
+        f"Ejercicio {año_fiscal}. Cuota IS estimada al 25% (Art. 29 LIS). "
+        "Verificar con asesor fiscal antes de presentar.",
+        p_small))
+
+    doc.build(elems)
+    buf.seek(0)
+    return buf.read()
+
+
 def generar_pdf_modelo_200(filas, totales, nombre_sociedad="Sociedad",
                             cif_sociedad="", nombre_asesor="", año_fiscal=2025,
                             perfil=None):
@@ -2286,12 +2468,14 @@ def render_seccion_modelo_200(df_inm, df_mov, safe_float_fn, calcular_modelo_100
                     unsafe_allow_html=True)
         st.caption("Documentos listos para entregar a tu asesor fiscal o archivar.")
 
+        # ── Exportación GLOBAL ────────────────────────────────────
+        st.markdown("#### 📁 Exportación global — toda la cartera")
         col_pdf, col_xls = st.columns(2)
 
         with col_pdf:
-            st.markdown("**📄 PDF Modelo 200**")
-            st.caption("Resumen en PDF con casillas y detalle por inmueble.")
-            if st.button("Generar PDF", type="primary",
+            st.markdown("**📄 PDF Modelo 200 — Cartera completa**")
+            st.caption("Sujeto pasivo + casillas + detalle todos los inmuebles.")
+            if st.button("Generar PDF global", type="primary",
                           use_container_width=True, key="gen_pdf_m200"):
                 with st.spinner("Generando PDF..."):
                     pdf_buf = generar_pdf_modelo_200(
@@ -2310,7 +2494,7 @@ def render_seccion_modelo_200(df_inm, df_mov, safe_float_fn, calcular_modelo_100
 
             if "pdf_m200" in st.session_state:
                 st.download_button(
-                    "⬇️ Descargar PDF Modelo 200",
+                    "⬇️ Descargar PDF global",
                     data=st.session_state["pdf_m200"],
                     file_name=f"Modelo200_{año_fiscal}_{nombre_sociedad.replace(' ', '_')}.pdf",
                     mime="application/pdf",
@@ -2319,9 +2503,9 @@ def render_seccion_modelo_200(df_inm, df_mov, safe_float_fn, calcular_modelo_100
                 )
 
         with col_xls:
-            st.markdown("**📊 Excel Modelo 200**")
-            st.caption("Excel con casillas y detalle por inmueble para asesor.")
-            if st.button("Generar Excel", type="primary",
+            st.markdown("**📊 Excel Modelo 200 — Cartera completa**")
+            st.caption("Hoja resumen casillas + hoja detalle por inmueble.")
+            if st.button("Generar Excel global", type="primary",
                           use_container_width=True, key="gen_xls_m200"):
                 with st.spinner("Generando Excel..."):
                     xls_buf = generar_excel_modelo_200(
@@ -2339,10 +2523,54 @@ def render_seccion_modelo_200(df_inm, df_mov, safe_float_fn, calcular_modelo_100
 
             if "xls_m200" in st.session_state:
                 st.download_button(
-                    "⬇️ Descargar Excel Modelo 200",
+                    "⬇️ Descargar Excel global",
                     data=st.session_state["xls_m200"],
                     file_name=f"Modelo200_{año_fiscal}_{nombre_sociedad.replace(' ', '_')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     use_container_width=True,
                     key="dl_xls_m200"
                 )
+
+        st.markdown("---")
+
+        # ── Exportación POR INMUEBLE ──────────────────────────────
+        st.markdown("#### 🏠 Exportación por inmueble")
+        st.caption("PDF individual con el desglose completo de un inmueble concreto.")
+
+        nombres_inm = [f.get("inmueble", f"Inmueble {i+1}") for i, f in enumerate(filas)]
+        sel_inm = st.selectbox("Selecciona inmueble:", nombres_inm, key="m200_sel_inm")
+        fila_sel = next((f for f in filas if f.get("inmueble") == sel_inm), filas[0])
+
+        # Mostrar resumen del inmueble seleccionado
+        ci1, ci2, ci3, ci4 = st.columns(4)
+        ci1.metric("Ingresos [318]",    f"{fila_sel.get('m200_318', fila_sel.get('ingresos', 0)):,.2f} €")
+        ci2.metric("Gastos [319]",      f"{fila_sel.get('m200_319', fila_sel.get('total_gastos', 0)):,.2f} €")
+        ci3.metric("Amort. [320]",      f"{fila_sel.get('m200_320', fila_sel.get('amortizacion', 0)):,.2f} €")
+        ci4.metric("Resultado [399]",   f"{fila_sel.get('m200_399', fila_sel.get('rend_final', 0)):,.2f} €")
+
+        if st.button("📄 Generar PDF este inmueble", type="secondary",
+                      use_container_width=True, key="gen_pdf_inm_m200"):
+            with st.spinner("Generando PDF..."):
+                pdf_inm = _generar_pdf_is_individual(
+                    fila_sel,
+                    nombre_sociedad=nombre_sociedad,
+                    cif_sociedad=cif_sociedad,
+                    año_fiscal=año_fiscal,
+                    perfil=perfil
+                )
+            if pdf_inm:
+                st.session_state["pdf_inm_m200"] = pdf_inm
+                st.success("✓ PDF generado")
+            else:
+                st.error("Instala reportlab: pip install reportlab")
+
+        if "pdf_inm_m200" in st.session_state:
+            nombre_archivo = sel_inm.replace(" ", "_")
+            st.download_button(
+                f"⬇️ Descargar PDF — {sel_inm}",
+                data=st.session_state["pdf_inm_m200"],
+                file_name=f"IS_{año_fiscal}_{nombre_archivo}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                key="dl_pdf_inm_m200"
+            )
