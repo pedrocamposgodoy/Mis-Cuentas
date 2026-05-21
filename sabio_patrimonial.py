@@ -141,7 +141,12 @@ LABELS = {
 # ──────────────────────────────────────────────────────────────
 def _get_api_key() -> str:
     try:
-        return st.secrets.get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "")
+        key = os.getenv("ANTHROPIC_API_KEY", "")
+        if key: return key
+        try:
+            return st.secrets.get("ANTHROPIC_API_KEY", "")
+        except Exception:
+            return ""
     except Exception:
         return os.getenv("ANTHROPIC_API_KEY", "")
 
