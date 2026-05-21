@@ -1718,3 +1718,233 @@ def render_seccion_fiscal(df_inm, df_mov, safe_float_fn, calcular_modelo_100_fn)
                     mime="application/pdf",
                     use_container_width=True,
                 )
+
+
+# ================================================================
+# MODELO 200 — Resumen IS para Sociedades Patrimoniales
+# ================================================================
+
+def generar_pdf_modelo_200(filas, totales, nombre_sociedad="Sociedad",
+                            cif_sociedad="", nombre_asesor="", año_fiscal=2025):
+    """
+    Genera PDF con resumen de arrendamientos para el Modelo 200 (IS).
+    Casillas: [318] Ingresos, [319] Gastos, [320] Amortización, [399] Resultado.
+    """
+    if not REPORTLAB_OK:
+        return None
+
+    buf = io.BytesIO()
+    from reportlab.platypus import SimpleDocTemplate, Spacer, Paragraph, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+
+    doc = SimpleDocTemplate(buf, pagesize=(21*cm, 29.7*cm),
+                            leftMargin=1.8*cm, rightMargin=1.8*cm,
+                            topMargin=1.8*cm, bottomMargin=2*cm)
+
+    PURPLE = colors.HexColor("#534AB7")
+    DARK   = colors.HexColor("#0F172A")
+    GRAY   = colors.HexColor("#64748B")
+    GREEN_ = colors.HexColor("#059669")
+    LGRAY  = colors.HexColor("#F1F5F9")
+    WHITE  = colors.white
+
+    st_ = getSampleStyleSheet()
+    def _ps(name, size, color=DARK, bold=False, align=TA_LEFT):
+        return ParagraphStyle(name, parent=st_["Normal"],
+            fontSize=size, textColor=color,
+            fontName="Helvetica-Bold" if bold else "Helvetica",
+            alignment=align, spaceBefore=0, spaceAfter=4,
+            leading=size*1.4)
+
+    p_brand = _ps("brand", 16, PURPLE, bold=True)
+    p_sub   = _ps("sub",    9, GRAY)
+    p_meta  = _ps("meta",   8, GRAY, align=TA_RIGHT)
+    p_h2    = _ps("h2",    11, DARK, bold=True)
+    p_body  = _ps("body",   9, DARK)
+    p_small = _ps("small",  7, GRAY)
+
+    elems = []
+
+    # Cabecera
+    from datetime import date as _d
+    hdr = [[
+        Paragraph("NC", _ps("logo", 14, WHITE, bold=True)),
+        [Paragraph("Nolasco Capital", p_brand),
+         Paragraph("Resumen Arrendamientos — Modelo 200 (IS)", p_sub)],
+        [Paragraph(f"Generado: {_d.today().strftime('%d/%m/%Y')}", p_meta),
+         Paragraph(f"Ejercicio: {año_fiscal}", p_meta)]
+    ]]
+    hdr_tbl = Table(hdr, colWidths=[1.5*cm, 10*cm, 5*cm])
+    hdr_tbl.setStyle(TableStyle([
+        ("BACKGROUND",  (0,0),(0,0),  PURPLE),
+        ("VALIGN",      (0,0),(-1,-1),"MIDDLE"),
+        ("PADDING",     (0,0),(-1,-1), 4),
+        ("LINEBELOW",   (0,0),(-1,0),  1.5, PURPLE),
+    ]))
+    elems.append(hdr_tbl)
+    elems.append(Spacer(1, 10))
+
+    # Datos sociedad
+    soc_data = [[
+        Paragraph("<b>Sociedad</b>", p_body),
+        Paragraph(nombre_sociedad, p_body),
+        Paragraph("<b>CIF</b>", p_body),
+        Paragraph(cif_sociedad, p_body),
+    ],[
+        Paragraph("<b>Asesor</b>", p_body),
+        Paragraph(nombre_asesor, p_body),
+        Paragraph("<b>Ejercicio fiscal</b>", p_body),
+        Paragraph(str(año_fiscal), p_body),
+    ]]
+    soc_tbl = Table(soc_data, colWidths=[3*cm, 5.5*cm, 3*cm, 5*cm])
+    soc_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0,0),(0,-1), LGRAY),
+        ("BACKGROUND", (2,0),(2,-1), LGRAY),
+        ("FONTNAME",   (0,0),(0,-1), "Helvetica-Bold"),
+        ("FONTNAME",   (2,0),(2,-1), "Helvetica-Bold"),
+        ("FONTSIZE",   (0,0),(-1,-1), 8),
+        ("GRID",       (0,0),(-1,-1), 0.3, colors.HexColor("#E2E8F0")),
+        ("PADDING",    (0,0),(-1,-1), 5),
+        ("VALIGN",     (0,0),(-1,-1), "MIDDLE"),
+    ]))
+    elems.append(soc_tbl)
+    elems.append(Spacer(1, 12))
+
+    # Resumen por inmueble
+    elems.append(Paragraph("Detalle por inmueble — Rendimientos de arrendamiento", p_h2))
+    elems.append(Spacer(1, 6))
+
+    det_data = [["Inmueble", "Ref. Catastral", "[318] Ingresos",
+                  "[319] Gastos", "[320] Amort.", "[399] Resultado"]]
+    for f in filas:
+        det_data.append([
+            f.get("inmueble", ""),
+            f.get("ref_catastral", ""),
+            f"{f.get('m200_318', f.get('ingresos', 0)):,.2f} €",
+            f"{f.get('m200_319', f.get('total_gastos', 0)):,.2f} €",
+            f"{f.get('m200_320', f.get('amortizacion', 0)):,.2f} €",
+            f"{f.get('m200_399', f.get('rend_final', 0)):,.2f} €",
+        ])
+
+    det_tbl = Table(det_data, colWidths=[4*cm, 3*cm, 2.5*cm, 2.5*cm, 2.5*cm, 2.5*cm])
+    det_tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0),(-1,0),  PURPLE),
+        ("TEXTCOLOR",     (0,0),(-1,0),  WHITE),
+        ("FONTNAME",      (0,0),(-1,0),  "Helvetica-Bold"),
+        ("FONTSIZE",      (0,0),(-1,-1),  8),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1), [LGRAY, WHITE]),
+        ("GRID",          (0,0),(-1,-1),  0.3, colors.HexColor("#E2E8F0")),
+        ("ALIGN",         (1,0),(-1,-1), "RIGHT"),
+        ("ALIGN",         (0,0),(0,-1),  "LEFT"),
+        ("PADDING",       (0,0),(-1,-1),  5),
+        ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
+    ]))
+    elems.append(det_tbl)
+    elems.append(Spacer(1, 12))
+
+    # Totales
+    elems.append(Paragraph("Totales consolidados — Casillas Modelo 200", p_h2))
+    elems.append(Spacer(1, 6))
+
+    resultado = totales.get("rend_final", 0)
+    cuota_is  = round(max(resultado * 0.25, 0), 2)
+
+    tot_data = [
+        ["Casilla", "Concepto", "Importe"],
+        ["[318]", "Ingresos íntegros por arrendamiento",
+         f"{totales.get('ingresos', 0):,.2f} €"],
+        ["[319]", "Gastos fiscalmente deducibles",
+         f"{totales.get('total_gastos', 0):,.2f} €"],
+        ["[320]", "Amortizaciones del ejercicio",
+         f"{totales.get('amortizacion', 0):,.2f} €"],
+        ["[399]", "Resultado neto arrendamientos",
+         f"{resultado:,.2f} €"],
+        ["IS 25%", "Cuota estimada Impuesto de Sociedades",
+         f"{cuota_is:,.2f} €"],
+    ]
+    tot_tbl = Table(tot_data, colWidths=[2.5*cm, 10.5*cm, 4*cm])
+    tot_tbl.setStyle(TableStyle([
+        ("BACKGROUND",  (0,0),(-1,0),   PURPLE),
+        ("TEXTCOLOR",   (0,0),(-1,0),   WHITE),
+        ("FONTNAME",    (0,0),(-1,0),   "Helvetica-Bold"),
+        ("FONTNAME",    (0,-1),(-1,-1), "Helvetica-Bold"),
+        ("BACKGROUND",  (0,-1),(-1,-1), GREEN_),
+        ("TEXTCOLOR",   (0,-1),(-1,-1), WHITE),
+        ("FONTSIZE",    (0,0),(-1,-1),   9),
+        ("ROWBACKGROUNDS",(0,1),(-1,-2),[LGRAY, WHITE]),
+        ("GRID",        (0,0),(-1,-1),   0.3, colors.HexColor("#E2E8F0")),
+        ("ALIGN",       (2,0),(2,-1),   "RIGHT"),
+        ("PADDING",     (0,0),(-1,-1),   6),
+        ("VALIGN",      (0,0),(-1,-1),  "MIDDLE"),
+    ]))
+    elems.append(tot_tbl)
+    elems.append(Spacer(1, 16))
+
+    # Pie
+    elems.append(Paragraph(
+        "Documento orientativo generado por Nolasco Capital. "
+        "Cuota IS estimada al tipo general del 25% (Art. 29 LIS). "
+        "Verificar con software oficial AEAT antes de presentar el Modelo 200.",
+        p_small))
+
+    doc.build(elems)
+    buf.seek(0)
+    return buf.read()
+
+
+def render_seccion_modelo_200(df_inm, df_mov, safe_float_fn, calcular_modelo_100_fn,
+                               perfil=None):
+    """Sección Fiscalidad IS para Sociedades Patrimoniales."""
+    import streamlit as st
+    perfil = perfil or {}
+    nombre_sociedad = perfil.get("nombre_sociedad", "Sociedad Patrimonial")
+    cif_sociedad    = perfil.get("cif_sociedad", "")
+    nombre_asesor   = perfil.get("nombre_fiscal", "")
+
+    año_fiscal = st.selectbox("Ejercicio fiscal", [2025, 2024, 2023], index=0,
+                               key="m200_año")
+
+    filas, totales = calcular_resumen_global(
+        df_inm, df_mov, safe_float_fn,
+        lambda row, df, año_fiscal: calcular_modelo_100_fn(row, df, año_fiscal, tipo_cuenta="sociedad"),
+        año_fiscal=año_fiscal
+    )
+
+    if not filas:
+        st.info("No hay inmuebles con datos suficientes para generar el resumen.")
+        return
+
+    st.markdown("### Resumen Modelo 200 — Rendimientos arrendamiento")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("[318] Ingresos",   f"{totales.get('ingresos',0):,.0f} €")
+    col2.metric("[319] Gastos",     f"{totales.get('total_gastos',0):,.0f} €")
+    col3.metric("[399] Resultado",  f"{totales.get('rend_final',0):,.0f} €")
+    col4.metric("IS 25%",           f"{max(totales.get('rend_final',0)*0.25,0):,.0f} €")
+
+    st.markdown("---")
+    if st.button("📄 Generar PDF Modelo 200", type="primary", key="gen_pdf_m200"):
+        with st.spinner("Generando PDF..."):
+            pdf_buf = generar_pdf_modelo_200(
+                filas, totales,
+                nombre_sociedad=nombre_sociedad,
+                cif_sociedad=cif_sociedad,
+                nombre_asesor=nombre_asesor,
+                año_fiscal=año_fiscal
+            )
+        if pdf_buf:
+            st.session_state["pdf_m200"] = pdf_buf
+            st.success("✓ PDF generado")
+        else:
+            st.error("Instala reportlab: pip install reportlab")
+
+    if "pdf_m200" in st.session_state:
+        st.download_button(
+            "⬇️ Descargar PDF Modelo 200",
+            data=st.session_state["pdf_m200"],
+            file_name=f"Modelo200_{año_fiscal}_{nombre_sociedad.replace(' ','_')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
