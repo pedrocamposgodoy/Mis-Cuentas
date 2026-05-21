@@ -1367,7 +1367,8 @@ def guardar_perfil_usuario(user_id: str, datos: dict) -> bool:
     try:
         payload = {k: v for k, v in datos.items()
                    if k in ("nombre_fiscal","nif","direccion","ciudad",
-                            "cp","telefono","iban","siguiente_numero","prefijo_factura")}
+                            "cp","telefono","iban","siguiente_numero","prefijo_factura",
+                            "tipo_cuenta","nombre_sociedad","cif_sociedad")}
         payload["user_id"] = user_id
         h = {
             "apikey": SUPABASE_KEY,
