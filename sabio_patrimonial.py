@@ -154,7 +154,9 @@ def _get_api_key() -> str:
 def _llamar_claude(system_prompt: str, pregunta: str, max_tokens: int = 300) -> str:
     api_key = _get_api_key()
     if not api_key:
-        return "Configura ANTHROPIC_API_KEY en los secrets de Streamlit para activar el Sabio."
+        import os as _os
+        _debug = f"KEY_DEBUG: env={repr(_os.getenv('ANTHROPIC_API_KEY','MISSING')[:8] if _os.getenv('ANTHROPIC_API_KEY') else 'MISSING')}"
+        return f"Configura ANTHROPIC_API_KEY en los secrets de Streamlit para activar el Sabio. [{_debug}]"
     try:
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
