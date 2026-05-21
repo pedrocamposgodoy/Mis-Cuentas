@@ -2830,15 +2830,18 @@ elif menu == "Mi Perfil":
     # Sanitizar — convertir None a defaults seguros
     _p_raw = st.session_state.perfil_datos
     p = {
-        "nombre_fiscal":  str(_p_raw.get("nombre_fiscal")  or ""),
-        "nif":            str(_p_raw.get("nif")            or ""),
-        "telefono":       str(_p_raw.get("telefono")       or ""),
-        "direccion":      str(_p_raw.get("direccion")      or ""),
-        "ciudad":         str(_p_raw.get("ciudad")         or "Granada"),
-        "cp":             str(_p_raw.get("cp")             or ""),
-        "iban":           str(_p_raw.get("iban")           or ""),
-        "prefijo_factura":str(_p_raw.get("prefijo_factura") or "F"),
+        "nombre_fiscal":   str(_p_raw.get("nombre_fiscal")   or ""),
+        "nif":             str(_p_raw.get("nif")             or ""),
+        "telefono":        str(_p_raw.get("telefono")        or ""),
+        "direccion":       str(_p_raw.get("direccion")       or ""),
+        "ciudad":          str(_p_raw.get("ciudad")          or "Granada"),
+        "cp":              str(_p_raw.get("cp")              or ""),
+        "iban":            str(_p_raw.get("iban")            or ""),
+        "prefijo_factura": str(_p_raw.get("prefijo_factura") or "F"),
         "siguiente_numero": int(_p_raw.get("siguiente_numero") or 1),
+        "tipo_cuenta":     str(_p_raw.get("tipo_cuenta")     or "particular"),
+        "nombre_sociedad": str(_p_raw.get("nombre_sociedad") or ""),
+        "cif_sociedad":    str(_p_raw.get("cif_sociedad")    or ""),
     }
 
     tab_fiscal, tab_logo, tab_seguridad = st.tabs([
