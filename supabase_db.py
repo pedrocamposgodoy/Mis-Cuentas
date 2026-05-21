@@ -140,21 +140,33 @@ def registrar_usuario(email, password):
     try:
         r = requests.post(
             f"{SUPABASE_URL}/auth/v1/signup",
-            headers={'apikey': SUPABASE_KEY, 'Content-Type': 'application/json'},
-            json={'email': email, 'password': password}
+            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
+            json={"email": email, "password": password},
+            timeout=15
         )
-        data = r.json()
-        if r.status_code in [200, 201] and data.get('user'):
+        raw = r.text.strip()
+        if raw == "Host not in allowlist":
             return {
-                'success': True,
-                'user_id': data['user']['id'],
-                'email': data['user']['email']
+                "success": False,
+                "error": "Dominio no autorizado en Supabase. Ve a Authentication > URL Configuration y añade la URL de la app."
             }
-        else:
-            msg = data.get('error_description') or data.get('msg') or 'Error al registrar usuario'
-            return {'success': False, 'error': msg}
+        try:
+            data = r.json()
+        except Exception:
+            return {"success": False, "error": f"Respuesta inesperada de Supabase: {raw[:200]}"}
+
+        if r.status_code in [200, 201]:
+            user = data.get("user") or (data if data.get("id") else None)
+            if user and user.get("id"):
+                return {
+                    "success": True,
+                    "user_id": user["id"],
+                    "email": user.get("email", email)
+                }
+        msg = data.get("error_description") or data.get("msg") or data.get("message") or "Error al registrar usuario"
+        return {"success": False, "error": msg}
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {"success": False, "error": str(e)}
 
 
 # ─── RENAME MAPS ─────────────────────────────────────────────────
