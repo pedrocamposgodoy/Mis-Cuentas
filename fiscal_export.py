@@ -1804,8 +1804,8 @@ def _generar_pdf_is_individual(fila, nombre_sociedad="Sociedad",
     soc_data = [
         [Paragraph("<b>Sociedad</b>", p_body), Paragraph(nombre_sociedad, p_body),
          Paragraph("<b>CIF</b>", p_body),      Paragraph(cif_sociedad, p_body)],
-        [Paragraph("<b>Domicilio</b>", p_body), Paragraph(perfil.get("direccion",""), p_body),
-         Paragraph("<b>CP/Ciudad</b>", p_body), Paragraph(f"{perfil.get('cp','')} {perfil.get('ciudad','')}".strip(), p_body)],
+        [Paragraph("<b>Domicilio</b>", p_body), Paragraph(str(perfil.get("direccion") or ""), p_body),
+         Paragraph("<b>CP/Ciudad</b>", p_body), Paragraph(f"{perfil.get('cp','') or ''} {perfil.get('ciudad','') or ''}".strip(), p_body)],
     ]
     soc_tbl = Table(soc_data, colWidths=[3*cm, 5.5*cm, 3*cm, 5*cm])
     soc_tbl.setStyle(TableStyle([
@@ -1823,12 +1823,12 @@ def _generar_pdf_is_individual(fila, nombre_sociedad="Sociedad",
     elems.append(Paragraph("Identificación del inmueble", p_h2))
     elems.append(Spacer(1, 4))
     inm_data = [
-        [Paragraph("<b>Inmueble</b>", p_body),      Paragraph(fila.get("inmueble",""), p_body),
-         Paragraph("<b>Ref. Catastral</b>", p_body), Paragraph(fila.get("ref_catastral","—"), p_body)],
-        [Paragraph("<b>Inquilino</b>", p_body),      Paragraph(fila.get("inquilino",""), p_body),
-         Paragraph("<b>Tipo contrato</b>", p_body),  Paragraph(fila.get("tipo",""), p_body)],
-        [Paragraph("<b>Días arrendado</b>", p_body), Paragraph(str(fila.get("dias", 365)), p_body),
-         Paragraph("<b>CP</b>", p_body),             Paragraph(fila.get("cp",""), p_body)],
+        [Paragraph("<b>Inmueble</b>", p_body),      Paragraph(str(fila.get("inmueble") or ""), p_body),
+         Paragraph("<b>Ref. Catastral</b>", p_body), Paragraph(str(fila.get("ref_catastral") or "—"), p_body)],
+        [Paragraph("<b>Inquilino</b>", p_body),      Paragraph(str(fila.get("inquilino") or ""), p_body),
+         Paragraph("<b>Tipo contrato</b>", p_body),  Paragraph(str(fila.get("tipo") or ""), p_body)],
+        [Paragraph("<b>Días arrendado</b>", p_body), Paragraph(str(fila.get("dias") or 365), p_body),
+         Paragraph("<b>CP</b>", p_body),             Paragraph(str(fila.get("cp") or ""), p_body)],
     ]
     inm_tbl = Table(inm_data, colWidths=[3*cm, 5.5*cm, 3*cm, 5*cm])
     inm_tbl.setStyle(TableStyle([
