@@ -2116,7 +2116,7 @@ def render_seccion_modelo_200(df_inm, df_mov, safe_float_fn, calcular_modelo_100
     # Calcular con tipo_cuenta="sociedad"
     filas, totales = calcular_resumen_global(
         df_inm, df_mov, safe_float_fn,
-        lambda row, df, af: calcular_modelo_100_fn(row, df, af, tipo_cuenta="sociedad"),
+        lambda row, df, año_fiscal: calcular_modelo_100_fn(row, df, año_fiscal=año_fiscal, tipo_cuenta="sociedad"),
         año_fiscal=año_fiscal
     )
 
