@@ -475,7 +475,12 @@ def calcular_dias_arrendado(row, año_fiscal=None):
     except:
         return 365
 
-def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
+def calcular_modelo_100(row, df_mov_local, año_fiscal=None, tipo_cuenta=None):
+    # Si no se pasa tipo_cuenta, leer del perfil en session_state
+    if tipo_cuenta is None:
+        import streamlit as _st
+        _perfil = _st.session_state.get("perfil_datos", {})
+        tipo_cuenta = _perfil.get("tipo_cuenta", "particular")
     import re as _re2
     dias_arrendado = int(safe_float(row.get("Dias_Arrendados_Anio", 365)))
     if dias_arrendado <= 0: dias_arrendado = 365
@@ -515,10 +520,50 @@ def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
                          servicios + gastos_juridicos + amortizacion + gastos_años_ant, 2)
     rendimiento_neto = round(ingresos_integros - total_gastos, 2)
     tipo_arrendamiento = str(row.get("Tipo_Arrendamiento", "Larga Duración"))
+    retenciones = safe_float(row.get("Retenciones_IRPF", 0))
+
+    # ── Rama IS (Sociedad Patrimonial) ──────────────────────────
+    if tipo_cuenta == "sociedad":
+        reduccion_pct     = 0.00  # Sin reducción en IS
+        reduccion_importe = 0.00
+        rendimiento_final = round(rendimiento_neto, 2)
+        cuota_is          = round(max(rendimiento_final * 0.25, 0), 2)
+        return {
+            "0062_0075":      f"Ref: {row.get('Ref_Catastral', 'N/A')}",
+            "0076":           "A (Arrendamiento)",
+            "0100":           "SÍ" if tipo_arrendamiento == "Larga Duración" else "NO",
+            "0101":           dias_arrendado,
+            "0102":           ingresos_integros,
+            "0105":           intereses,
+            "0106":           gastos_reparacion,
+            "0107":           total_gastos,
+            "0108":           ibi_anual,
+            "0110":           casilla_0110,
+            "0111":           servicios,
+            "0112":           gastos_juridicos,
+            "0113":           amortizacion,
+            "0113_detalle":   f"MAX({base_compra:,.0f}€ compra, {valor_catastral:,.0f}€ catastral) × {pct_construccion*100:.0f}% × 3% × {pct_titular*100:.0f}%",
+            "0149":           rendimiento_neto,
+            "0150":           reduccion_importe,
+            "0152":           rendimiento_final,
+            "0153":           round(retenciones, 2),
+            "reduccion_pct":  0,
+            "nota_reduccion": "ℹ️ Sociedad Patrimonial: IS al 25% sin reducción por arrendamiento",
+            "iva_aplicable":  bool(row.get("IVA_Aplicable", False)),
+            "tipo_arrendamiento": tipo_arrendamiento,
+            # Casillas específicas Modelo 200
+            "m200_318":       ingresos_integros,
+            "m200_319":       total_gastos,
+            "m200_320":       amortizacion,
+            "m200_399":       rendimiento_final,
+            "cuota_is_25":    cuota_is,
+            "modo_fiscal":    "IS",
+        }
+
+    # ── Rama IRPF (Particular) — comportamiento original ────────
     reduccion_pct = 0.60 if tipo_arrendamiento == "Larga Duración" else 0.00
     reduccion_importe = round(rendimiento_neto * reduccion_pct, 2)
     rendimiento_final = round(rendimiento_neto - reduccion_importe, 2)
-    retenciones = safe_float(row.get("Retenciones_IRPF", 0))
     return {
         "0062_0075":     f"Ref: {row.get('Ref_Catastral', 'N/A')}",
         "0076":          "A (Arrendamiento)",
@@ -526,7 +571,7 @@ def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
         "0101":          dias_arrendado,
         "0102":          ingresos_integros,
         "0105":          intereses,
-        "0106":          gastos_reparacion,
+        "0106":           gastos_reparacion,
         "0107":          total_gastos,
         "0108":          ibi_anual,
         "0110":          casilla_0110,
@@ -542,6 +587,7 @@ def calcular_modelo_100(row, df_mov_local, año_fiscal=None):
         "nota_reduccion":"⚠️ Reducción 60% orientativa — validar con asesor según ingresos totales contribuyente",
         "iva_aplicable": bool(row.get("IVA_Aplicable", False)),
         "tipo_arrendamiento": tipo_arrendamiento,
+        "modo_fiscal":   "IRPF",
     }
 
 # ================================================================
@@ -2158,10 +2204,21 @@ elif menu == "Suministros":
 elif menu == "Fiscalidad":
     if _sin_inmuebles:
         st.info("📭 Sin inmuebles registrados. Ve a **Datos de Cartera** para añadir el primero."); st.stop()
-    st.markdown('<div class="nc-brand-header">💰 Fiscalidad</div>',unsafe_allow_html=True)
-    st.markdown('<div class="nc-brand-sub">Escudo fiscal · Modelo 100 IRPF · Deducciones optimizadas</div>',unsafe_allow_html=True)
-    from fiscal_export import render_seccion_fiscal
-    render_seccion_fiscal(df_inm, df_mov, safe_float, calcular_modelo_100)
+    _perfil_fiscal = st.session_state.get("perfil_datos", {})
+    _tipo_cuenta   = _perfil_fiscal.get("tipo_cuenta", "particular")
+
+    if _tipo_cuenta == "sociedad":
+        _nom_soc = _perfil_fiscal.get("nombre_sociedad", "Sociedad Patrimonial")
+        st.markdown(f'<div class="nc-brand-header">💰 Fiscalidad — Sociedad Patrimonial</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="nc-brand-sub">IS al 25% · Modelo 200 · {_nom_soc}</div>', unsafe_allow_html=True)
+        from fiscal_export import render_seccion_modelo_200
+        render_seccion_modelo_200(df_inm, df_mov, safe_float, calcular_modelo_100,
+                                   perfil=_perfil_fiscal)
+    else:
+        st.markdown('<div class="nc-brand-header">💰 Fiscalidad</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-brand-sub">Escudo fiscal · Modelo 100 IRPF · Deducciones optimizadas</div>', unsafe_allow_html=True)
+        from fiscal_export import render_seccion_fiscal
+        render_seccion_fiscal(df_inm, df_mov, safe_float, calcular_modelo_100)
 
 # ================================================================
 # PANTALLA: MACROFINANZAS
@@ -2794,6 +2851,34 @@ elif menu == "Mi Perfil":
         st.caption("Estos datos aparecerán en todas las facturas que generes.")
 
         with st.form("form_perfil_fiscal"):
+            # ── Tipo de cuenta ─────────────────────────────────
+            tipo_actual = p.get("tipo_cuenta", "particular")
+            tipo_cuenta = st.radio(
+                "¿Cómo tributas?",
+                options=["particular", "sociedad"],
+                format_func=lambda x: "👤 Particular (IRPF — Modelo 100)" if x == "particular"
+                                      else "🏢 Sociedad Patrimonial (IS — Modelo 200)",
+                index=0 if tipo_actual == "particular" else 1,
+                horizontal=True
+            )
+
+            if tipo_cuenta == "sociedad":
+                st.markdown("---")
+                col_s1, col_s2 = st.columns(2)
+                with col_s1:
+                    nombre_sociedad = st.text_input("Nombre de la sociedad *",
+                        value=p.get("nombre_sociedad",""),
+                        placeholder="Inmuebles Nolasco SL")
+                with col_s2:
+                    cif_sociedad = st.text_input("CIF de la sociedad *",
+                        value=p.get("cif_sociedad",""),
+                        placeholder="B12345678")
+                st.info("🏢 Modo Sociedad Patrimonial activado — se aplicará IS al 25% sin reducción por arrendamiento.")
+            else:
+                nombre_sociedad = p.get("nombre_sociedad","")
+                cif_sociedad    = p.get("cif_sociedad","")
+
+            st.markdown("---")
             col1, col2 = st.columns(2)
             with col1:
                 nombre_fiscal = st.text_input("Nombre fiscal completo *",
@@ -2830,17 +2915,22 @@ elif menu == "Mi Perfil":
             if submitted:
                 if not nombre_fiscal.strip() or not nif.strip():
                     st.warning("⚠️ Nombre fiscal y NIF son obligatorios.")
+                elif tipo_cuenta == "sociedad" and (not nombre_sociedad.strip() or not cif_sociedad.strip()):
+                    st.warning("⚠️ Nombre y CIF de la sociedad son obligatorios en modo Sociedad Patrimonial.")
                 else:
                     ok = guardar_perfil_usuario(uid_perfil, {
-                        "nombre_fiscal": nombre_fiscal.strip(),
-                        "nif": nif.strip().upper(),
-                        "direccion": direccion.strip(),
-                        "ciudad": ciudad.strip(),
-                        "cp": cp.strip(),
-                        "telefono": telefono.strip(),
-                        "iban": iban.strip(),
+                        "nombre_fiscal":   nombre_fiscal.strip(),
+                        "nif":             nif.strip().upper(),
+                        "direccion":       direccion.strip(),
+                        "ciudad":          ciudad.strip(),
+                        "cp":              cp.strip(),
+                        "telefono":        telefono.strip(),
+                        "iban":            iban.strip(),
                         "prefijo_factura": prefijo.strip() or "F",
-                        "siguiente_numero": int(sig_num)
+                        "siguiente_numero": int(sig_num),
+                        "tipo_cuenta":     tipo_cuenta,
+                        "nombre_sociedad": nombre_sociedad.strip(),
+                        "cif_sociedad":    cif_sociedad.strip().upper(),
                     })
                     if ok:
                         st.success("✅ Datos fiscales guardados correctamente")
