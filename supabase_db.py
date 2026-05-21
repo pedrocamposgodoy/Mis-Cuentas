@@ -140,33 +140,21 @@ def registrar_usuario(email, password):
     try:
         r = requests.post(
             f"{SUPABASE_URL}/auth/v1/signup",
-            headers={"apikey": SUPABASE_KEY, "Content-Type": "application/json"},
-            json={"email": email, "password": password},
-            timeout=15
+            headers={'apikey': SUPABASE_KEY, 'Content-Type': 'application/json'},
+            json={'email': email, 'password': password}
         )
-        raw = r.text.strip()
-        if raw == "Host not in allowlist":
+        data = r.json()
+        if r.status_code in [200, 201] and data.get('user'):
             return {
-                "success": False,
-                "error": "Dominio no autorizado en Supabase. Ve a Authentication > URL Configuration y añade la URL de la app."
+                'success': True,
+                'user_id': data['user']['id'],
+                'email': data['user']['email']
             }
-        try:
-            data = r.json()
-        except Exception:
-            return {"success": False, "error": f"Respuesta inesperada de Supabase: {raw[:200]}"}
-
-        if r.status_code in [200, 201]:
-            user = data.get("user") or (data if data.get("id") else None)
-            if user and user.get("id"):
-                return {
-                    "success": True,
-                    "user_id": user["id"],
-                    "email": user.get("email", email)
-                }
-        msg = data.get("error_description") or data.get("msg") or data.get("message") or "Error al registrar usuario"
-        return {"success": False, "error": msg}
+        else:
+            msg = data.get('error_description') or data.get('msg') or 'Error al registrar usuario'
+            return {'success': False, 'error': msg}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {'success': False, 'error': str(e)}
 
 
 # ─── RENAME MAPS ─────────────────────────────────────────────────
@@ -1663,3 +1651,81 @@ def crear_factura_rectificativa(user_id: str, fac_original: dict) -> dict:
 
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# ================================================================
+# HIPOTECAS — CRUD con user_id
+# ================================================================
+
+def leer_hipotecas(user_id):
+    """Lee hipotecas del usuario desde Supabase."""
+    try:
+        h = _headers()
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/hipotecas?user_id=eq.{user_id}&order=id.asc",
+            headers=h, timeout=10
+        )
+        if r.status_code == 200:
+            data = r.json()
+            if not data:
+                return pd.DataFrame(columns=[
+                    "id","inmueble","principal","tasa_inicial","plazo_años",
+                    "fecha_inicio","es_variable","indice_variable","margen","saldo_actual"
+                ])
+            df = pd.DataFrame(data)
+            for col in ["principal","tasa_inicial","margen","saldo_actual"]:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+            if "plazo_años" in df.columns:
+                df["plazo_años"] = pd.to_numeric(df["plazo_años"], errors="coerce").fillna(0).astype(int)
+            return df
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+def guardar_hipoteca(user_id, datos, hip_id=None):
+    """Crea o actualiza una hipoteca. Si hip_id es None, crea nueva."""
+    try:
+        h = _headers()
+        payload = {
+            "user_id":         user_id,
+            "inmueble":        datos.get("inmueble", ""),
+            "principal":       float(datos.get("principal", 0)),
+            "tasa_inicial":    float(datos.get("tasa_inicial", 0)),
+            "plazo_años":      int(datos.get("plazo_años", 0)),
+            "fecha_inicio":    datos.get("fecha_inicio", ""),
+            "es_variable":     datos.get("es_variable", "N"),
+            "indice_variable": datos.get("indice_variable", ""),
+            "margen":          float(datos.get("margen", 0)),
+            "saldo_actual":    float(datos.get("saldo_actual", 0)),
+        }
+        if hip_id:
+            r = requests.patch(
+                f"{SUPABASE_URL}/rest/v1/hipotecas?id=eq.{hip_id}&user_id=eq.{user_id}",
+                headers={**h, "Prefer": "return=minimal"},
+                json=payload, timeout=10
+            )
+        else:
+            r = requests.post(
+                f"{SUPABASE_URL}/rest/v1/hipotecas",
+                headers={**h, "Prefer": "return=representation"},
+                json=payload, timeout=10
+            )
+        return r.status_code in (200, 201, 204)
+    except Exception:
+        return False
+
+
+def eliminar_hipoteca(user_id, hip_id):
+    """Elimina una hipoteca por id."""
+    try:
+        h = _headers()
+        r = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/hipotecas?id=eq.{hip_id}&user_id=eq.{user_id}",
+            headers={**h, "Prefer": "return=minimal"},
+            timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
