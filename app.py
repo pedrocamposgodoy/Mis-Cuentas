@@ -247,22 +247,29 @@ _sin_inmuebles = df_inm is None or len(df_inm) == 0
 
 # ================================================================
 # SECCIÓN 5B — DATOS DE HIPOTECAS
-# Para añadir/cambiar hipotecas, edita los "rows" de aquí
+# Hipotecas cargadas desde Supabase por user_id
 # ================================================================
-DB_HIP = "nolasco_hipotecas_v14.csv"
-def inicializar_hipotecas():
-    if not os.path.exists(DB_HIP):
-        rows = [
-            {"Inmueble":"Casa Abarqueros","Principal":150000,"Tasa_Inicial":2.5,"Plazo_Años":20,"Fecha_Inicio":"2020-01-15","Es_Variable":"N","Indice_Variable":"","Margen":0,"Saldo_Actual":0},
-            {"Inmueble":"Paseo del Salón","Principal":120000,"Tasa_Inicial":2.8,"Plazo_Años":25,"Fecha_Inicio":"2018-06-01","Es_Variable":"S","Indice_Variable":"Euríbor","Margen":0.85,"Saldo_Actual":95000},
-            {"Inmueble":"Huerto Unidad 1","Principal":45000,"Tasa_Inicial":3.0,"Plazo_Años":15,"Fecha_Inicio":"2021-03-10","Es_Variable":"N","Indice_Variable":"","Margen":0,"Saldo_Actual":0},
-            {"Inmueble":"Huerto Unidad 2","Principal":45000,"Tasa_Inicial":3.0,"Plazo_Años":15,"Fecha_Inicio":"2021-03-10","Es_Variable":"N","Indice_Variable":"","Margen":0,"Saldo_Actual":0},
-            {"Inmueble":"Huerto Unidad 3","Principal":45000,"Tasa_Inicial":3.0,"Plazo_Años":15,"Fecha_Inicio":"2021-03-10","Es_Variable":"N","Indice_Variable":"","Margen":0,"Saldo_Actual":0},
-            {"Inmueble":"Huerto Unidad 4","Principal":0,"Tasa_Inicial":0,"Plazo_Años":0,"Fecha_Inicio":"2024-01-01","Es_Variable":"N","Indice_Variable":"","Margen":0,"Saldo_Actual":0},
-        ]
-        pd.DataFrame(rows).to_csv(DB_HIP, index=False)
-inicializar_hipotecas()
-df_hip = pd.read_csv(DB_HIP)
+def _cargar_hipotecas_supabase():
+    from supabase_db import leer_hipotecas
+    uid = st.session_state.get("user_id", "")
+    df = leer_hipotecas(uid) if uid else pd.DataFrame()
+    # Normalizar columnas para compatibilidad con el resto del código
+    col_map = {
+        "inmueble": "Inmueble", "principal": "Principal",
+        "tasa_inicial": "Tasa_Inicial", "plazo_años": "Plazo_Años",
+        "fecha_inicio": "Fecha_Inicio", "es_variable": "Es_Variable",
+        "indice_variable": "Indice_Variable", "margen": "Margen",
+        "saldo_actual": "Saldo_Actual"
+    }
+    if not df.empty:
+        df = df.rename(columns=col_map)
+    else:
+        df = pd.DataFrame(columns=list(col_map.values()) + ["id"])
+    return df
+
+if "df_hip" not in st.session_state:
+    st.session_state.df_hip = _cargar_hipotecas_supabase()
+df_hip = st.session_state.df_hip
 
 if "menu" not in st.session_state:      st.session_state.menu = "Torre de Control"
 if "ficha_sel" not in st.session_state:  st.session_state.ficha_sel = None
@@ -2229,8 +2236,65 @@ elif menu == "Fiscalidad":
 # Deps: df_inm, df_mov, df_hip, calcular_amortizacion(), stress_test_euribor()
 # ================================================================
 elif menu == "Macrofinanzas":
+    from supabase_db import guardar_hipoteca, eliminar_hipoteca
     st.markdown('<div class="nc-brand-header">Macrofinanzas</div>',unsafe_allow_html=True)
     st.markdown('<div class="nc-brand-sub">Simulador hipoteca · Stress test Euríbor · Análisis sensibilidad</div>',unsafe_allow_html=True)
+
+    # ── Recargar hipotecas del usuario ──────────────────────────
+    df_hip = _cargar_hipotecas_supabase()
+    st.session_state.df_hip = df_hip
+
+    # ── Gestión de hipotecas ─────────────────────────────────────
+    with st.expander("➕ Gestionar hipotecas", expanded=df_hip.empty):
+        _uid_hip = st.session_state.get("user_id","")
+        _nombres_inm = list(df_inm["Nombre"].dropna()) if not df_inm.empty else []
+
+        st.markdown("**Añadir / editar hipoteca**")
+        _hcol1, _hcol2, _hcol3 = st.columns(3)
+        with _hcol1:
+            _h_inm   = st.selectbox("Inmueble", _nombres_inm, key="h_inm") if _nombres_inm else st.text_input("Inmueble", key="h_inm")
+            _h_pri   = st.number_input("Principal (€)", min_value=0.0, step=1000.0, key="h_pri")
+            _h_tasa  = st.number_input("Tasa inicial (%)", min_value=0.0, max_value=20.0, step=0.01, key="h_tasa")
+        with _hcol2:
+            _h_plazo = st.number_input("Plazo (años)", min_value=1, max_value=40, value=20, key="h_plazo")
+            _h_fecha = st.date_input("Fecha inicio", key="h_fecha")
+            _h_var   = st.radio("Tipo", ["Fija","Variable"], horizontal=True, key="h_var")
+        with _hcol3:
+            _h_idx   = st.selectbox("Índice", ["","Euríbor","IRPH"], key="h_idx") if _h_var=="Variable" else st.empty()
+            _h_mrg   = st.number_input("Margen (%)", min_value=0.0, step=0.01, key="h_mrg") if _h_var=="Variable" else 0.0
+            _h_saldo = st.number_input("Saldo actual (€)", min_value=0.0, step=1000.0, key="h_saldo")
+
+        if st.button("💾 Guardar hipoteca", type="primary", key="btn_save_hip"):
+            _ok = guardar_hipoteca(_uid_hip, {
+                "inmueble": _h_inm, "principal": _h_pri, "tasa_inicial": _h_tasa,
+                "plazo_años": _h_plazo, "fecha_inicio": str(_h_fecha),
+                "es_variable": "S" if _h_var=="Variable" else "N",
+                "indice_variable": _h_idx if _h_var=="Variable" else "",
+                "margen": _h_mrg, "saldo_actual": _h_saldo
+            })
+            if _ok:
+                st.success("✓ Hipoteca guardada")
+                st.session_state.df_hip = _cargar_hipotecas_supabase()
+                st.rerun()
+            else:
+                st.error("Error al guardar")
+
+        if not df_hip.empty:
+            st.markdown("**Hipotecas registradas**")
+            st.dataframe(df_hip[["Inmueble","Principal","Tasa_Inicial","Plazo_Años","Saldo_Actual"]].style.format({
+                "Principal": "{:,.0f} €", "Tasa_Inicial": "{:.2f}%",
+                "Saldo_Actual": "{:,.0f} €"
+            }), use_container_width=True, hide_index=True)
+            _del_opts = list(df_hip["Inmueble"])
+            _del_sel  = st.selectbox("Eliminar hipoteca:", _del_opts, key="del_hip_sel")
+            if st.button("🗑️ Eliminar", type="secondary", key="btn_del_hip"):
+                _fila_del = df_hip[df_hip["Inmueble"]==_del_sel]
+                if not _fila_del.empty and "id" in _fila_del.columns:
+                    eliminar_hipoteca(_uid_hip, int(_fila_del.iloc[0]["id"]))
+                    st.session_state.df_hip = _cargar_hipotecas_supabase()
+                    st.rerun()
+
+    df_hip = st.session_state.df_hip
     tab1,tab2,tab3=st.tabs(["📊 Simulador Amortización","⚠️ Stress Test Euríbor","📈 Sensibilidad Rentabilidad"])
 
     with tab1:
