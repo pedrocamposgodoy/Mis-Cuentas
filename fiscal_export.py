@@ -44,16 +44,22 @@ except ImportError:
 def calcular_resumen_global(df_inm, df_mov, safe_float_fn, calcular_modelo_100_fn,
                              año_fiscal=2025):
     """
-    Calcula el Modelo 100 para cada inmueble y devuelve:
+    Calcula el Modelo 100/200 para cada inmueble y devuelve:
       - lista de dicts por inmueble con todas las casillas
-      - dict de totales agregados (la hoja RESULTADOS del Excel de Álvaro)
+      - dict de totales agregados
     """
     filas = []
     for _, row in df_inm.iterrows():
         modelo = calcular_modelo_100_fn(row, df_mov, año_fiscal=año_fiscal)
+        # Claves IS (Modelo 200) — presentes si tipo_cuenta="sociedad"
+        m200_318 = modelo.get("m200_318", modelo["0102"])
+        m200_319 = modelo.get("m200_319", modelo["0107"])
+        m200_320 = modelo.get("m200_320", modelo["0113"])
+        m200_399 = modelo.get("m200_399", modelo["0152"])
         filas.append({
             "inmueble":          row.get("Nombre", ""),
-            "ref_catastral":     row.get("Ref_Catastral", "N/A"),
+            "ref_catastral":     row.get("Ref_Catastral", "") or "",
+            "cp":                str(row.get("CP", "")),
             "tipo":              row.get("Tipo_Arrendamiento", "Larga Duración"),
             "inquilino":         row.get("Inquilino", ""),
             "nif_inquilino":     row.get("NIF_Inquilino", ""),
@@ -74,6 +80,13 @@ def calcular_resumen_global(df_inm, df_mov, safe_float_fn, calcular_modelo_100_f
             "rend_final":        modelo["0152"],
             "retenciones":       modelo["0153"],
             "nota_reduccion":    modelo.get("nota_reduccion", ""),
+            # Claves Modelo 200
+            "m200_318":          m200_318,
+            "m200_319":          m200_319,
+            "m200_320":          m200_320,
+            "m200_399":          m200_399,
+            "cuota_is":          round(max(m200_399 * 0.25, 0), 2),
+            "modo_fiscal":       modelo.get("modo_fiscal", "IRPF"),
         })
 
     # Totales
@@ -1725,10 +1738,12 @@ def render_seccion_fiscal(df_inm, df_mov, safe_float_fn, calcular_modelo_100_fn)
 # ================================================================
 
 def generar_pdf_modelo_200(filas, totales, nombre_sociedad="Sociedad",
-                            cif_sociedad="", nombre_asesor="", año_fiscal=2025):
+                            cif_sociedad="", nombre_asesor="", año_fiscal=2025,
+                            perfil=None):
     """
     Genera PDF con resumen de arrendamientos para el Modelo 200 (IS).
     Casillas: [318] Ingresos, [319] Gastos, [320] Amortización, [399] Resultado.
+    perfil: dict con nombre_fiscal, nif, direccion, ciudad, cp, telefono
     """
     if not REPORTLAB_OK:
         return None
@@ -1787,19 +1802,35 @@ def generar_pdf_modelo_200(filas, totales, nombre_sociedad="Sociedad",
     elems.append(hdr_tbl)
     elems.append(Spacer(1, 10))
 
-    # Datos sociedad
-    soc_data = [[
-        Paragraph("<b>Sociedad</b>", p_body),
-        Paragraph(nombre_sociedad, p_body),
-        Paragraph("<b>CIF</b>", p_body),
-        Paragraph(cif_sociedad, p_body),
-    ],[
-        Paragraph("<b>Asesor</b>", p_body),
-        Paragraph(nombre_asesor, p_body),
-        Paragraph("<b>Ejercicio fiscal</b>", p_body),
-        Paragraph(str(año_fiscal), p_body),
-    ]]
-    soc_tbl = Table(soc_data, colWidths=[3*cm, 5.5*cm, 3*cm, 5*cm])
+    # ── Sujeto pasivo completo ──────────────────────────────────
+    perfil = perfil or {}
+    nif_fiscal  = perfil.get("nif", cif_sociedad)
+    direccion   = perfil.get("direccion", "")
+    ciudad      = perfil.get("ciudad", "")
+    cp          = perfil.get("cp", "")
+    telefono    = perfil.get("telefono", "")
+
+    elems.append(Paragraph("Sujeto Pasivo — Datos de la Sociedad", p_h2))
+    elems.append(Spacer(1, 4))
+    soc_data = [
+        [Paragraph("<b>Denominación social</b>", p_body),
+         Paragraph(nombre_sociedad, p_body),
+         Paragraph("<b>CIF</b>", p_body),
+         Paragraph(cif_sociedad, p_body)],
+        [Paragraph("<b>NIF representante</b>", p_body),
+         Paragraph(nif_fiscal, p_body),
+         Paragraph("<b>Ejercicio fiscal</b>", p_body),
+         Paragraph(str(año_fiscal), p_body)],
+        [Paragraph("<b>Domicilio fiscal</b>", p_body),
+         Paragraph(direccion, p_body),
+         Paragraph("<b>CP / Ciudad</b>", p_body),
+         Paragraph(f"{cp} {ciudad}".strip(), p_body)],
+        [Paragraph("<b>Teléfono</b>", p_body),
+         Paragraph(telefono, p_body),
+         Paragraph("<b>Asesor fiscal</b>", p_body),
+         Paragraph(nombre_asesor, p_body)],
+    ]
+    soc_tbl = Table(soc_data, colWidths=[3.5*cm, 5.5*cm, 3*cm, 4.5*cm])
     soc_tbl.setStyle(TableStyle([
         ("BACKGROUND", (0,0),(0,-1), LGRAY),
         ("BACKGROUND", (2,0),(2,-1), LGRAY),
@@ -1809,6 +1840,7 @@ def generar_pdf_modelo_200(filas, totales, nombre_sociedad="Sociedad",
         ("GRID",       (0,0),(-1,-1), 0.3, colors.HexColor("#E2E8F0")),
         ("PADDING",    (0,0),(-1,-1), 5),
         ("VALIGN",     (0,0),(-1,-1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0,0),(-1,-1), [WHITE, LGRAY, WHITE, LGRAY]),
     ]))
     elems.append(soc_tbl)
     elems.append(Spacer(1, 12))
@@ -2267,7 +2299,8 @@ def render_seccion_modelo_200(df_inm, df_mov, safe_float_fn, calcular_modelo_100
                         nombre_sociedad=nombre_sociedad,
                         cif_sociedad=cif_sociedad,
                         nombre_asesor=nombre_asesor,
-                        año_fiscal=año_fiscal
+                        año_fiscal=año_fiscal,
+                        perfil=perfil
                     )
                 if pdf_buf:
                     st.session_state["pdf_m200"] = pdf_buf
