@@ -1895,21 +1895,228 @@ def generar_pdf_modelo_200(filas, totales, nombre_sociedad="Sociedad",
     return buf.read()
 
 
+def generar_excel_modelo_200(filas, totales, nombre_sociedad="Sociedad",
+                              cif_sociedad="", nombre_asesor="", año_fiscal=2025):
+    """Excel Modelo 200 IS — formato limpio para asesor fiscal."""
+    if not OPENPYXL_OK:
+        return None
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    import io as _io
+
+    wb = Workbook()
+
+    # ── Colores ──────────────────────────────────────────────────
+    C_PURPLE = "534AB7"
+    C_DARK   = "0F172A"
+    C_LGRAY  = "F1F5F9"
+    C_GREEN  = "059669"
+    C_WHITE  = "FFFFFF"
+    C_RED    = "DC2626"
+
+    def _fill(hex_): return PatternFill("solid", fgColor=hex_)
+    def _font(bold=False, color="0F172A", size=10):
+        return Font(bold=bold, color=color, size=size, name="Calibri")
+    def _border():
+        s = Side(style="thin", color="E2E8F0")
+        return Border(left=s, right=s, top=s, bottom=s)
+    def _alin(h="left", v="center"):
+        return Alignment(horizontal=h, vertical=v, wrap_text=True)
+
+    # ── Hoja 1: RESUMEN MODELO 200 ───────────────────────────────
+    ws = wb.active
+    ws.title = f"Modelo 200 — {año_fiscal}"
+    ws.column_dimensions["A"].width = 14
+    ws.column_dimensions["B"].width = 38
+    ws.column_dimensions["C"].width = 20
+
+    # Cabecera
+    ws.merge_cells("A1:C1")
+    ws["A1"] = f"NOLASCO CAPITAL — Resumen Impuesto de Sociedades {año_fiscal}"
+    ws["A1"].font = _font(bold=True, color=C_WHITE, size=13)
+    ws["A1"].fill = _fill(C_PURPLE)
+    ws["A1"].alignment = _alin("center")
+    ws.row_dimensions[1].height = 28
+
+    # Datos entidad
+    meta = [
+        ("Sociedad:", nombre_sociedad),
+        ("CIF:", cif_sociedad),
+        ("Asesor fiscal:", nombre_asesor),
+        ("Ejercicio fiscal:", str(año_fiscal)),
+    ]
+    for i, (k, v) in enumerate(meta, start=2):
+        ws[f"A{i}"] = k
+        ws[f"A{i}"].font = _font(bold=True)
+        ws[f"A{i}"].fill = _fill(C_LGRAY)
+        ws[f"B{i}"] = v
+        ws[f"B{i}"].font = _font()
+    ws.row_dimensions[2].height = 16
+    ws.row_dimensions[3].height = 16
+    ws.row_dimensions[4].height = 16
+    ws.row_dimensions[5].height = 16
+
+    # Espacio
+    fila = 7
+
+    # Cabecera casillas
+    for col, txt in enumerate(["Casilla", "Concepto", "Importe (€)"], start=1):
+        c = ws.cell(row=fila, column=col, value=txt)
+        c.font = _font(bold=True, color=C_WHITE)
+        c.fill = _fill(C_PURPLE)
+        c.alignment = _alin("center")
+        c.border = _border()
+    fila += 1
+
+    resultado  = totales.get("rend_final", 0)
+    amort_tot  = totales.get("amortizacion", 0)
+    ingresos   = totales.get("ingresos", 0)
+    gastos     = totales.get("total_gastos", 0)
+    retenc     = totales.get("retenciones", 0)
+    cuota_is   = round(max(resultado * 0.25, 0), 2)
+    diferencial = round(cuota_is - retenc, 2)
+
+    casillas_m200 = [
+        ("[318]", "Ingresos íntegros por arrendamiento",              ingresos),
+        ("[319]", "Gastos fiscalmente deducibles",                    gastos),
+        ("[320]", "Amortizaciones del ejercicio (3% s/ valor)",       amort_tot),
+        ("[399]", "Resultado neto actividad arrendamiento",           resultado),
+        ("[500]", "Base imponible general (previa)",                  resultado),
+        ("[562]", "Cuota íntegra — tipo general 25%",                cuota_is),
+        ("[582]", "Retenciones e ingresos a cuenta soportados",       retenc),
+        ("[599]", "Cuota diferencial (a ingresar / devolver)",        diferencial),
+    ]
+
+    for casilla, concepto, importe in casillas_m200:
+        es_total = casilla in ("[562]", "[599]")
+        bg = C_GREEN if es_total else (C_LGRAY if casillas_m200.index((casilla, concepto, importe)) % 2 == 0 else C_WHITE)
+        fc = C_WHITE if es_total else C_DARK
+
+        ca = ws.cell(row=fila, column=1, value=casilla)
+        cb = ws.cell(row=fila, column=2, value=concepto)
+        cc = ws.cell(row=fila, column=3, value=importe)
+
+        for cell, alin_ in [(ca, "center"), (cb, "left"), (cc, "right")]:
+            cell.font = _font(bold=es_total, color=fc)
+            cell.fill = _fill(bg)
+            cell.alignment = _alin(alin_)
+            cell.border = _border()
+        cc.number_format = '#,##0.00 "€"'
+        if diferencial > 0 and casilla == "[599]":
+            cc.font = _font(bold=True, color=C_RED)
+        fila += 1
+
+    # Espacio + nota
+    fila += 1
+    ws.merge_cells(f"A{fila}:C{fila}")
+    ws[f"A{fila}"] = (
+        "Cuota IS calculada al tipo general del 25% (Art. 29 LIS). "
+        "Las sociedades patrimoniales no pueden aplicar la reducción del 60% por arrendamiento de vivienda habitual. "
+        "Verificar con software oficial AEAT antes de presentar el Modelo 200."
+    )
+    ws[f"A{fila}"].font = _font(color="64748B", size=8)
+    ws[f"A{fila}"].alignment = _alin("left")
+    ws.row_dimensions[fila].height = 40
+
+    # ── Hoja 2: DETALLE POR INMUEBLE ────────────────────────────
+    ws2 = wb.create_sheet("Detalle por inmueble")
+    ws2.column_dimensions["A"].width = 22
+    ws2.column_dimensions["B"].width = 18
+    ws2.column_dimensions["C"].width = 16
+    ws2.column_dimensions["D"].width = 16
+    ws2.column_dimensions["E"].width = 16
+    ws2.column_dimensions["F"].width = 16
+
+    # Cabecera hoja 2
+    ws2.merge_cells("A1:F1")
+    ws2["A1"] = f"Detalle por inmueble — IS {año_fiscal} — {nombre_sociedad}"
+    ws2["A1"].font = _font(bold=True, color=C_WHITE, size=12)
+    ws2["A1"].fill = _fill(C_PURPLE)
+    ws2["A1"].alignment = _alin("center")
+    ws2.row_dimensions[1].height = 24
+
+    headers2 = ["Inmueble", "Ref. Catastral", "[318] Ingresos", "[319] Gastos", "[320] Amort.", "[399] Resultado"]
+    for col, h in enumerate(headers2, start=1):
+        c = ws2.cell(row=2, column=col, value=h)
+        c.font = _font(bold=True, color=C_WHITE)
+        c.fill = _fill(C_DARK)
+        c.alignment = _alin("center")
+        c.border = _border()
+
+    for i, f in enumerate(filas, start=3):
+        bg = C_LGRAY if i % 2 == 0 else C_WHITE
+        valores = [
+            f.get("inmueble", ""),
+            f.get("ref_catastral", ""),
+            f.get("m200_318", f.get("ingresos", 0)),
+            f.get("m200_319", f.get("total_gastos", 0)),
+            f.get("m200_320", f.get("amortizacion", 0)),
+            f.get("m200_399", f.get("rend_final", 0)),
+        ]
+        for col, val in enumerate(valores, start=1):
+            c = ws2.cell(row=i, column=col, value=val)
+            c.font = _font()
+            c.fill = _fill(bg)
+            c.border = _border()
+            c.alignment = _alin("right" if col > 2 else "left")
+            if col > 2:
+                c.number_format = '#,##0.00 "€"'
+
+    # Fila totales
+    fila2 = len(filas) + 3
+    for col, val in enumerate(["TOTAL", "", ingresos, gastos, amort_tot, resultado], start=1):
+        c = ws2.cell(row=fila2, column=col, value=val)
+        c.font = _font(bold=True, color=C_WHITE)
+        c.fill = _fill(C_GREEN)
+        c.border = _border()
+        c.alignment = _alin("right" if col > 2 else "left")
+        if col > 2:
+            c.number_format = '#,##0.00 "€"'
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()
+
+
 def render_seccion_modelo_200(df_inm, df_mov, safe_float_fn, calcular_modelo_100_fn,
                                perfil=None):
-    """Sección Fiscalidad IS para Sociedades Patrimoniales."""
+    """Sección Fiscalidad IS para Sociedades Patrimoniales — Modelo 200 completo."""
     import streamlit as st
+    import plotly.graph_objects as go
+
     perfil = perfil or {}
     nombre_sociedad = perfil.get("nombre_sociedad", "Sociedad Patrimonial")
     cif_sociedad    = perfil.get("cif_sociedad", "")
     nombre_asesor   = perfil.get("nombre_fiscal", "")
 
-    año_fiscal = st.selectbox("Ejercicio fiscal", [2025, 2024, 2023], index=0,
-                               key="m200_año")
+    año_actual = datetime.now().year
+    año_fiscal = st.selectbox(
+        "Ejercicio fiscal",
+        [año_actual - 1, año_actual - 2, año_actual - 3],
+        index=0,
+        key="m200_año"
+    )
 
+    # Banner sociedad
+    st.markdown(f"""
+    <div style="background:#0d1a0d;border:1px solid #059669;border-radius:8px;
+    padding:12px 18px;margin-bottom:1rem;">
+    <b style="color:#059669;font-size:15px;">🏢 {nombre_sociedad}</b>
+    &nbsp;·&nbsp;
+    <span style="color:#94a3b8;font-size:13px;">CIF: {cif_sociedad or '—'}</span><br>
+    <span style="color:#64748b;font-size:12px;">
+    Impuesto de Sociedades · Tipo general 25% · Ejercicio {año_fiscal}
+    </span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Calcular con tipo_cuenta="sociedad"
     filas, totales = calcular_resumen_global(
         df_inm, df_mov, safe_float_fn,
-        lambda row, df, año_fiscal: calcular_modelo_100_fn(row, df, año_fiscal, tipo_cuenta="sociedad"),
+        lambda row, df, af: calcular_modelo_100_fn(row, df, af, tipo_cuenta="sociedad"),
         año_fiscal=año_fiscal
     )
 
@@ -1917,34 +2124,192 @@ def render_seccion_modelo_200(df_inm, df_mov, safe_float_fn, calcular_modelo_100
         st.info("No hay inmuebles con datos suficientes para generar el resumen.")
         return
 
-    st.markdown("### Resumen Modelo 200 — Rendimientos arrendamiento")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("[318] Ingresos",   f"{totales.get('ingresos',0):,.0f} €")
-    col2.metric("[319] Gastos",     f"{totales.get('total_gastos',0):,.0f} €")
-    col3.metric("[399] Resultado",  f"{totales.get('rend_final',0):,.0f} €")
-    col4.metric("IS 25%",           f"{max(totales.get('rend_final',0)*0.25,0):,.0f} €")
+    ingresos   = totales.get("ingresos", 0)
+    gastos     = totales.get("total_gastos", 0)
+    amort_tot  = totales.get("amortizacion", 0)
+    resultado  = totales.get("rend_final", 0)
+    retenc     = totales.get("retenciones", 0)
+    cuota_is   = round(max(resultado * 0.25, 0), 2)
+    diferencial = round(cuota_is - retenc, 2)
+
+    # ── KPIs ────────────────────────────────────────────────────
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Ingresos [318]",     f"{ingresos:,.2f} €")
+    c2.metric("Gastos [319]",       f"{gastos:,.2f} €")
+    c3.metric("Base imp. [399]",    f"{resultado:,.2f} €")
+    c4.metric("Cuota IS 25%",       f"{cuota_is:,.2f} €")
+    c5.metric("A ingresar [599]",   f"{diferencial:,.2f} €",
+              delta_color="inverse",
+              delta=("⚠️ A pagar" if diferencial > 0 else "✅ A devolver"))
 
     st.markdown("---")
-    if st.button("📄 Generar PDF Modelo 200", type="primary", key="gen_pdf_m200"):
-        with st.spinner("Generando PDF..."):
-            pdf_buf = generar_pdf_modelo_200(
-                filas, totales,
-                nombre_sociedad=nombre_sociedad,
-                cif_sociedad=cif_sociedad,
-                nombre_asesor=nombre_asesor,
-                año_fiscal=año_fiscal
-            )
-        if pdf_buf:
-            st.session_state["pdf_m200"] = pdf_buf
-            st.success("✓ PDF generado")
-        else:
-            st.error("Instala reportlab: pip install reportlab")
 
-    if "pdf_m200" in st.session_state:
-        st.download_button(
-            "⬇️ Descargar PDF Modelo 200",
-            data=st.session_state["pdf_m200"],
-            file_name=f"Modelo200_{año_fiscal}_{nombre_sociedad.replace(' ','_')}.pdf",
-            mime="application/pdf",
+    tab1, tab2, tab3 = st.tabs(["📋 Casillas Modelo 200", "📊 Detalle por inmueble", "📥 Exportar"])
+
+    # ── TAB 1: Casillas ──────────────────────────────────────────
+    with tab1:
+        st.markdown('<div class="nc-section-title">Casillas Modelo 200 — IS</div>',
+                    unsafe_allow_html=True)
+        st.caption("Referencia para cumplimentar en la sede electrónica de la AEAT.")
+
+        casillas_data = [
+            {"Casilla": "[318]", "Concepto": "Ingresos íntegros por arrendamiento",              "Importe (€)": f"{ingresos:,.2f}",    "Estado": "✅"},
+            {"Casilla": "[319]", "Concepto": "Gastos fiscalmente deducibles",                    "Importe (€)": f"{gastos:,.2f}",      "Estado": "✅"},
+            {"Casilla": "[320]", "Concepto": "Amortizaciones del ejercicio (3% s/ valor)",       "Importe (€)": f"{amort_tot:,.2f}",   "Estado": "✅"},
+            {"Casilla": "[399]", "Concepto": "Resultado neto actividad arrendamiento",           "Importe (€)": f"{resultado:,.2f}",   "Estado": "✅"},
+            {"Casilla": "[500]", "Concepto": "Base imponible general (previa)",                  "Importe (€)": f"{resultado:,.2f}",   "Estado": "✅"},
+            {"Casilla": "[562]", "Concepto": "Cuota íntegra — tipo general 25%",                "Importe (€)": f"{cuota_is:,.2f}",    "Estado": "✅"},
+            {"Casilla": "[582]", "Concepto": "Retenciones e ingresos a cuenta soportados",       "Importe (€)": f"{retenc:,.2f}",      "Estado": "✅"},
+            {"Casilla": "[599]", "Concepto": "Cuota diferencial (a ingresar / devolver)",        "Importe (€)": f"{diferencial:,.2f}", "Estado": "⚠️ Verificar"},
+        ]
+        st.dataframe(
+            pd.DataFrame(casillas_data),
             use_container_width=True,
+            hide_index=True,
+            height=330
         )
+
+        st.markdown("---")
+
+        # Waterfall
+        st.markdown('<div class="nc-section-title">Cuenta de resultados IS</div>',
+                    unsafe_allow_html=True)
+
+        fig = go.Figure(go.Waterfall(
+            orientation="v",
+            measure=["absolute", "relative", "total", "relative", "total"],
+            x=["Ingresos", "− Gastos", "Rdto. neto", "− IS 25%", "Resultado neto"],
+            y=[ingresos, -gastos, 0, -cuota_is, 0],
+            connector={"line": {"color": "#334155"}},
+            increasing={"marker": {"color": "#22c55e"}},
+            decreasing={"marker": {"color": "#ef4444"}},
+            totals={"marker": {"color": "#185FA5"}},
+            text=[
+                f"{ingresos:,.0f}€",
+                f"-{gastos:,.0f}€",
+                f"{resultado:,.0f}€",
+                f"-{cuota_is:,.0f}€",
+                f"{resultado - cuota_is:,.0f}€",
+            ],
+            textposition="outside"
+        ))
+        fig.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="DM Sans", size=12),
+            height=340,
+            margin=dict(l=10, r=10, t=20, b=10),
+            showlegend=False,
+            yaxis=dict(gridcolor="#1e293b"),
+            xaxis=dict(gridcolor="#1e293b"),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.info(
+            "ℹ️ **Nota legal**: Tipo general IS = 25% (Art. 29 LIS). "
+            "Empresas de nueva creación: 15% los 2 primeros periodos con base positiva. "
+            "Las sociedades patrimoniales **no pueden** aplicar la reducción del 60% "
+            "por arrendamiento de vivienda habitual. "
+            "⚠️ Verificar con tu asesor fiscal antes de presentar."
+        )
+
+    # ── TAB 2: Detalle por inmueble ───────────────────────────────
+    with tab2:
+        st.markdown('<div class="nc-section-title">Desglose por inmueble — IS</div>',
+                    unsafe_allow_html=True)
+
+        df_detalle = pd.DataFrame([{
+            "Inmueble":         f.get("inmueble", ""),
+            "CP":               f.get("ref_catastral", "")[:5] if f.get("ref_catastral") else "—",
+            "Ingresos [318]":   f.get("m200_318", f.get("ingresos", 0)),
+            "Gastos [319]":     f.get("m200_319", f.get("total_gastos", 0)),
+            "Amort. [320]":     f.get("m200_320", f.get("amortizacion", 0)),
+            "Resultado [399]":  f.get("m200_399", f.get("rend_final", 0)),
+            "IS 25%":           round(max(f.get("m200_399", f.get("rend_final", 0)) * 0.25, 0), 2),
+        } for f in filas])
+
+        st.dataframe(
+            df_detalle.style.format({
+                "Ingresos [318]":  "{:,.2f} €",
+                "Gastos [319]":    "{:,.2f} €",
+                "Amort. [320]":    "{:,.2f} €",
+                "Resultado [399]": "{:,.2f} €",
+                "IS 25%":          "{:,.2f} €",
+            }).background_gradient(subset=["IS 25%"], cmap="Reds"),
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # Fila totales manual
+        st.markdown(
+            f"**TOTAL** · Ingresos: **{ingresos:,.2f} €** · "
+            f"Gastos: **{gastos:,.2f} €** · "
+            f"Resultado: **{resultado:,.2f} €** · "
+            f"Cuota IS: **{cuota_is:,.2f} €**"
+        )
+
+    # ── TAB 3: Exportar ───────────────────────────────────────────
+    with tab3:
+        st.markdown('<div class="nc-section-title">Exportar documentación IS</div>',
+                    unsafe_allow_html=True)
+        st.caption("Documentos listos para entregar a tu asesor fiscal o archivar.")
+
+        col_pdf, col_xls = st.columns(2)
+
+        with col_pdf:
+            st.markdown("**📄 PDF Modelo 200**")
+            st.caption("Resumen en PDF con casillas y detalle por inmueble.")
+            if st.button("Generar PDF", type="primary",
+                          use_container_width=True, key="gen_pdf_m200"):
+                with st.spinner("Generando PDF..."):
+                    pdf_buf = generar_pdf_modelo_200(
+                        filas, totales,
+                        nombre_sociedad=nombre_sociedad,
+                        cif_sociedad=cif_sociedad,
+                        nombre_asesor=nombre_asesor,
+                        año_fiscal=año_fiscal
+                    )
+                if pdf_buf:
+                    st.session_state["pdf_m200"] = pdf_buf
+                    st.success("✓ PDF generado")
+                else:
+                    st.error("Instala reportlab: pip install reportlab")
+
+            if "pdf_m200" in st.session_state:
+                st.download_button(
+                    "⬇️ Descargar PDF Modelo 200",
+                    data=st.session_state["pdf_m200"],
+                    file_name=f"Modelo200_{año_fiscal}_{nombre_sociedad.replace(' ', '_')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key="dl_pdf_m200"
+                )
+
+        with col_xls:
+            st.markdown("**📊 Excel Modelo 200**")
+            st.caption("Excel con casillas y detalle por inmueble para asesor.")
+            if st.button("Generar Excel", type="primary",
+                          use_container_width=True, key="gen_xls_m200"):
+                with st.spinner("Generando Excel..."):
+                    xls_buf = generar_excel_modelo_200(
+                        filas, totales,
+                        nombre_sociedad=nombre_sociedad,
+                        cif_sociedad=cif_sociedad,
+                        nombre_asesor=nombre_asesor,
+                        año_fiscal=año_fiscal
+                    )
+                if xls_buf:
+                    st.session_state["xls_m200"] = xls_buf
+                    st.success("✓ Excel generado")
+                else:
+                    st.error("Instala openpyxl: pip install openpyxl")
+
+            if "xls_m200" in st.session_state:
+                st.download_button(
+                    "⬇️ Descargar Excel Modelo 200",
+                    data=st.session_state["xls_m200"],
+                    file_name=f"Modelo200_{año_fiscal}_{nombre_sociedad.replace(' ', '_')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="dl_xls_m200"
+                )
