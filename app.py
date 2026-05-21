@@ -2853,34 +2853,40 @@ elif menu == "Mi Perfil":
         st.markdown('<div class="nc-section-title">Datos del emisor de facturas</div>', unsafe_allow_html=True)
         st.caption("Estos datos aparecerán en todas las facturas que generes.")
 
+        # ── Tipo de cuenta FUERA del form (para recargar en tiempo real) ──
+        tipo_actual = p.get("tipo_cuenta", "particular")
+        tipo_cuenta = st.radio(
+            "¿Cómo tributas?",
+            options=["particular", "sociedad"],
+            format_func=lambda x: "👤 Particular (IRPF — Modelo 100)" if x == "particular"
+                                  else "🏢 Sociedad Patrimonial (IS — Modelo 200)",
+            index=0 if tipo_actual == "particular" else 1,
+            horizontal=True,
+            key="radio_tipo_cuenta"
+        )
+        # Guardar selección en session_state para leerla dentro del form
+        st.session_state["_tipo_cuenta_form"] = tipo_cuenta
+
+        if tipo_cuenta == "sociedad":
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                nombre_sociedad = st.text_input("Nombre de la sociedad *",
+                    value=p.get("nombre_sociedad",""),
+                    placeholder="Inmuebles Nolasco SL",
+                    key="input_nombre_sociedad")
+            with col_s2:
+                cif_sociedad = st.text_input("CIF de la sociedad *",
+                    value=p.get("cif_sociedad",""),
+                    placeholder="B12345678",
+                    key="input_cif_sociedad")
+            st.info("🏢 Modo Sociedad Patrimonial activado — IS al 25% sin reducción por arrendamiento.")
+        else:
+            nombre_sociedad = p.get("nombre_sociedad","")
+            cif_sociedad    = p.get("cif_sociedad","")
+
+        st.markdown("---")
+
         with st.form("form_perfil_fiscal"):
-            # ── Tipo de cuenta ─────────────────────────────────
-            tipo_actual = p.get("tipo_cuenta", "particular")
-            tipo_cuenta = st.radio(
-                "¿Cómo tributas?",
-                options=["particular", "sociedad"],
-                format_func=lambda x: "👤 Particular (IRPF — Modelo 100)" if x == "particular"
-                                      else "🏢 Sociedad Patrimonial (IS — Modelo 200)",
-                index=0 if tipo_actual == "particular" else 1,
-                horizontal=True
-            )
-
-            if tipo_cuenta == "sociedad":
-                st.markdown("---")
-                col_s1, col_s2 = st.columns(2)
-                with col_s1:
-                    nombre_sociedad = st.text_input("Nombre de la sociedad *",
-                        value=p.get("nombre_sociedad",""),
-                        placeholder="Inmuebles Nolasco SL")
-                with col_s2:
-                    cif_sociedad = st.text_input("CIF de la sociedad *",
-                        value=p.get("cif_sociedad",""),
-                        placeholder="B12345678")
-                st.info("🏢 Modo Sociedad Patrimonial activado — se aplicará IS al 25% sin reducción por arrendamiento.")
-            else:
-                nombre_sociedad = p.get("nombre_sociedad","")
-                cif_sociedad    = p.get("cif_sociedad","")
-
             st.markdown("---")
             col1, col2 = st.columns(2)
             with col1:
@@ -2916,9 +2922,13 @@ elif menu == "Mi Perfil":
             submitted = st.form_submit_button("💾 Guardar datos fiscales",
                                                type="primary", use_container_width=True)
             if submitted:
+                # Leer tipo_cuenta y campos sociedad del session_state (están fuera del form)
+                _tc  = st.session_state.get("_tipo_cuenta_form", "particular")
+                _ns  = st.session_state.get("input_nombre_sociedad", nombre_sociedad)
+                _cif = st.session_state.get("input_cif_sociedad", cif_sociedad)
                 if not nombre_fiscal.strip() or not nif.strip():
                     st.warning("⚠️ Nombre fiscal y NIF son obligatorios.")
-                elif tipo_cuenta == "sociedad" and (not nombre_sociedad.strip() or not cif_sociedad.strip()):
+                elif _tc == "sociedad" and (not _ns.strip() or not _cif.strip()):
                     st.warning("⚠️ Nombre y CIF de la sociedad son obligatorios en modo Sociedad Patrimonial.")
                 else:
                     ok = guardar_perfil_usuario(uid_perfil, {
@@ -2931,9 +2941,9 @@ elif menu == "Mi Perfil":
                         "iban":            iban.strip(),
                         "prefijo_factura": prefijo.strip() or "F",
                         "siguiente_numero": int(sig_num),
-                        "tipo_cuenta":     tipo_cuenta,
-                        "nombre_sociedad": nombre_sociedad.strip(),
-                        "cif_sociedad":    cif_sociedad.strip().upper(),
+                        "tipo_cuenta":     _tc,
+                        "nombre_sociedad": _ns.strip(),
+                        "cif_sociedad":    _cif.strip().upper(),
                     })
                     if ok:
                         st.success("✅ Datos fiscales guardados correctamente")
