@@ -2204,7 +2204,10 @@ elif menu == "Suministros":
 elif menu == "Fiscalidad":
     if _sin_inmuebles:
         st.info("📭 Sin inmuebles registrados. Ve a **Datos de Cartera** para añadir el primero."); st.stop()
-    _perfil_fiscal = st.session_state.get("perfil_datos", {})
+    # Cargar perfil desde Supabase si no está en session_state
+    if "perfil_datos" not in st.session_state or not st.session_state.perfil_datos:
+        st.session_state.perfil_datos = leer_perfil_usuario(st.session_state.get("user_id", ""))
+    _perfil_fiscal = st.session_state.perfil_datos or {}
     _tipo_cuenta   = _perfil_fiscal.get("tipo_cuenta", "particular")
 
     if _tipo_cuenta == "sociedad":
