@@ -2235,7 +2235,7 @@ def render_seccion_modelo_200(df_inm, df_mov, safe_float_fn, calcular_modelo_100
                 "Amort. [320]":    "{:,.2f} €",
                 "Resultado [399]": "{:,.2f} €",
                 "IS 25%":          "{:,.2f} €",
-            }).background_gradient(subset=["IS 25%"], cmap="Reds"),
+            }),
             use_container_width=True,
             hide_index=True
         )
