@@ -1426,6 +1426,67 @@ if menu == "Torre de Control":
       {_barra(bal_pct,ACCENT)}<div style="display:flex;justify-content:space-between;"><span style="font-size:0.7rem;color:{TEXT_SEC};">{bal_pct}% del objetivo</span><span style="font-size:0.78rem;font-weight:600;color:{_color_desv(bal_desv)};">{_flecha(bal_desv)} {abs(bal_desv):,.0f} €</span></div></div>""", unsafe_allow_html=True)
 
     # Tarjetas casita
+    # ── KPIs Patrimoniales de Cartera ────────────────────────────
+    st.markdown('<div class="nc-section-title">🏛️ Cartera Patrimonial</div>', unsafe_allow_html=True)
+
+    _val_cat_total  = df_inm["Valor_Catastral"].apply(lambda x: safe_float(x)).sum()
+    _inv_total      = (df_inm["Precio_Compra"].apply(lambda x: safe_float(x)) +
+                       df_inm["Impuestos_Compra"].apply(lambda x: safe_float(x)) +
+                       df_inm["Gastos_Compra"].apply(lambda x: safe_float(x))).sum()
+    _m2_total       = df_inm["M2_Construidos"].apply(lambda x: safe_float(x)).sum()
+    _n_activos      = len(df_inm)
+    _renta_prevista = df_inm["Renta"].apply(lambda x: safe_float(x)).sum() * 12
+    _deuda_tc       = 0
+    _df_hip_pat     = st.session_state.get("df_hip", pd.DataFrame())
+    if not _df_hip_pat.empty and "Saldo_Actual" in _df_hip_pat.columns:
+        _deuda_tc = _df_hip_pat["Saldo_Actual"].apply(lambda x: safe_float(x)).sum()
+
+    if _es_sociedad_tc:
+        # Modo IS — énfasis en LTV, amortización y base fiscal
+        _amort_total = df_inm["Amortizacion_Fiscal"].apply(lambda x: safe_float(x)).sum()
+        _ltv_pat     = round(_deuda_tc / _val_cat_total * 100, 1) if _val_cat_total > 0 else 0
+        _ltv_col     = "#DC2626" if _ltv_pat > 70 else "#D97706" if _ltv_pat > 50 else "#059669"
+        render_kpi_row([
+            {"label": "🏛️ Valor catastral total",
+             "value": f"{_val_cat_total:,.0f} €",
+             "color": "#185FA5",
+             "subtitle": f"Base amortización IS · {_n_activos} activos"},
+            {"label": "💰 Inversión total cartera",
+             "value": f"{_inv_total:,.0f} €" if _inv_total > 0 else "Sin datos",
+             "color": "#185FA5",
+             "subtitle": "Precio compra + impuestos + gastos"},
+            {"label": "📐 Superficie total",
+             "value": f"{_m2_total:,.0f} m²",
+             "color": "#475569",
+             "subtitle": f"Media {_m2_total/_n_activos:.0f} m²/activo" if _n_activos > 0 else ""},
+            {"label": f"LTV cartera {'⚠️' if _ltv_pat > 70 else ''}",
+             "value": f"{_ltv_pat:.1f}%" if _ltv_pat > 0 else "Sin deuda",
+             "color": _ltv_col,
+             "subtitle": f"Deuda {_deuda_tc:,.0f}€ / Val. catastral"},
+        ])
+    else:
+        # Modo IRPF — énfasis en inversión y rentabilidad
+        _yield_bruto = round(_renta_prevista / _inv_total * 100, 1) if _inv_total > 0 else 0
+        render_kpi_row([
+            {"label": "🏛️ Valor catastral total",
+             "value": f"{_val_cat_total:,.0f} €" if _val_cat_total > 0 else "Sin datos",
+             "color": "#185FA5",
+             "subtitle": f"{_n_activos} activos en cartera"},
+            {"label": "💰 Inversión total cartera",
+             "value": f"{_inv_total:,.0f} €" if _inv_total > 0 else "Sin datos",
+             "color": "#185FA5",
+             "subtitle": "Precio compra + impuestos + gastos"},
+            {"label": "📐 Superficie total",
+             "value": f"{_m2_total:,.0f} m²",
+             "color": "#475569",
+             "subtitle": f"Media {_m2_total/_n_activos:.0f} m²/activo" if _n_activos > 0 else ""},
+            {"label": "📈 Yield bruto cartera",
+             "value": f"{_yield_bruto:.1f}%" if _yield_bruto > 0 else "Sin datos",
+             "color": "#059669" if _yield_bruto > 5 else "#D97706",
+             "subtitle": f"Renta anual {_renta_prevista:,.0f}€ / inversión"},
+        ])
+    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+
     # ── Salud de la Cartera ──────────────────────────────────────
     st.markdown('<div class="nc-section-title">🏥 Salud de la Cartera</div>', unsafe_allow_html=True)
     _df_hip_tc2 = st.session_state.get("df_hip", pd.DataFrame())
