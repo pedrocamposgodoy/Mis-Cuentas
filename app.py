@@ -4852,67 +4852,6 @@ PAGES = [
     ("👤", "Mi Perfil",                     "Config"),
 ]
 
-with st.sidebar:
-    # ── LOGO (solo lectura — editar en Mi Perfil) ──────────────
-    logo_bytes = st.session_state.get("sidebar_logo_bytes")
-    if logo_bytes:
-        st.image(logo_bytes, use_container_width=True)
-
-    st.markdown("""
-<div style='padding:0.8rem 1.4rem 1rem;'>
-  <div style='font-family:"DM Serif Display",serif;font-size:1.5rem;color:#FFFFFF;line-height:1.2;'>Nolasco Capital</div>
-  <div style='font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-top:4px;'>Granada · Gestión Patrimonial</div>
-</div>
-<hr style='border:0;border-top:1px solid rgba(255,255,255,0.1);margin:0 0 0.6rem 0;'>
-""", unsafe_allow_html=True)
-
-    st.markdown(f"""
-<div style='padding:0.5rem 1rem;background:rgba(255,255,255,0.07);border-radius:6px;margin:0 1rem 1rem;'>
-    <div style='font-size:0.7rem;color:rgba(255,255,255,0.45);'>👤 Usuario</div>
-    <div style='font-size:0.85rem;color:#fff;margin-top:2px;'>{st.session_state.user_email}</div>
-</div>
-""", unsafe_allow_html=True)
-
-    if st.button("🚪 Cerrar Sesión", use_container_width=True, key="btn_logout_2"):
-        st.session_state.user_logged_in = False
-        st.session_state.user_id = None
-        st.session_state.user_email = None
-        for k in ["df_inm_persistent","df_mov_persistent","sidebar_logo_bytes"]:
-            if k in st.session_state: del st.session_state[k]
-        st.rerun()
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    def nav_group(label, grupo_id):
-        st.markdown(f"<div style='font-size:0.62rem;letter-spacing:0.15em;text-transform:uppercase;color:rgba(255,255,255,0.4);padding:0.5rem 1rem 0.3rem;'>{label}</div>", unsafe_allow_html=True)
-        for icon, page, grupo in PAGES:
-            if grupo != grupo_id: continue
-            is_active = st.session_state.menu == page
-            if is_active:
-                st.markdown(f"""<div style='background:rgba(96,180,255,0.18);border-left:3px solid #60B4FF;
-                    padding:0.55rem 1rem;border-radius:0 6px 6px 0;margin-bottom:2px;
-                    display:flex;align-items:center;gap:10px;'>
-                    <span style='font-size:1.05rem;'>{icon}</span>
-                    <span style='font-size:0.95rem;font-weight:700;color:#FFFFFF;'>{page}</span>
-                </div>""", unsafe_allow_html=True)
-            else:
-                if st.button(f"{icon}  {page}", key=f"nav_{page}", use_container_width=True):
-                    st.session_state.menu = page; st.rerun()
-
-    nav_group("Gestión", "Core")
-    st.markdown("<hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.5rem 0;'>", unsafe_allow_html=True)
-    nav_group("Servicios IA", "B2B2C")
-    st.markdown("<hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.5rem 0;'>", unsafe_allow_html=True)
-    nav_group("Herramientas", "Tools")
-    st.markdown("<hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.5rem 0;'>", unsafe_allow_html=True)
-    nav_group("Configuración", "Config")
-
-    st.markdown(f"""
-    <hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.8rem 0 0.4rem;'>
-    <div style='padding:0.3rem 1rem;font-size:0.68rem;color:rgba(255,255,255,0.3);'>
-        {len(df_inm)} activos · {datetime.now().strftime('%b %Y')}
-    </div>""", unsafe_allow_html=True)
-
 menu = st.session_state.menu
 
 # ================================================================
