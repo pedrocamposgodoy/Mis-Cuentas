@@ -482,12 +482,58 @@ def calcular_dias_arrendado(row, año_fiscal=None):
     except:
         return 365
 
-def calcular_modelo_100(row, df_mov_local, año_fiscal=None, tipo_cuenta=None):
-    # Si no se pasa tipo_cuenta, leer del perfil en session_state
+def calcular_modelo_100(row, df_mov_local, año_fiscal=None, tipo_cuenta=None,
+                         df_bss=None):
+    """
+    df_bss: DataFrame de asientos_bss filtrado por inmueble.
+            Si se pasa, los cálculos IS usan datos BSS en vez de movimientos manuales.
+    """
+    import streamlit as _st
     if tipo_cuenta is None:
-        import streamlit as _st
         _perfil = _st.session_state.get("perfil_datos", {})
         tipo_cuenta = _perfil.get("tipo_cuenta", "particular")
+
+    # ── Modo BSS: usar datos importados de A3/Holded si existen ──
+    _nombre_inm = str(row.get("Nombre", ""))
+    _usar_bss   = False
+    if df_bss is not None and not df_bss.empty:
+        _bss_inm = df_bss[df_bss["inmueble"] == _nombre_inm]
+        if not _bss_inm.empty:
+            _usar_bss = True
+
+    if _usar_bss and tipo_cuenta == "sociedad":
+        def _sum_bss(prefijos):
+            return sum(
+                float(r["debe"]) for _, r in _bss_inm.iterrows()
+                if any(str(r["cuenta"]).startswith(p) for p in prefijos)
+            )
+        _ing_bss  = sum(float(r["haber"]) for _, r in _bss_inm.iterrows()
+                        if str(r["cuenta"]).startswith("7"))
+        _rep_bss  = _sum_bss(["621","622"])
+        _int_bss  = _sum_bss(["662"])
+        _ibi_bss  = _sum_bss(["631"])
+        _seg_bss  = _sum_bss(["625"])
+        _sum_bss2 = _sum_bss(["628"])
+        _jur_bss  = _sum_bss(["623"])
+        _amort_bss= _sum_bss(["681"])
+        _otros_bss= _sum_bss(["624","626","627","629","630","632","633","634"])
+        _tot_gas_bss = _rep_bss+_int_bss+_ibi_bss+_seg_bss+_sum_bss2+_jur_bss+_amort_bss+_otros_bss
+        _res_bss  = round(_ing_bss - _tot_gas_bss, 2)
+        return {
+            "0101": 365, "0102": _ing_bss, "0105": _int_bss,
+            "0106": _ibi_bss, "0107": _tot_gas_bss, "0108": _ibi_bss,
+            "0110": _seg_bss+_sum_bss2, "0111": _sum_bss2, "0112": _jur_bss,
+            "0113": _amort_bss, "0149": _res_bss, "0150": 0,
+            "0152": _res_bss, "0153": 0, "reduccion_pct": 0,
+            "rend_final": _res_bss, "ingresos": _ing_bss,
+            "total_gastos": _tot_gas_bss, "rend_neto": _res_bss,
+            "amortizacion": _amort_bss, "reduccion": 0,
+            "m200_318": _ing_bss, "m200_319": _tot_gas_bss,
+            "m200_320": _amort_bss, "m200_399": _res_bss,
+            "cuota_is_25": round(max(_res_bss * 0.25, 0), 2),
+            "modo_fiscal": "IS_BSS", "fuente": "BSS",
+        }
+
     import re as _re2
     dias_arrendado = int(safe_float(row.get("Dias_Arrendados_Anio", 365)))
     if dias_arrendado <= 0: dias_arrendado = 365
@@ -2462,21 +2508,70 @@ elif menu == "Fiscalidad":
 
         with _tab_m200:
             from fiscal_export import render_seccion_modelo_200
-            render_seccion_modelo_200(df_inm, df_mov, safe_float, calcular_modelo_100,
+            from supabase_db import leer_asientos_bss, hay_asientos_bss
+
+            _uid_bss      = st.session_state.get("user_id", "")
+            _ejercicio_bss = pd.Timestamp.now().year
+            _modo_contable = _perfil_fiscal.get("modo_contable", "manual")
+            _df_bss        = pd.DataFrame()
+
+            if _modo_contable != "manual":
+                _df_bss = leer_asientos_bss(_uid_bss, _ejercicio_bss)
+                if not _df_bss.empty:
+                    _fuente_bss = _df_bss["fuente"].iloc[0] if "fuente" in _df_bss.columns else "BSS"
+                    st.markdown(
+                        f'<div style="background:#eff6ff;border:1px solid #185FA5;' +
+                        f'border-radius:8px;padding:8px 14px;margin-bottom:10px;' +
+                        f'font-size:13px;font-weight:700;color:#185FA5;">' +
+                        f'📊 Datos desde {_fuente_bss} · {len(_df_bss)} asientos importados' +
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
+
+            def _calcular_con_bss(row, df_mov_local, año_fiscal=None, tipo_cuenta="sociedad"):
+                return calcular_modelo_100(row, df_mov_local, año_fiscal=año_fiscal,
+                                           tipo_cuenta=tipo_cuenta,
+                                           df_bss=_df_bss if not _df_bss.empty else None)
+
+            render_seccion_modelo_200(df_inm, df_mov, safe_float,
+                                       _calcular_con_bss,
                                        perfil=_perfil_fiscal)
 
         with _tab_bss:
+            from supabase_db import (guardar_asientos_bss, leer_asientos_bss,
+                                      hay_asientos_bss, guardar_modo_contable)
+
             st.markdown('<div class="nc-section-title">📥 Importar Balance de Sumas y Saldos</div>',
                         unsafe_allow_html=True)
-            st.markdown("""
-            <div style="background:#0d1a0d;border:1px solid #059669;border-radius:8px;
-                        padding:12px 16px;margin-bottom:1rem;font-size:13px;color:#a7f3d0;">
-            <b>🔗 Compatible con A3 Asesor Eco, Holded, Sage y ContaPlus.</b><br>
-            Exporta el BSS de tu programa contable en Excel y súbelo aquí.
-            La app detecta automáticamente las cuentas del grupo 6 (gastos)
-            y 7 (ingresos) y rellena las casillas del Modelo 200.
-            </div>
-            """, unsafe_allow_html=True)
+
+            # Estado actual del modo contable
+            _modo_actual = _perfil_fiscal.get("modo_contable", "manual")
+            _uid_bss     = st.session_state.get("user_id", "")
+            _ejercicio_bss = pd.Timestamp.now().year
+
+            if _modo_actual != "manual":
+                _fuente_lbl = {"bss_a3": "A3 Asesor Eco", "bss_holded": "Holded",
+                               "bss_sage": "Sage"}.get(_modo_actual, _modo_actual)
+                st.markdown(f"""
+                <div style="background:#0d1a0d;border:1px solid #059669;border-radius:8px;
+                            padding:10px 16px;margin-bottom:12px;font-size:13px;">
+                <span style="color:#059669;font-weight:700;">✅ Modo BSS activo — {_fuente_lbl}</span><br>
+                <span style="color:#a7f3d0;font-size:12px;">
+                Los cálculos IS usan los datos importados de {_fuente_lbl}.
+                Los movimientos manuales se ignoran para el Modelo 200.</span>
+                </div>""", unsafe_allow_html=True)
+                if st.button("🔄 Cambiar a modo manual", key="btn_modo_manual"):
+                    guardar_modo_contable(_uid_bss, "manual")
+                    st.session_state.perfil_datos["modo_contable"] = "manual"
+                    st.rerun()
+            else:
+                st.markdown("""
+                <div style="background:#0d1a0d;border:1px solid #059669;border-radius:8px;
+                            padding:12px 16px;margin-bottom:1rem;font-size:13px;color:#a7f3d0;">
+                <b>🔗 Compatible con A3 Asesor Eco, Holded, Sage y ContaPlus.</b><br>
+                Exporta el BSS de tu programa contable en Excel y súbelo aquí.
+                Los datos importados <b>sustituyen</b> los movimientos manuales para el Modelo 200.
+                </div>""", unsafe_allow_html=True)
 
             # Descarga plantilla
             _col_dl, _col_info = st.columns([1, 2])
@@ -2540,6 +2635,38 @@ elif menu == "Fiscalidad":
                             break
 
                     _datos_bss = _filas_raw[_header_row + 1:]
+
+                    # Detectar programa origen por estructura del Excel
+                    _fuente_detectada = "GENERICO"
+                    _modo_bss_key     = "bss_generico"
+                    _hoja_nombres     = [s.lower() for s in _wb_bss.sheetnames]
+                    _primer_val       = str(_filas_raw[_header_row + 1][0] if len(_filas_raw) > _header_row + 1 else "")
+
+                    if any("bss" in h or "sumas" in h or "saldos" in h for h in _hoja_nombres):
+                        _fuente_detectada = "A3 ASESOR ECO"
+                        _modo_bss_key     = "bss_a3"
+                    elif "." in _primer_val and _primer_val.replace(".", "").isdigit():
+                        # A3 usa punto como separador de subcuenta: 621.0001
+                        _fuente_detectada = "A3 ASESOR ECO"
+                        _modo_bss_key     = "bss_a3"
+                    elif any("trial" in h or "balance" in h for h in _hoja_nombres):
+                        _fuente_detectada = "HOLDED"
+                        _modo_bss_key     = "bss_holded"
+                    elif any("sage" in h for h in _hoja_nombres):
+                        _fuente_detectada = "SAGE"
+                        _modo_bss_key     = "bss_sage"
+
+                    # Banner origen detectado
+                    _color_fuente = {"A3 ASESOR ECO": "#185FA5", "HOLDED": "#7C3AED",
+                                     "SAGE": "#059669"}.get(_fuente_detectada, "#475569")
+                    st.markdown(
+                        f'<div style="background:#f0f9ff;border:1px solid {_color_fuente};' +
+                        f'border-radius:8px;padding:8px 14px;margin-bottom:10px;' +
+                        f'font-size:13px;font-weight:700;color:{_color_fuente};">' +
+                        f'🔍 Origen detectado: {_fuente_detectada} ✅' +
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
 
                     # Parser: extraer cuentas 6xx y 7xx
                     _gastos   = {}  # cuenta → importe
@@ -2666,42 +2793,55 @@ elif menu == "Fiscalidad":
                             if _sel_inm != "— Sin asignar —":
                                 _mapeo_final[_sc] = _sel_inm
 
-                    # Guardar en Supabase
-                    if st.button("💾 Guardar datos BSS en Nolasco Capital",
+                    # Aviso sustitución
+                    _tiene_bss = hay_asientos_bss(_uid_bss, _ejercicio_bss)
+                    if _tiene_bss:
+                        st.warning(
+                            f"⚠️ Ya existen datos BSS de {_ejercicio_bss}. "
+                            f"Al importar se reemplazarán completamente."
+                        )
+
+                    if st.button("💾 Importar y activar modo BSS",
                                  type="primary", use_container_width=True,
                                  key="btn_guardar_bss"):
-                        _uid_bss = st.session_state.get("user_id", "")
                         _ok_count = 0
-
-                        # Guardar como movimientos contables con fuente BSS
-                        _lote_movs = []
-                        for _cod, _v in {**_gastos}.items():
+                        _lote_bss = []
+                        for _cod, _v in _gastos.items():
                             _sc = _v["subcod"]
-                            _inm_nombre = _mapeo_final.get(_sc, "")
-                            if not _inm_nombre:
-                                continue
-                            _lote_movs.append({
-                                "Fecha":       pd.Timestamp.now().strftime("%Y-%m-%d"),
-                                "Concepto":    f"[BSS][{_cod}] {_v['desc'][:60]}",
-                                "Importe":     round(_v["debe"], 2),
-                                "Tipo":        "Gasto",
-                                "Categoria":   "Contabilidad IS",
-                                "Apartamento": _inm_nombre,
+                            _lote_bss.append({
+                                "cuenta":      _cod,
+                                "descripcion": _v["desc"][:200],
+                                "inmueble":    _mapeo_final.get(_sc, ""),
+                                "debe":        round(_v["debe"], 2),
+                                "haber":       0,
                             })
-                        if _lote_movs:
-                            try:
-                                _ok = agregar_movimientos(_lote_movs, _uid_bss)
-                                _ok_count = len(_lote_movs) if _ok else 0
-                            except Exception as _ex:
-                                st.error(f"Error al guardar: {_ex}")
-
-                        if _ok_count > 0:
-                            st.success(f"✅ {_ok_count} apuntes contables guardados. "
-                                       f"Recarga la sección Modelo 200 para ver los datos actualizados.")
-                            st.session_state["df_mov_persistent"] = leer_movimientos(
-                                user_id=_uid_bss)
+                        for _cod, _v in _ingresos.items():
+                            _sc = _v["subcod"]
+                            _lote_bss.append({
+                                "cuenta":      _cod,
+                                "descripcion": _v["desc"][:200],
+                                "inmueble":    _mapeo_final.get(_sc, ""),
+                                "debe":        0,
+                                "haber":       round(_v["haber"], 2),
+                            })
+                        if _lote_bss:
+                            _ok = guardar_asientos_bss(
+                                _uid_bss, _ejercicio_bss,
+                                _fuente_detectada, _lote_bss
+                            )
+                            if _ok:
+                                guardar_modo_contable(_uid_bss, _modo_bss_key)
+                                if "perfil_datos" in st.session_state:
+                                    st.session_state.perfil_datos["modo_contable"] = _modo_bss_key
+                                st.success(
+                                    f"✅ {len(_lote_bss)} asientos importados desde "
+                                    f"{_fuente_detectada}. Modo BSS activado."
+                                )
+                            else:
+                                st.error("Error al guardar en Supabase.")
                         else:
-                            st.warning("Asigna al menos un subcódigo a un inmueble antes de guardar.")
+                            st.warning("Asigna al menos un subcódigo antes de guardar.")
+
 
                 except Exception as _e_bss:
                     st.error(f"Error al procesar el archivo: {_e_bss}")
