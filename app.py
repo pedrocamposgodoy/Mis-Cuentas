@@ -2455,11 +2455,256 @@ elif menu == "Fiscalidad":
 
     if _tipo_cuenta == "sociedad":
         _nom_soc = _perfil_fiscal.get("nombre_sociedad", "Sociedad Patrimonial")
-        st.markdown(f'<div class="nc-brand-header">💰 Fiscalidad — Sociedad Patrimonial</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="nc-brand-header">💰 Fiscalidad IS — Sociedad Patrimonial</div>', unsafe_allow_html=True)
         st.markdown(f'<div class="nc-brand-sub">IS al 25% · Modelo 200 · {_nom_soc}</div>', unsafe_allow_html=True)
-        from fiscal_export import render_seccion_modelo_200
-        render_seccion_modelo_200(df_inm, df_mov, safe_float, calcular_modelo_100,
-                                   perfil=_perfil_fiscal)
+
+        _tab_m200, _tab_bss = st.tabs(["📊 Modelo 200", "📥 Importar BSS desde A3"])
+
+        with _tab_m200:
+            from fiscal_export import render_seccion_modelo_200
+            render_seccion_modelo_200(df_inm, df_mov, safe_float, calcular_modelo_100,
+                                       perfil=_perfil_fiscal)
+
+        with _tab_bss:
+            st.markdown('<div class="nc-section-title">📥 Importar Balance de Sumas y Saldos</div>',
+                        unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background:#0d1a0d;border:1px solid #059669;border-radius:8px;
+                        padding:12px 16px;margin-bottom:1rem;font-size:13px;color:#a7f3d0;">
+            <b>🔗 Compatible con A3 Asesor Eco, Holded, Sage y ContaPlus.</b><br>
+            Exporta el BSS de tu programa contable en Excel y súbelo aquí.
+            La app detecta automáticamente las cuentas del grupo 6 (gastos)
+            y 7 (ingresos) y rellena las casillas del Modelo 200.
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Descarga plantilla
+            _col_dl, _col_info = st.columns([1, 2])
+            with _col_dl:
+                try:
+                    with open("/mnt/user-data/outputs/Nolasco_BSS_Importador_Modelo200.xlsx", "rb") as _f:
+                        st.download_button(
+                            "⬇️ Descargar plantilla BSS Nolasco",
+                            data=_f.read(),
+                            file_name="Nolasco_BSS_Importador_Modelo200.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True,
+                            type="secondary"
+                        )
+                except FileNotFoundError:
+                    st.caption("Plantilla no disponible en este entorno.")
+            with _col_info:
+                st.caption(
+                    "La plantilla incluye instrucciones, datos de ejemplo y la hoja "
+                    "Resumen IS que calcula automáticamente las casillas [318]/[319]/[320]/[399]/[562]."
+                )
+
+            st.markdown("---")
+
+            # Drop zone para el Excel del cliente
+            _bss_file = st.file_uploader(
+                "Arrastra aquí el Excel BSS exportado de A3 / Holded / Sage",
+                type=["xlsx", "xls"],
+                key="bss_uploader",
+                help="El archivo debe contener columnas: Código Cuenta, Descripción, Debe, Haber, Saldo"
+            )
+
+            if _bss_file:
+                try:
+                    import openpyxl
+                    import io as _io
+
+                    _wb_bss = openpyxl.load_workbook(_io.BytesIO(_bss_file.read()), data_only=True)
+
+                    # Detectar hoja con datos BSS
+                    _hoja_datos = None
+                    for _sh in _wb_bss.sheetnames:
+                        if any(k in _sh.lower() for k in ["bss", "datos", "sumas", "saldos", "data"]):
+                            _hoja_datos = _wb_bss[_sh]
+                            break
+                    if not _hoja_datos:
+                        _hoja_datos = _wb_bss.active  # fallback primera hoja
+
+                    # Leer filas
+                    _filas_raw = []
+                    for _row in _hoja_datos.iter_rows(min_row=1, values_only=True):
+                        if _row[0] is not None:
+                            _filas_raw.append(_row)
+
+                    # Detectar fila cabecera (donde empieza con "Código" o similar)
+                    _header_row = 0
+                    for _idx, _row in enumerate(_filas_raw):
+                        _primer = str(_row[0]).lower()
+                        if any(k in _primer for k in ["código", "cuenta", "cod", "code"]):
+                            _header_row = _idx
+                            break
+
+                    _datos_bss = _filas_raw[_header_row + 1:]
+
+                    # Parser: extraer cuentas 6xx y 7xx
+                    _gastos   = {}  # cuenta → importe
+                    _ingresos = {}
+                    _mapeo_cuentas = []
+
+                    for _row in _datos_bss:
+                        if not _row or not _row[0]:
+                            continue
+                        _cod = str(_row[0]).strip().replace(".", "").replace(" ", "")
+                        if not _cod or not _cod[0].isdigit():
+                            continue
+                        # Solo grupos 6 y 7
+                        _grupo = _cod[0]
+                        if _grupo not in ("6", "7"):
+                            continue
+
+                        _desc  = str(_row[1]).strip() if len(_row) > 1 and _row[1] else ""
+                        _debe  = float(_row[2]) if len(_row) > 2 and _row[2] and str(_row[2]).replace(".","").replace(",","").replace("-","").isdigit() else 0
+                        _haber = float(_row[3]) if len(_row) > 3 and _row[3] and str(_row[3]).replace(".","").replace(",","").replace("-","").isdigit() else 0
+                        try:
+                            _debe  = float(str(_row[2]).replace(",", ".")) if len(_row) > 2 and _row[2] else 0
+                            _haber = float(str(_row[3]).replace(",", ".")) if len(_row) > 3 and _row[3] else 0
+                        except:
+                            pass
+                        _saldo = _debe - _haber
+
+                        # Subcódigo = últimos 3-4 dígitos
+                        _subcod = _cod[-4:] if len(_cod) >= 7 else ""
+                        _cuenta_base = _cod[:3]
+
+                        if _grupo == "6":
+                            _gastos[_cod] = {"desc": _desc, "debe": _debe,
+                                             "subcod": _subcod, "base": _cuenta_base}
+                        else:
+                            _ingresos[_cod] = {"desc": _desc, "haber": _haber,
+                                               "subcod": _subcod, "base": _cuenta_base}
+
+                        _mapeo_cuentas.append({
+                            "Cuenta": _cod, "Descripción": _desc,
+                            "Grupo": "Gasto" if _grupo == "6" else "Ingreso",
+                            "Debe": _debe, "Haber": _haber,
+                            "Subcódigo": _subcod
+                        })
+
+                    # Calcular casillas IS automáticamente
+                    def _sum_grupo(d, prefijos):
+                        return sum(v["debe"] for k, v in d.items()
+                                   if any(k.startswith(p) for p in prefijos))
+
+                    _318 = sum(v["haber"] for v in _ingresos.values()
+                               if v["base"].startswith("71") or v["base"].startswith("70"))
+                    _662 = _sum_grupo(_gastos, ["662"])
+                    _621 = _sum_grupo(_gastos, ["621"])
+                    _628 = _sum_grupo(_gastos, ["628"])
+                    _631 = _sum_grupo(_gastos, ["631"])
+                    _625 = _sum_grupo(_gastos, ["625"])
+                    _681 = _sum_grupo(_gastos, ["681"])
+                    _otros_g = _sum_grupo(_gastos, ["622","623","624","626","627","629","630","632","633","634","636","638","639"])
+                    _319 = _662 + _621 + _628 + _631 + _625 + _681 + _otros_g
+                    _320 = _681
+                    _399 = round(_318 - _319, 2)
+                    _562 = round(max(_399 * 0.25, 0), 2)
+
+                    # Mostrar resultado
+                    st.success(f"✅ Detectadas {len(_mapeo_cuentas)} cuentas de grupos 6 y 7")
+
+                    # KPIs resumen IS
+                    _c1, _c2, _c3, _c4 = st.columns(4)
+                    _c1.metric("[318] Ingresos",     f"{_318:,.2f} €")
+                    _c2.metric("[319] Gastos IS",    f"{_319:,.2f} €")
+                    _c3.metric("[399] Resultado",    f"{_399:,.2f} €")
+                    _c4.metric("[562] Cuota IS 25%", f"{_562:,.2f} €",
+                               delta_color="inverse",
+                               delta=f"A ingresar: {_562:,.0f} €")
+
+                    st.markdown("---")
+
+                    # Desglose gastos por tipo
+                    st.markdown("**📋 Desglose gastos detectados**")
+                    _gas_df = pd.DataFrame([
+                        {"Casilla IS": "[662]", "Concepto": "Intereses hipoteca",          "Importe (€)": f"{_662:,.2f}"},
+                        {"Casilla IS": "[621]", "Concepto": "Reparaciones y conservación", "Importe (€)": f"{_621:,.2f}"},
+                        {"Casilla IS": "[628]", "Concepto": "Suministros",                 "Importe (€)": f"{_628:,.2f}"},
+                        {"Casilla IS": "[631]", "Concepto": "IBI y otros tributos",        "Importe (€)": f"{_631:,.2f}"},
+                        {"Casilla IS": "[625]", "Concepto": "Seguros",                     "Importe (€)": f"{_625:,.2f}"},
+                        {"Casilla IS": "[681]", "Concepto": "Amortización 3% (cta. 681)",  "Importe (€)": f"{_320:,.2f}"},
+                        {"Casilla IS": "Otros", "Concepto": "Otros gastos deducibles",     "Importe (€)": f"{_otros_g:,.2f}"},
+                    ])
+                    st.dataframe(_gas_df, use_container_width=True, hide_index=True)
+
+                    # Tabla cuentas detectadas
+                    with st.expander("🔍 Ver todas las cuentas detectadas"):
+                        _df_mc = pd.DataFrame(_mapeo_cuentas)
+                        st.dataframe(
+                            _df_mc.style.format({"Debe": "{:,.2f} €", "Haber": "{:,.2f} €"}),
+                            use_container_width=True, hide_index=True
+                        )
+
+                    st.markdown("---")
+
+                    # Mapeo inmueble por subcódigo
+                    st.markdown("**🏠 Asignar subcódigos a inmuebles**")
+                    st.caption("La app detectó estos subcódigos. Asigna cada uno al inmueble correspondiente.")
+
+                    _subcods_detectados = sorted(set(
+                        list(v["subcod"] for v in _gastos.values() if v["subcod"]) +
+                        list(v["subcod"] for v in _ingresos.values() if v["subcod"])
+                    ))
+                    _nombres_inm = list(df_inm["Nombre"].dropna()) if not df_inm.empty else []
+                    _mapeo_final = {}
+
+                    if _subcods_detectados:
+                        _cols_map = st.columns(min(len(_subcods_detectados), 3))
+                        for _idx_s, _sc in enumerate(_subcods_detectados):
+                            with _cols_map[_idx_s % 3]:
+                                _sel_inm = st.selectbox(
+                                    f"Subcódigo **{_sc}**",
+                                    ["— Sin asignar —"] + _nombres_inm,
+                                    key=f"bss_map_{_sc}"
+                                )
+                                if _sel_inm != "— Sin asignar —":
+                                    _mapeo_final[_sc] = _sel_inm
+
+                    # Guardar en Supabase
+                    if st.button("💾 Guardar datos BSS en Nolasco Capital",
+                                 type="primary", use_container_width=True,
+                                 key="btn_guardar_bss"):
+                        _uid_bss = st.session_state.get("user_id", "")
+                        _ok_count = 0
+
+                        # Guardar como movimientos contables con fuente BSS
+                        for _cod, _v in {**_gastos}.items():
+                            _sc = _v["subcod"]
+                            _inm_nombre = _mapeo_final.get(_sc, "")
+                            if not _inm_nombre:
+                                continue
+                            _nuevo_mov = {
+                                "user_id":    _uid_bss,
+                                "Fecha":      pd.Timestamp.now().strftime("%Y-%m-%d"),
+                                "Concepto":   f"[BSS][{_cod}] {_v['desc'][:60]}",
+                                "Importe":    _v["debe"],
+                                "Tipo":       "Gasto",
+                                "Categoria":  "Contabilidad IS",
+                                "Apartamento": _inm_nombre,
+                                "Fuente":     "BSS_A3",
+                            }
+                            try:
+                                agregar_movimientos(pd.DataFrame([_nuevo_mov]),
+                                                    _uid_bss)
+                                _ok_count += 1
+                            except:
+                                pass
+
+                        if _ok_count > 0:
+                            st.success(f"✅ {_ok_count} apuntes contables guardados. "
+                                       f"Recarga la sección Modelo 200 para ver los datos actualizados.")
+                            st.session_state["df_mov_persistent"] = leer_movimientos(
+                                user_id=_uid_bss)
+                        else:
+                            st.warning("Asigna al menos un subcódigo a un inmueble antes de guardar.")
+
+                except Exception as _e_bss:
+                    st.error(f"Error al procesar el archivo: {_e_bss}")
+                    st.caption("Asegúrate de que el Excel tiene las columnas: Código, Descripción, Debe, Haber")
     else:
         st.markdown('<div class="nc-brand-header">💰 Fiscalidad</div>', unsafe_allow_html=True)
         st.markdown('<div class="nc-brand-sub">Escudo fiscal · Modelo 100 IRPF · Deducciones optimizadas</div>', unsafe_allow_html=True)
