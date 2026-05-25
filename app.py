@@ -1066,8 +1066,20 @@ if menu == "Torre de Control":
         st.info("📭 Aún no tienes inmuebles registrados. Ve a **Datos de Cartera** para añadir tu primer inmueble.")
         st.stop()
 
-    st.markdown('<div class="nc-brand-header">Torre de Control</div>', unsafe_allow_html=True)
-    st.markdown('<div class="nc-brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
+    # ── Detectar modo fiscal ──────────────────────────────────────
+    _perfil_tc = st.session_state.get("perfil_datos", {})
+    if not _perfil_tc:
+        from supabase_db import leer_perfil_usuario
+        _perfil_tc = leer_perfil_usuario(st.session_state.get("user_id","")) or {}
+    _es_sociedad_tc = _perfil_tc.get("tipo_cuenta","particular") == "sociedad"
+    _nom_soc_tc = _perfil_tc.get("nombre_sociedad","Sociedad Patrimonial")
+
+    if _es_sociedad_tc:
+        st.markdown(f'<div class="nc-brand-header">Torre de Control IS</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="nc-brand-sub">🏢 {_nom_soc_tc} · Impuesto de Sociedades · Modelo 200</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="nc-brand-header">Torre de Control</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
 
     # Ingresos = facturas emitidas cobradas (nueva tabla) + ingresos en movimientos (legacy)
     _df_facs_tc = leer_facturas_emitidas(st.session_state.user_id)
@@ -1136,28 +1148,113 @@ if menu == "Torre de Control":
               </span>{extra}
             </div>""", unsafe_allow_html=True)
 
-    # KPIs acumulado — nuevo estilo grande y prominente
+    # ── KPIs — bifurcación IS / IRPF ─────────────────────────────
     st.markdown('<div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#9CA3AF;margin:20px 0 12px;">Acumulado del año en curso</div>', unsafe_allow_html=True)
-    render_kpi_row([
-        {
-            "label": "Ingresos Registrados",
-            "value": f"{total_ingresos_registrados:,.0f} €",
-            "color": GREEN,
-            "subtitle": "Total cobrado acumulado"
-        },
-        {
-            "label": "Gastos Registrados",
-            "value": f"−{total_gastos_registrados:,.0f} €",
-            "color": RED,
-            "subtitle": "Total pagado acumulado"
-        },
-        {
-            "label": "Balance Real",
-            "value": f"{balance_real:,.0f} €",
-            "color": ACCENT,
-            "subtitle": f"Margen {margen_real:.0f}%"
-        }
-    ])
+
+    if _es_sociedad_tc:
+        # ── Calcular KPIs societarios ─────────────────────────────
+        _intereses_tc  = df_inm["Intereses_Hipoteca"].apply(lambda x: safe_float(x)).sum()
+        _amort_tc      = df_inm["Amortizacion_Fiscal"].apply(lambda x: safe_float(x)).sum()
+        _gas_op_tc     = total_gastos_registrados - _intereses_tc - _amort_tc
+        _ebitda_tc     = total_ingresos_registrados - _gas_op_tc
+        _resultado_tc  = total_ingresos_registrados - total_gastos_registrados
+        _is_tc         = round(max(_resultado_tc * 0.25, 0), 0)
+
+        # DSCR — cuota anual desde hipotecas
+        _df_hip_tc = _cargar_hipotecas_supabase() if "df_hip" not in st.session_state else st.session_state.df_hip
+        _cuota_anual_tc = 0
+        _saldo_deuda_tc = 0
+        if not _df_hip_tc.empty:
+            for _, _h in _df_hip_tc.iterrows():
+                _p  = safe_float(_h.get("Principal", 0))
+                _r  = safe_float(_h.get("Tasa_Inicial", 0)) / 100 / 12
+                _n  = int(safe_float(_h.get("Plazo_Años", 20))) * 12
+                if _r > 0 and _n > 0:
+                    _cuota_m = _p * (_r * (1+_r)**_n) / ((1+_r)**_n - 1)
+                else:
+                    _cuota_m = _p / _n if _n > 0 else 0
+                _cuota_anual_tc += _cuota_m * 12
+                _saldo_deuda_tc += safe_float(_h.get("Saldo_Actual", 0)) or _p
+
+        _cash_flow_tc = _ebitda_tc - _is_tc - _cuota_anual_tc
+        _dscr_tc      = round(_ebitda_tc / _cuota_anual_tc, 2) if _cuota_anual_tc > 0 else 0
+        _dscr_color   = RED if _dscr_tc < 1.20 and _dscr_tc > 0 else GREEN if _dscr_tc >= 1.20 else AMBER
+
+        # ROI y LTV
+        _inversion_tc = (
+            df_inm["Precio_Compra"].apply(lambda x: safe_float(x)).sum() +
+            df_inm["Impuestos_Compra"].apply(lambda x: safe_float(x)).sum() +
+            df_inm["Gastos_Compra"].apply(lambda x: safe_float(x)).sum()
+        )
+        _roi_tc = round(_resultado_tc / _inversion_tc * 100, 1) if _inversion_tc > 0 else 0
+        _val_cat_tc = df_inm["Valor_Catastral"].apply(lambda x: safe_float(x)).sum()
+        _ltv_tc = round(_saldo_deuda_tc / _val_cat_tc * 100, 1) if _val_cat_tc > 0 else 0
+        _ltv_color = RED if _ltv_tc > 70 else AMBER if _ltv_tc > 50 else GREEN
+
+        # Banner DSCR si < 1.20
+        if _dscr_tc > 0 and _dscr_tc < 1.20:
+            st.markdown(f"""
+            <div style="background:#FDECEA;border:1px solid #C0392B;border-radius:10px;
+                        padding:10px 16px;margin-bottom:12px;">
+              <span style="font-size:0.85rem;font-weight:700;color:#C0392B;">
+                🚨 DSCR {_dscr_tc:.2f} — Por debajo del umbral bancario (1.20).
+                La sociedad no genera suficiente EBITDA para cubrir 1.2× las cuotas hipotecarias.
+              </span>
+            </div>""", unsafe_allow_html=True)
+
+        # Fila 1 — Resultados
+        render_kpi_row([
+            {"label": "EBITDA Inmobiliario",
+             "value": f"{_ebitda_tc:,.0f} €",
+             "color": GREEN,
+             "subtitle": "Ingresos − Gastos operativos"},
+            {"label": "IS Estimado 25%",
+             "value": f"−{_is_tc:,.0f} €",
+             "color": RED,
+             "subtitle": "Cuota IS orientativa"},
+            {"label": "Cash Flow Neto",
+             "value": f"{_cash_flow_tc:,.0f} €",
+             "color": ACCENT if _cash_flow_tc >= 0 else RED,
+             "subtitle": "EBITDA − IS − cuotas hipoteca"},
+        ])
+        st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+        # Fila 2 — Ratios
+        render_kpi_row([
+            {"label": f"DSCR {'⚠️' if _dscr_tc < 1.20 and _dscr_tc > 0 else '✅'}",
+             "value": f"{_dscr_tc:.2f}×" if _dscr_tc > 0 else "Sin datos",
+             "color": _dscr_color,
+             "subtitle": "EBITDA / cuota anual · min. 1.20"},
+            {"label": "ROI Societario",
+             "value": f"{_roi_tc:.1f}%",
+             "color": GREEN if _roi_tc > 5 else AMBER,
+             "subtitle": "Resultado / inversión total"},
+            {"label": f"LTV Cartera {'⚠️' if _ltv_tc > 70 else ''}",
+             "value": f"{_ltv_tc:.1f}%" if _ltv_tc > 0 else "Sin datos",
+             "color": _ltv_color,
+             "subtitle": "Deuda / valor catastral"},
+        ])
+
+    else:
+        render_kpi_row([
+            {
+                "label": "Ingresos Registrados",
+                "value": f"{total_ingresos_registrados:,.0f} €",
+                "color": GREEN,
+                "subtitle": "Total cobrado acumulado"
+            },
+            {
+                "label": "Gastos Registrados",
+                "value": f"−{total_gastos_registrados:,.0f} €",
+                "color": RED,
+                "subtitle": "Total pagado acumulado"
+            },
+            {
+                "label": "Balance Real",
+                "value": f"{balance_real:,.0f} €",
+                "color": ACCENT,
+                "subtitle": f"Margen {margen_real:.0f}%"
+            }
+        ])
 
     nombre_mes = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][mes_actual-1]
     def _color_desv(val, invertido=False):
@@ -1169,7 +1266,10 @@ if menu == "Torre de Control":
     def _barra(pct, color):
         return f'<div style="height:5px;background:#D0DFF0;border-radius:4px;overflow:hidden;margin:4px 0 2px 0;"><div style="width:{pct}%;height:100%;background:{color};border-radius:4px;"></div></div>'
 
-    st.markdown(f'<div class="nc-section-title">Previsión vs Real — {nombre_mes} {anio_actual}</div>', unsafe_allow_html=True)
+    _titulo_panel_mes = f"Previsión vs Real — {nombre_mes} {anio_actual}"
+    if _es_sociedad_tc:
+        _titulo_panel_mes += " · IS 25%"
+    st.markdown(f'<div class="nc-section-title">{_titulo_panel_mes}</div>', unsafe_allow_html=True)
     p1, p2, p3 = st.columns(3)
     p1.markdown(f"""<div class="nc-kpi"><div class="nc-kpi__label">Ingresos {nombre_mes}</div>
       <div style="display:flex;align-items:baseline;gap:8px;"><div class="nc-kpi__value" style="color:{GREEN};font-size:1.5rem;">{ing_mes_real:,.0f} €</div><div style="font-size:0.8rem;color:{TEXT_SEC};">de {ing_previsto:,.0f} €</div></div>
@@ -1182,7 +1282,8 @@ if menu == "Torre de Control":
       {_barra(bal_pct,ACCENT)}<div style="display:flex;justify-content:space-between;"><span style="font-size:0.7rem;color:{TEXT_SEC};">{bal_pct}% del objetivo</span><span style="font-size:0.78rem;font-weight:600;color:{_color_desv(bal_desv)};">{_flecha(bal_desv)} {abs(bal_desv):,.0f} €</span></div></div>""", unsafe_allow_html=True)
 
     # Tarjetas casita
-    st.markdown('<div class="nc-section-title">Rentabilidad por Activo</div>', unsafe_allow_html=True)
+    _titulo_activos = "Rentabilidad por Activo IS — [399] Resultado por inmueble" if _es_sociedad_tc else "Rentabilidad por Activo"
+    st.markdown(f'<div class="nc-section-title">{_titulo_activos}</div>', unsafe_allow_html=True)
     def _roof_color(row):
         texto = str(row.get("Nombre","")).lower()+" "+str(row.get("Tipo",row.get("Tipo_Arrendamiento",""))).lower()
         if any(x in texto for x in ["despacho","oficina","comercial","local","salón","salon","coworking"]): return "#185FA5","Despacho"
