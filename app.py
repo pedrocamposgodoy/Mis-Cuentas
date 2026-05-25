@@ -9,18 +9,6 @@ import io
 import base64
 import plotly.graph_objects as go
 from datetime import datetime, date
-
-# ================================================================
-# SECCIÓN 0 — IMPORTS Y LIBRERÍAS
-# No tocar esto salvo que añadas una librería nueva
-# ================================================================
-import streamlit as st
-import pandas as pd
-import os
-import io
-import base64
-import plotly.graph_objects as go
-from datetime import datetime, date
 from cashflow_module import render_cashflow
 from kpi_renderer import render_kpi_row
 
@@ -328,7 +316,7 @@ with st.sidebar:
 </div>
 """, unsafe_allow_html=True)
 
-    if st.button("🚪 Cerrar Sesión", use_container_width=True, key="btn_logout_1"):
+    if st.button("🚪 Cerrar Sesión", use_container_width=True):
         st.session_state.user_logged_in = False
         st.session_state.user_id = None
         st.session_state.user_email = None
@@ -500,261 +488,150 @@ def calcular_dias_arrendado(row, año_fiscal=None):
 # ================================================================
 
 def calcular_score_salud(row, df_mov, tipo_cuenta="particular", df_hip=None):
-    """
-    Calcula un score de salud del activo de 1 a 10.
-    Devuelve dict con score, color, etiqueta, detalle de componentes y alertas.
-    """
     nombre = str(row.get("Nombre", ""))
     renta  = safe_float(row.get("Renta", 0))
-    renta_mercado = safe_float(row.get("Renta_Mercado", 0)) or renta * 1.0
+    renta_mercado = safe_float(row.get("Renta_Mercado", 0)) or renta
     vencimiento   = str(row.get("Fecha_Fin_Contrato", "") or "")
     inquilino     = str(row.get("Inquilino", "") or "")
     ibi           = safe_float(row.get("IBI_Anual", 0))
     seguro        = safe_float(row.get("Seguro_Anual", 0))
     ref_cat       = str(row.get("Ref_Catastral", "") or "")
     precio_compra = safe_float(row.get("Precio_Compra", 0))
-    intereses     = safe_float(row.get("Intereses_Hipoteca", 0))
-    comunidad     = safe_float(row.get("Comunidad", 0)) * 12
-    amort         = safe_float(row.get("Amortizacion_Fiscal", 0))
 
     score = 10.0
     detalle = []
     alertas = []
 
-    # ── 1. RENTABILIDAD VS MERCADO (30%) ─────────────────────────
+    # 1. Rentabilidad vs mercado (30%)
     if renta_mercado > 0 and renta > 0:
-        ratio_renta = renta / renta_mercado
-        if ratio_renta >= 0.95:
-            pts = 3.0
-            detalle.append(("Rentabilidad", "✅ Renta en línea con el mercado", pts, 3.0))
-        elif ratio_renta >= 0.80:
-            pts = 2.0
-            detalle.append(("Rentabilidad", f"⚠️ Renta {int((1-ratio_renta)*100)}% bajo mercado", pts, 3.0))
-            alertas.append(f"Renta {int((1-ratio_renta)*100)}% por debajo del mercado")
-        elif ratio_renta >= 0.60:
-            pts = 1.0
-            detalle.append(("Rentabilidad", f"🔴 Renta {int((1-ratio_renta)*100)}% bajo mercado", pts, 3.0))
-            alertas.append(f"Renta {int((1-ratio_renta)*100)}% muy por debajo del mercado — lucro cesante elevado")
+        ratio = renta / renta_mercado
+        if ratio >= 0.95:
+            pts = 3.0; detalle.append(("Rentabilidad", "✅ Renta en línea con mercado", 3.0, 3.0))
+        elif ratio >= 0.80:
+            pts = 2.0; detalle.append(("Rentabilidad", f"⚠️ Renta {int((1-ratio)*100)}% bajo mercado", 2.0, 3.0))
+            alertas.append(f"Renta {int((1-ratio)*100)}% por debajo del mercado")
+        elif ratio >= 0.60:
+            pts = 1.0; detalle.append(("Rentabilidad", f"🔴 Renta {int((1-ratio)*100)}% bajo mercado", 1.0, 3.0))
+            alertas.append(f"Renta {int((1-ratio)*100)}% muy por debajo del mercado")
         else:
-            pts = 0.0
-            detalle.append(("Rentabilidad", "🔴 Renta crítica vs mercado", pts, 3.0))
-            alertas.append("Renta crítica — posible infravaloración o impago")
+            pts = 0.0; detalle.append(("Rentabilidad", "🔴 Renta crítica vs mercado", 0.0, 3.0))
+            alertas.append("Renta crítica — posible infravaloración")
     else:
-        pts = 1.5
-        detalle.append(("Rentabilidad", "⚪ Sin datos de mercado para comparar", pts, 3.0))
+        pts = 1.5; detalle.append(("Rentabilidad", "⚪ Sin datos de mercado", 1.5, 3.0))
     score -= (3.0 - pts)
 
-    # ── 2. VENCIMIENTO CONTRATO (25%) ────────────────────────────
+    # 2. Vencimiento contrato (25%)
     dias_venc = 999
     if vencimiento and len(vencimiento) >= 8:
         try:
-            import datetime
             _venc = pd.to_datetime(vencimiento)
             dias_venc = (_venc - pd.Timestamp.now()).days
-        except:
-            pass
+        except: pass
 
     if not inquilino or inquilino in ("", "nan", "None"):
-        pts = 0.5
-        detalle.append(("Ocupación", "🔴 Sin inquilino registrado", pts, 2.5))
-        alertas.append("Inmueble sin inquilino — posible vacío")
+        pts = 0.5; detalle.append(("Ocupación", "🔴 Sin inquilino registrado", 0.5, 2.5))
+        alertas.append("Sin inquilino registrado")
     elif dias_venc > 180:
-        pts = 2.5
-        detalle.append(("Vencimiento", f"✅ Contrato vigente ({dias_venc} días)", pts, 2.5))
+        pts = 2.5; detalle.append(("Vencimiento", f"✅ Vigente ({dias_venc}d)", 2.5, 2.5))
     elif dias_venc > 90:
-        pts = 1.5
-        detalle.append(("Vencimiento", f"⚠️ Contrato vence en {dias_venc} días", pts, 2.5))
-        alertas.append(f"Contrato vence en {dias_venc} días — contactar inquilino")
+        pts = 1.5; detalle.append(("Vencimiento", f"⚠️ Vence en {dias_venc}d", 1.5, 2.5))
+        alertas.append(f"Contrato vence en {dias_venc} días")
     elif dias_venc > 0:
-        pts = 0.5
-        detalle.append(("Vencimiento", f"🔴 Contrato vence en {dias_venc} días", pts, 2.5))
+        pts = 0.5; detalle.append(("Vencimiento", f"🔴 Vence en {dias_venc}d", 0.5, 2.5))
         alertas.append(f"⚠️ URGENTE — Contrato vence en {dias_venc} días")
     else:
-        pts = 0.0
-        detalle.append(("Vencimiento", "🔴 Contrato vencido", pts, 2.5))
-        alertas.append("Contrato vencido — situación irregular")
+        pts = 0.0; detalle.append(("Vencimiento", "🔴 Contrato vencido", 0.0, 2.5))
+        alertas.append("Contrato vencido")
     score -= (2.5 - pts)
 
-    # ── 3. FATIGA / REPARACIONES (20%) ───────────────────────────
+    # 3. Fatiga / Reparaciones (20%)
     _hoy = pd.Timestamp.now()
     _hace_12m = _hoy - pd.DateOffset(months=12)
-    _mov_inm = df_mov[df_mov["Apartamento"] == nombre] if not df_mov.empty else pd.DataFrame()
-    _reps = pd.DataFrame()
+    _mov_inm = df_mov[df_mov["Apartamento"] == nombre].copy() if not df_mov.empty else pd.DataFrame()
+    _tot_reps = 0; _num_reps = 0
     if not _mov_inm.empty:
         try:
-            _mov_inm = _mov_inm.copy()
             _mov_inm["Fecha"] = pd.to_datetime(_mov_inm["Fecha"], errors="coerce")
-            _reps = _mov_inm[
-                (_mov_inm["Fecha"] >= _hace_12m) &
-                (_mov_inm["Tipo"] == "Gasto") &
-                (_mov_inm["Categoría"].isin(["Mantenimiento","Reparación","Avería","reparacion","mantenimiento"]))
-            ]
-        except:
-            pass
+            _cats_rep = ["Mantenimiento","Reparación","Avería","reparacion","mantenimiento","Mantenimiento y Reparaciones"]
+            _reps = _mov_inm[(_mov_inm["Fecha"] >= _hace_12m) & (_mov_inm["Tipo"]=="Gasto") & (_mov_inm.get("Categoria", _mov_inm.get("Categoría", pd.Series())).isin(_cats_rep))]
+            _tot_reps = _reps["Importe"].sum()
+            _num_reps = len(_reps)
+        except: pass
 
-    _tot_reps = _reps["Importe"].sum() if not _reps.empty else 0
-    _num_reps = len(_reps) if not _reps.empty else 0
     _renta_anual = renta * 12
-
     if _tot_reps == 0:
-        pts = 2.0
-        detalle.append(("Mantenimiento", "✅ Sin reparaciones en 12 meses", pts, 2.0))
+        pts = 2.0; detalle.append(("Mantenimiento", "✅ Sin reparaciones en 12m", 2.0, 2.0))
     elif _tot_reps < 1000 or (_renta_anual > 0 and _tot_reps / _renta_anual < 0.05):
-        pts = 1.5
-        detalle.append(("Mantenimiento", f"✅ Mantenimiento normal ({_tot_reps:,.0f}€)", pts, 2.0))
+        pts = 1.5; detalle.append(("Mantenimiento", f"✅ Normal ({_tot_reps:,.0f}€)", 1.5, 2.0))
     elif _tot_reps < 3000 or (_renta_anual > 0 and _tot_reps / _renta_anual < 0.15):
-        pts = 1.0
-        detalle.append(("Mantenimiento", f"⚠️ Reparaciones elevadas ({_tot_reps:,.0f}€)", pts, 2.0))
-        alertas.append(f"Reparaciones {_tot_reps:,.0f}€ en 12 meses — revisar estado del inmueble")
+        pts = 1.0; detalle.append(("Mantenimiento", f"⚠️ Elevado ({_tot_reps:,.0f}€)", 1.0, 2.0))
+        alertas.append(f"Reparaciones {_tot_reps:,.0f}€ en 12 meses")
     else:
-        pts = 0.0
-        detalle.append(("Mantenimiento", f"🔴 FATIGA — {_tot_reps:,.0f}€ en reparaciones / {_num_reps} incidencias", pts, 2.0))
-        alertas.append(f"🔴 FATIGA DEL PROPIETARIO — {_tot_reps:,.0f}€ en reparaciones en 12 meses")
+        pts = 0.0; detalle.append(("Mantenimiento", f"🔴 FATIGA — {_tot_reps:,.0f}€ / {_num_reps} incidencias", 0.0, 2.0))
+        alertas.append(f"🔴 FATIGA — {_tot_reps:,.0f}€ en reparaciones / {_num_reps} incidencias")
     score -= (2.0 - pts)
 
-    # ── 4. COBERTURA HIPOTECA (15%) ──────────────────────────────
+    # 4. Cobertura hipoteca (15%)
     _cuota_anual = 0
-    if df_hip is not None and not df_hip.empty:
-        _hip_inm = df_hip[df_hip.get("Inmueble", pd.Series()).str.lower() == nombre.lower()] if "Inmueble" in df_hip.columns else pd.DataFrame()
-        if not _hip_inm.empty:
-            for _, _h in _hip_inm.iterrows():
-                _p = safe_float(_h.get("Principal", 0))
-                _r = safe_float(_h.get("Tasa_Inicial", 0)) / 100 / 12
-                _n = int(safe_float(_h.get("Plazo_Años", 20))) * 12
-                if _r > 0 and _n > 0:
-                    _cuota_anual += _p * (_r*(1+_r)**_n) / ((1+_r)**_n - 1) * 12
-                elif _n > 0:
-                    _cuota_anual += _p / _n * 12
+    if df_hip is not None and not df_hip.empty and "Inmueble" in df_hip.columns:
+        _hip_inm = df_hip[df_hip["Inmueble"].str.lower() == nombre.lower()]
+        for _, _h in _hip_inm.iterrows():
+            _p = safe_float(_h.get("Principal", 0))
+            _r = safe_float(_h.get("Tasa_Inicial", 0)) / 100 / 12
+            _n = int(safe_float(_h.get("Plazo_Años", 20))) * 12
+            if _r > 0 and _n > 0:
+                _cuota_anual += _p * (_r*(1+_r)**_n) / ((1+_r)**_n - 1) * 12
+            elif _n > 0:
+                _cuota_anual += _p / _n * 12
 
     if _cuota_anual == 0:
-        pts = 1.5
-        detalle.append(("Hipoteca", "⚪ Sin hipoteca registrada", pts, 1.5))
+        pts = 1.5; detalle.append(("Hipoteca", "⚪ Sin hipoteca registrada", 1.5, 1.5))
     elif _renta_anual > 0:
         _cob = _renta_anual / _cuota_anual
         if _cob >= 1.5:
-            pts = 1.5
-            detalle.append(("Hipoteca", f"✅ Cobertura {_cob:.1f}× — excelente", pts, 1.5))
+            pts = 1.5; detalle.append(("Hipoteca", f"✅ Cobertura {_cob:.1f}×", 1.5, 1.5))
         elif _cob >= 1.2:
-            pts = 1.0
-            detalle.append(("Hipoteca", f"⚠️ Cobertura {_cob:.1f}× — ajustada", pts, 1.5))
+            pts = 1.0; detalle.append(("Hipoteca", f"⚠️ Cobertura {_cob:.1f}×", 1.0, 1.5))
         else:
-            pts = 0.0
-            detalle.append(("Hipoteca", f"🔴 Cobertura {_cob:.1f}× — insuficiente", pts, 1.5))
-            alertas.append(f"La renta no cubre la hipoteca (cobertura {_cob:.1f}×)")
+            pts = 0.0; detalle.append(("Hipoteca", f"🔴 Cobertura {_cob:.1f}×", 0.0, 1.5))
+            alertas.append(f"Renta no cubre hipoteca ({_cob:.1f}×)")
         score -= (1.5 - pts)
 
-    # ── 5. DOCUMENTACIÓN (10%) ───────────────────────────────────
-    _docs = sum([
-        1 if ibi > 0 else 0,
-        1 if seguro > 0 else 0,
-        1 if ref_cat and ref_cat not in ("", "nan", "None", "N/A") else 0,
-        1 if precio_compra > 0 else 0,
-    ])
-    pts = round(_docs / 4 * 1.0, 2)
-    detalle.append(("Documentación", f"{'✅' if _docs == 4 else '⚠️'} {_docs}/4 campos rellenos", pts, 1.0))
+    # 5. Documentación (10%)
+    _docs = sum([ibi > 0, seguro > 0,
+                 bool(ref_cat and ref_cat not in ("","nan","None","N/A")),
+                 precio_compra > 0])
+    pts = round(_docs / 4, 2)
+    detalle.append(("Documentación", f"{'✅' if _docs==4 else '⚠️'} {_docs}/4 campos", pts, 1.0))
     score -= (1.0 - pts)
 
-    # ── Score final ───────────────────────────────────────────────
     score = max(1.0, min(10.0, round(score, 1)))
+    if score >= 8:   color, etiq, suger = "#059669", "Excelente", None
+    elif score >= 6: color, etiq, suger = "#185FA5", "Bueno", "Revisar puntos de mejora"
+    elif score >= 4: color, etiq, suger = "#D97706", "Atención", "Considera renegociar o refinanciar"
+    else:            color, etiq, suger = "#DC2626", "Crítico", "Considera vender o reestructurar"
 
-    if score >= 8:
-        color  = "#059669"
-        etiq   = "Excelente"
-        suger  = None
-    elif score >= 6:
-        color  = "#185FA5"
-        etiq   = "Bueno"
-        suger  = "Revisar puntos de mejora"
-    elif score >= 4:
-        color  = "#D97706"
-        etiq   = "Atención"
-        suger  = "Considera renegociar el contrato o refinanciar"
-    else:
-        color  = "#DC2626"
-        etiq   = "Crítico"
-        suger  = "Considera vender o reestructurar este activo"
-
-    return {
-        "score":   score,
-        "color":   color,
-        "etiq":    etiq,
-        "suger":   suger,
-        "detalle": detalle,
-        "alertas": alertas,
-        "tot_reps_12m": _tot_reps,
-        "num_reps_12m": _num_reps,
-    }
+    return {"score": score, "color": color, "etiq": etiq, "suger": suger,
+            "detalle": detalle, "alertas": alertas,
+            "tot_reps_12m": _tot_reps, "num_reps_12m": _num_reps}
 
 
-def render_score_badge(score_data, size="normal"):
-    """Renderiza el badge de score como HTML inline."""
-    s     = score_data["score"]
-    color = score_data["color"]
-    etiq  = score_data["etiq"]
-    fs    = "2.2rem" if size == "large" else "1.6rem"
-    return (
-        f'<div style="display:inline-flex;align-items:center;gap:10px;">' +
-        f'<div style="background:{color};color:#fff;border-radius:10px;' +
-        f'padding:6px 14px;font-size:{fs};font-weight:900;line-height:1;">' +
-        f'{s:.1f}</div>' +
-        f'<div style="font-size:13px;font-weight:700;color:{color};">' +
-        f'{etiq}</div>' +
-        f'</div>'
-    )
+def render_score_badge(sd, size="normal"):
+    fs = "2.2rem" if size=="large" else "1.6rem"
+    return (f'<div style="display:inline-flex;align-items:center;gap:10px;">' +
+            f'<div style="background:{sd["color"]};color:#fff;border-radius:10px;' +
+            f'padding:6px 14px;font-size:{fs};font-weight:900;line-height:1;">' +
+            f'{sd["score"]:.1f}</div>' +
+            f'<div style="font-size:13px;font-weight:700;color:{sd["color"]};'  +
+            f'"> {sd["etiq"]}</div></div>')
 
 
-def calcular_modelo_100(row, df_mov_local, año_fiscal=None, tipo_cuenta=None,
-                         df_bss=None):
-    """
-    df_bss: DataFrame de asientos_bss filtrado por inmueble.
-            Si se pasa, los cálculos IS usan datos BSS en vez de movimientos manuales.
-    """
-    import streamlit as _st
+def calcular_modelo_100(row, df_mov_local, año_fiscal=None, tipo_cuenta=None):
+    # Si no se pasa tipo_cuenta, leer del perfil en session_state
     if tipo_cuenta is None:
+        import streamlit as _st
         _perfil = _st.session_state.get("perfil_datos", {})
         tipo_cuenta = _perfil.get("tipo_cuenta", "particular")
-
-    # ── Modo BSS: usar datos importados de A3/Holded si existen ──
-    _nombre_inm = str(row.get("Nombre", ""))
-    _usar_bss   = False
-    if df_bss is not None and not df_bss.empty:
-        _bss_inm = df_bss[df_bss["inmueble"] == _nombre_inm]
-        if not _bss_inm.empty:
-            _usar_bss = True
-
-    if _usar_bss and tipo_cuenta == "sociedad":
-        def _sum_bss(prefijos):
-            return sum(
-                float(r["debe"]) for _, r in _bss_inm.iterrows()
-                if any(str(r["cuenta"]).startswith(p) for p in prefijos)
-            )
-        _ing_bss  = sum(float(r["haber"]) for _, r in _bss_inm.iterrows()
-                        if str(r["cuenta"]).startswith("7"))
-        _rep_bss  = _sum_bss(["621","622"])
-        _int_bss  = _sum_bss(["662"])
-        _ibi_bss  = _sum_bss(["631"])
-        _seg_bss  = _sum_bss(["625"])
-        _sum_bss2 = _sum_bss(["628"])
-        _jur_bss  = _sum_bss(["623"])
-        _amort_bss= _sum_bss(["681"])
-        _otros_bss= _sum_bss(["624","626","627","629","630","632","633","634"])
-        _tot_gas_bss = _rep_bss+_int_bss+_ibi_bss+_seg_bss+_sum_bss2+_jur_bss+_amort_bss+_otros_bss
-        _res_bss  = round(_ing_bss - _tot_gas_bss, 2)
-        return {
-            "0101": 365, "0102": _ing_bss, "0105": _int_bss,
-            "0106": _ibi_bss, "0107": _tot_gas_bss, "0108": _ibi_bss,
-            "0110": _seg_bss+_sum_bss2, "0111": _sum_bss2, "0112": _jur_bss,
-            "0113": _amort_bss, "0149": _res_bss, "0150": 0,
-            "0152": _res_bss, "0153": 0, "reduccion_pct": 0,
-            "rend_final": _res_bss, "ingresos": _ing_bss,
-            "total_gastos": _tot_gas_bss, "rend_neto": _res_bss,
-            "amortizacion": _amort_bss, "reduccion": 0,
-            "m200_318": _ing_bss, "m200_319": _tot_gas_bss,
-            "m200_320": _amort_bss, "m200_399": _res_bss,
-            "cuota_is_25": round(max(_res_bss * 0.25, 0), 2),
-            "modo_fiscal": "IS_BSS", "fuente": "BSS",
-        }
-
     import re as _re2
     dias_arrendado = int(safe_float(row.get("Dias_Arrendados_Anio", 365)))
     if dias_arrendado <= 0: dias_arrendado = 365
@@ -1549,37 +1426,30 @@ if menu == "Torre de Control":
       {_barra(bal_pct,ACCENT)}<div style="display:flex;justify-content:space-between;"><span style="font-size:0.7rem;color:{TEXT_SEC};">{bal_pct}% del objetivo</span><span style="font-size:0.78rem;font-weight:600;color:{_color_desv(bal_desv)};">{_flecha(bal_desv)} {abs(bal_desv):,.0f} €</span></div></div>""", unsafe_allow_html=True)
 
     # Tarjetas casita
-    # ── Scores de la cartera ─────────────────────────────────────
+    # ── Salud de la Cartera ──────────────────────────────────────
     st.markdown('<div class="nc-section-title">🏥 Salud de la Cartera</div>', unsafe_allow_html=True)
     _df_hip_tc2 = st.session_state.get("df_hip", pd.DataFrame())
-    _scores_cartera = []
-    for _, _row_tc in df_inm.iterrows():
-        _sd = calcular_score_salud(_row_tc, df_mov,
-                                    tipo_cuenta=_perfil_tc.get("tipo_cuenta","particular"),
-                                    df_hip=_df_hip_tc2)
-        _scores_cartera.append((_row_tc.get("Nombre",""), _sd))
-
-    _n_cols_sc = min(len(_scores_cartera), 4)
-    if _n_cols_sc > 0:
-        _cols_sc = st.columns(_n_cols_sc)
-        for _idx_sc, (_nom_sc, _sd_sc) in enumerate(_scores_cartera):
-            with _cols_sc[_idx_sc % _n_cols_sc]:
+    _n_inm_sc   = min(len(df_inm), 4)
+    if _n_inm_sc > 0:
+        _cols_sc = st.columns(_n_inm_sc)
+        for _idx_sc, (_, _row_sc) in enumerate(df_inm.head(_n_inm_sc).iterrows()):
+            _sd_sc = calcular_score_salud(_row_sc, df_mov,
+                                           tipo_cuenta=_perfil_tc.get("tipo_cuenta","particular"),
+                                           df_hip=_df_hip_tc2)
+            with _cols_sc[_idx_sc]:
+                _primera_alerta = _sd_sc["alertas"][0][:35] + "..." if _sd_sc["alertas"] else ""
                 st.markdown(
-                    f'<div style="background:#fff;border-radius:12px;padding:14px 16px;' +
-                    f'border:2px solid {_sd_sc["color"]};' +
-                    f'box-shadow:0 2px 8px rgba(0,0,0,0.06);text-align:center;' +
-                    f'margin-bottom:8px;">' +
-                    f'<div style="font-size:11px;font-weight:700;color:#94A3B8;' +
-                    f'text-transform:uppercase;margin-bottom:6px;white-space:nowrap;' +
-                    f'overflow:hidden;text-overflow:ellipsis;">{_nom_sc[:20]}</div>' +
-                    f'<div style="font-size:2.4rem;font-weight:900;' +
-                    f'color:{_sd_sc["color"]};line-height:1;">{_sd_sc["score"]:.1f}</div>' +
-                    f'<div style="font-size:12px;font-weight:600;color:{_sd_sc["color"]};' +
-                    f'margin-top:4px;">{_sd_sc["etiq"]}</div>' +
-                    f'{"".join(f'<div style="font-size:10px;color:#DC2626;margin-top:2px;">⚠️ {a[:40]}</div>' for a in _sd_sc["alertas"][:1])}' +
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
+                    f'<div style="background:#fff;border-radius:12px;padding:14px;' +
+                    f'border:2px solid {_sd_sc["color"]};text-align:center;margin-bottom:8px;">' +
+                    f'<div style="font-size:10px;color:#94A3B8;font-weight:700;' +
+                    f'text-transform:uppercase;margin-bottom:4px;white-space:nowrap;' +
+                    f'overflow:hidden;text-overflow:ellipsis;">{str(_row_sc.get("Nombre",""))[:18]}</div>' +
+                    f'<div style="font-size:2.2rem;font-weight:900;color:{_sd_sc["color"]};line-height:1;">' +
+                    f'{_sd_sc["score"]:.1f}</div>' +
+                    f'<div style="font-size:11px;color:{_sd_sc["color"]};font-weight:600;margin-top:3px;">' +
+                    f'{_sd_sc["etiq"]}</div>' +
+                    (f'<div style="font-size:9px;color:#DC2626;margin-top:4px;">{_primera_alerta}</div>' if _primera_alerta else "") +
+                    f'</div>', unsafe_allow_html=True)
     st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
 
     _titulo_activos = "Rentabilidad por Activo IS — [399] Resultado por inmueble" if _es_sociedad_tc else "Rentabilidad por Activo"
@@ -1726,64 +1596,47 @@ elif menu == "Fichas (Benchmark)":
     rent_neta=((renta_act-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
     tipo_arr=str(f.get("Tipo_Arrendamiento","Larga Duración")); zona_tens=str(f.get("Zona_Tensionada","N"))=="S"; cochera_v=str(f.get("Cochera_Vinculada","N"))=="S"
 
-    # ── SCORE DE SALUD DEL ACTIVO ────────────────────────────────
-    _df_hip_score = st.session_state.get("df_hip", pd.DataFrame())
+    # ── SCORE DE SALUD ───────────────────────────────────────────
     _perfil_fic   = st.session_state.get("perfil_datos", {})
     _es_soc_fic   = _perfil_fic.get("tipo_cuenta","particular") == "sociedad"
-    _score_data   = calcular_score_salud(f, df_gf if not df_gf.empty else df_mov,
-                                          tipo_cuenta=_perfil_fic.get("tipo_cuenta","particular"),
-                                          df_hip=_df_hip_score)
+    _df_hip_score = st.session_state.get("df_hip", pd.DataFrame())
+    _sd = calcular_score_salud(f, df_mov, tipo_cuenta=_perfil_fic.get("tipo_cuenta","particular"), df_hip=_df_hip_score)
 
-    _col_score, _col_suger = st.columns([1, 2])
-    with _col_score:
+    _col_sc, _col_al = st.columns([1, 2])
+    with _col_sc:
         st.markdown(
-            f'<div style="background:#fff;border-radius:14px;padding:18px 20px;' +
-            f'border:2px solid {_score_data["color"]};box-shadow:0 4px 12px rgba(0,0,0,0.08);' +
-            f'margin-bottom:12px;">' +
-            f'<div style="font-size:11px;font-weight:700;color:#94A3B8;' +
-            f'text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">' +
-            f'Score de Salud del Activo</div>' +
-            render_score_badge(_score_data, size="large") +
-            f'</div>',
-            unsafe_allow_html=True
-        )
-
-    with _col_suger:
-        if _score_data["alertas"]:
-            for _alerta in _score_data["alertas"][:3]:
-                _es_critica = "🔴" in _alerta or "URGENTE" in _alerta or "FATIGA" in _alerta
-                _bg  = "#FEE2E2" if _es_critica else "#FEF3C7"
-                _brd = "#DC2626" if _es_critica else "#D97706"
-                st.markdown(
-                    f'<div style="background:{_bg};border-left:4px solid {_brd};' +
-                    f'border-radius:6px;padding:8px 12px;margin-bottom:6px;' +
-                    f'font-size:13px;color:#1e293b;">{_alerta}</div>',
-                    unsafe_allow_html=True
-                )
-        if _score_data["suger"]:
-            _col_s = "#DC2626" if _score_data["score"] < 4 else                      "#D97706" if _score_data["score"] < 7 else "#059669"
+            f'<div style="background:#fff;border-radius:12px;padding:16px 18px;' +
+            f'border:2px solid {_sd["color"]};box-shadow:0 2px 8px rgba(0,0,0,0.07);' +
+            f'margin-bottom:10px;">' +
+            f'<div style="font-size:10px;font-weight:700;color:#94A3B8;' +
+            f'text-transform:uppercase;margin-bottom:6px;">Score Salud Activo</div>' +
+            render_score_badge(_sd, size="large") +
+            f'</div>', unsafe_allow_html=True)
+    with _col_al:
+        for _a in _sd["alertas"][:2]:
+            _ec = "🔴" in _a or "URGENTE" in _a or "FATIGA" in _a
             st.markdown(
-                f'<div style="background:#fff;border:2px solid {_col_s};' +
-                f'border-radius:8px;padding:10px 14px;margin-top:4px;' +
-                f'font-size:13px;font-weight:700;color:{_col_s};">' +
-                f'💡 {_score_data["suger"]}</div>',
-                unsafe_allow_html=True
-            )
-
-    # Detalle score expandible
-    with st.expander("📊 Ver desglose del score"):
-        for _comp, _desc, _pts, _max in _score_data["detalle"]:
-            _pct = int(_pts / _max * 100) if _max > 0 else 0
-            _c1, _c2, _c3 = st.columns([2, 4, 1])
+                f'<div style="background:{"#FEE2E2" if _ec else "#FEF3C7"};' +
+                f'border-left:4px solid {"#DC2626" if _ec else "#D97706"};' +
+                f'border-radius:6px;padding:7px 12px;margin-bottom:5px;' +
+                f'font-size:13px;">{_a}</div>', unsafe_allow_html=True)
+        if _sd["suger"]:
+            _cs = "#DC2626" if _sd["score"]<4 else "#D97706" if _sd["score"]<7 else "#059669"
+            st.markdown(
+                f'<div style="border:2px solid {_cs};border-radius:8px;' +
+                f'padding:8px 12px;font-size:13px;font-weight:700;color:{_cs};">' +
+                f'💡 {_sd["suger"]}</div>', unsafe_allow_html=True)
+    with st.expander("📊 Desglose del score"):
+        for _comp, _desc, _pts, _max in _sd["detalle"]:
+            _c1,_c2,_c3 = st.columns([2,4,1])
             _c1.markdown(f"**{_comp}**")
-            _c2.markdown(f"<span style='font-size:13px;'>{_desc}</span>",
-                         unsafe_allow_html=True)
+            _c2.markdown(f"<span style='font-size:12px;'>{_desc}</span>", unsafe_allow_html=True)
             _c3.markdown(f"**{_pts:.1f}/{_max:.1f}**")
 
-    st.markdown('<div style="margin:16px 0 8px;"></div>', unsafe_allow_html=True)
-
     # KPIs de Fichas — nuevo estilo grande y prominente
-    st.markdown('<div style="margin:8px 0 16px;"></div>', unsafe_allow_html=True)
+    st.markdown('<div style="margin:12px 0 8px;"></div>', unsafe_allow_html=True)
+
+    # ── KPIs IS si es sociedad ────────────────────────────────────
 
     if _es_soc_fic:
         # Calcular KPIs IS de este inmueble
@@ -2817,70 +2670,21 @@ elif menu == "Fiscalidad":
 
         with _tab_m200:
             from fiscal_export import render_seccion_modelo_200
-            from supabase_db import leer_asientos_bss, hay_asientos_bss
-
-            _uid_bss      = st.session_state.get("user_id", "")
-            _ejercicio_bss = pd.Timestamp.now().year
-            _modo_contable = _perfil_fiscal.get("modo_contable", "manual")
-            _df_bss        = pd.DataFrame()
-
-            if _modo_contable != "manual":
-                _df_bss = leer_asientos_bss(_uid_bss, _ejercicio_bss)
-                if not _df_bss.empty:
-                    _fuente_bss = _df_bss["fuente"].iloc[0] if "fuente" in _df_bss.columns else "BSS"
-                    st.markdown(
-                        f'<div style="background:#eff6ff;border:1px solid #185FA5;' +
-                        f'border-radius:8px;padding:8px 14px;margin-bottom:10px;' +
-                        f'font-size:13px;font-weight:700;color:#185FA5;">' +
-                        f'📊 Datos desde {_fuente_bss} · {len(_df_bss)} asientos importados' +
-                        f'</div>',
-                        unsafe_allow_html=True
-                    )
-
-            def _calcular_con_bss(row, df_mov_local, año_fiscal=None, tipo_cuenta="sociedad"):
-                return calcular_modelo_100(row, df_mov_local, año_fiscal=año_fiscal,
-                                           tipo_cuenta=tipo_cuenta,
-                                           df_bss=_df_bss if not _df_bss.empty else None)
-
-            render_seccion_modelo_200(df_inm, df_mov, safe_float,
-                                       _calcular_con_bss,
+            render_seccion_modelo_200(df_inm, df_mov, safe_float, calcular_modelo_100,
                                        perfil=_perfil_fiscal)
 
         with _tab_bss:
-            from supabase_db import (guardar_asientos_bss, leer_asientos_bss,
-                                      hay_asientos_bss, guardar_modo_contable)
-
             st.markdown('<div class="nc-section-title">📥 Importar Balance de Sumas y Saldos</div>',
                         unsafe_allow_html=True)
-
-            # Estado actual del modo contable
-            _modo_actual = _perfil_fiscal.get("modo_contable", "manual")
-            _uid_bss     = st.session_state.get("user_id", "")
-            _ejercicio_bss = pd.Timestamp.now().year
-
-            if _modo_actual != "manual":
-                _fuente_lbl = {"bss_a3": "A3 Asesor Eco", "bss_holded": "Holded",
-                               "bss_sage": "Sage"}.get(_modo_actual, _modo_actual)
-                st.markdown(f"""
-                <div style="background:#0d1a0d;border:1px solid #059669;border-radius:8px;
-                            padding:10px 16px;margin-bottom:12px;font-size:13px;">
-                <span style="color:#059669;font-weight:700;">✅ Modo BSS activo — {_fuente_lbl}</span><br>
-                <span style="color:#a7f3d0;font-size:12px;">
-                Los cálculos IS usan los datos importados de {_fuente_lbl}.
-                Los movimientos manuales se ignoran para el Modelo 200.</span>
-                </div>""", unsafe_allow_html=True)
-                if st.button("🔄 Cambiar a modo manual", key="btn_modo_manual"):
-                    guardar_modo_contable(_uid_bss, "manual")
-                    st.session_state.perfil_datos["modo_contable"] = "manual"
-                    st.rerun()
-            else:
-                st.markdown("""
-                <div style="background:#0d1a0d;border:1px solid #059669;border-radius:8px;
-                            padding:12px 16px;margin-bottom:1rem;font-size:13px;color:#a7f3d0;">
-                <b>🔗 Compatible con A3 Asesor Eco, Holded, Sage y ContaPlus.</b><br>
-                Exporta el BSS de tu programa contable en Excel y súbelo aquí.
-                Los datos importados <b>sustituyen</b> los movimientos manuales para el Modelo 200.
-                </div>""", unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background:#0d1a0d;border:1px solid #059669;border-radius:8px;
+                        padding:12px 16px;margin-bottom:1rem;font-size:13px;color:#a7f3d0;">
+            <b>🔗 Compatible con A3 Asesor Eco, Holded, Sage y ContaPlus.</b><br>
+            Exporta el BSS de tu programa contable en Excel y súbelo aquí.
+            La app detecta automáticamente las cuentas del grupo 6 (gastos)
+            y 7 (ingresos) y rellena las casillas del Modelo 200.
+            </div>
+            """, unsafe_allow_html=True)
 
             # Descarga plantilla
             _col_dl, _col_info = st.columns([1, 2])
@@ -2944,38 +2748,6 @@ elif menu == "Fiscalidad":
                             break
 
                     _datos_bss = _filas_raw[_header_row + 1:]
-
-                    # Detectar programa origen por estructura del Excel
-                    _fuente_detectada = "GENERICO"
-                    _modo_bss_key     = "bss_generico"
-                    _hoja_nombres     = [s.lower() for s in _wb_bss.sheetnames]
-                    _primer_val       = str(_filas_raw[_header_row + 1][0] if len(_filas_raw) > _header_row + 1 else "")
-
-                    if any("bss" in h or "sumas" in h or "saldos" in h for h in _hoja_nombres):
-                        _fuente_detectada = "A3 ASESOR ECO"
-                        _modo_bss_key     = "bss_a3"
-                    elif "." in _primer_val and _primer_val.replace(".", "").isdigit():
-                        # A3 usa punto como separador de subcuenta: 621.0001
-                        _fuente_detectada = "A3 ASESOR ECO"
-                        _modo_bss_key     = "bss_a3"
-                    elif any("trial" in h or "balance" in h for h in _hoja_nombres):
-                        _fuente_detectada = "HOLDED"
-                        _modo_bss_key     = "bss_holded"
-                    elif any("sage" in h for h in _hoja_nombres):
-                        _fuente_detectada = "SAGE"
-                        _modo_bss_key     = "bss_sage"
-
-                    # Banner origen detectado
-                    _color_fuente = {"A3 ASESOR ECO": "#185FA5", "HOLDED": "#7C3AED",
-                                     "SAGE": "#059669"}.get(_fuente_detectada, "#475569")
-                    st.markdown(
-                        f'<div style="background:#f0f9ff;border:1px solid {_color_fuente};' +
-                        f'border-radius:8px;padding:8px 14px;margin-bottom:10px;' +
-                        f'font-size:13px;font-weight:700;color:{_color_fuente};">' +
-                        f'🔍 Origen detectado: {_fuente_detectada} ✅' +
-                        f'</div>',
-                        unsafe_allow_html=True
-                    )
 
                     # Parser: extraer cuentas 6xx y 7xx
                     _gastos   = {}  # cuenta → importe
@@ -3102,55 +2874,42 @@ elif menu == "Fiscalidad":
                             if _sel_inm != "— Sin asignar —":
                                 _mapeo_final[_sc] = _sel_inm
 
-                    # Aviso sustitución
-                    _tiene_bss = hay_asientos_bss(_uid_bss, _ejercicio_bss)
-                    if _tiene_bss:
-                        st.warning(
-                            f"⚠️ Ya existen datos BSS de {_ejercicio_bss}. "
-                            f"Al importar se reemplazarán completamente."
-                        )
-
-                    if st.button("💾 Importar y activar modo BSS",
+                    # Guardar en Supabase
+                    if st.button("💾 Guardar datos BSS en Nolasco Capital",
                                  type="primary", use_container_width=True,
                                  key="btn_guardar_bss"):
+                        _uid_bss = st.session_state.get("user_id", "")
                         _ok_count = 0
-                        _lote_bss = []
-                        for _cod, _v in _gastos.items():
-                            _sc = _v["subcod"]
-                            _lote_bss.append({
-                                "cuenta":      _cod,
-                                "descripcion": _v["desc"][:200],
-                                "inmueble":    _mapeo_final.get(_sc, ""),
-                                "debe":        round(_v["debe"], 2),
-                                "haber":       0,
-                            })
-                        for _cod, _v in _ingresos.items():
-                            _sc = _v["subcod"]
-                            _lote_bss.append({
-                                "cuenta":      _cod,
-                                "descripcion": _v["desc"][:200],
-                                "inmueble":    _mapeo_final.get(_sc, ""),
-                                "debe":        0,
-                                "haber":       round(_v["haber"], 2),
-                            })
-                        if _lote_bss:
-                            _ok = guardar_asientos_bss(
-                                _uid_bss, _ejercicio_bss,
-                                _fuente_detectada, _lote_bss
-                            )
-                            if _ok:
-                                guardar_modo_contable(_uid_bss, _modo_bss_key)
-                                if "perfil_datos" in st.session_state:
-                                    st.session_state.perfil_datos["modo_contable"] = _modo_bss_key
-                                st.success(
-                                    f"✅ {len(_lote_bss)} asientos importados desde "
-                                    f"{_fuente_detectada}. Modo BSS activado."
-                                )
-                            else:
-                                st.error("Error al guardar en Supabase.")
-                        else:
-                            st.warning("Asigna al menos un subcódigo antes de guardar.")
 
+                        # Guardar como movimientos contables con fuente BSS
+                        _lote_movs = []
+                        for _cod, _v in {**_gastos}.items():
+                            _sc = _v["subcod"]
+                            _inm_nombre = _mapeo_final.get(_sc, "")
+                            if not _inm_nombre:
+                                continue
+                            _lote_movs.append({
+                                "Fecha":       pd.Timestamp.now().strftime("%Y-%m-%d"),
+                                "Concepto":    f"[BSS][{_cod}] {_v['desc'][:60]}",
+                                "Importe":     round(_v["debe"], 2),
+                                "Tipo":        "Gasto",
+                                "Categoria":   "Contabilidad IS",
+                                "Apartamento": _inm_nombre,
+                            })
+                        if _lote_movs:
+                            try:
+                                _ok = agregar_movimientos(_lote_movs, _uid_bss)
+                                _ok_count = len(_lote_movs) if _ok else 0
+                            except Exception as _ex:
+                                st.error(f"Error al guardar: {_ex}")
+
+                        if _ok_count > 0:
+                            st.success(f"✅ {_ok_count} apuntes contables guardados. "
+                                       f"Recarga la sección Modelo 200 para ver los datos actualizados.")
+                            st.session_state["df_mov_persistent"] = leer_movimientos(
+                                user_id=_uid_bss)
+                        else:
+                            st.warning("Asigna al menos un subcódigo a un inmueble antes de guardar.")
 
                 except Exception as _e_bss:
                     st.error(f"Error al procesar el archivo: {_e_bss}")
@@ -4565,134 +4324,4 @@ elif menu == "Ingresos · Rentas":
 
 # ================================================================
 # FUNCIÓN: GENERAR PDF FACTURA EMITIDA (ReportLab)
-# ================================================================port datetime, date
-from cashflow_module import render_cashflow
-from kpi_renderer import render_kpi_row
-
-try:
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.colors import HexColor, white, black
-    from reportlab.pdfgen import canvas
-    from reportlab.platypus import Table, TableStyle
-    REPORTLAB_OK = True
-except ImportError:
-    REPORTLAB_OK = False
-
 # ================================================================
-# IMPORT MÓDULO B2B2C
-# ================================================================
-from asesoramiento_ia import render_asesor_ia, render_privacidad, render_diagnostico_inmueble
-from sabio_patrimonial import render_sabio, limpiar_insight_seccion
-
-# ================================================================
-# SECCIÓN 1 — CONFIGURACIÓN Y COLORES
-# ================================================================
-st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
-
-ACCENT     = "#185FA5"
-SIDEBAR_BG = "#0F2744"
-MAIN_BG    = "#F4F7FB"
-CARD_BG    = "#FFFFFF"
-BORDER     = "#D0DFF0"
-TEXT_PRI   = "#0D1B2A"
-TEXT_SEC   = "#5A7A9A"
-GREEN      = "#1a7a40"
-RED        = "#C0392B"
-AMBER      = "#854F0B"
-COLOR_TOPS = ["#185FA5","#0F6E56","#378ADD","#639922","#D85A30","#7F77DD"]
-
-# ================================================================
-# SECCIÓN 2 — ESTILOS CSS (Design System Nolasco Capital)
-# ================================================================
-from nolasco_styles import inject_global_css
-APP = "capital"
-inject_global_css(APP)
-
-# CSS adicional para botones de navegación del sidebar
-st.markdown("""
-<style>
-[data-testid="stSidebar"] button[kind="secondary"] {
-    background: transparent !important;
-    border: none !important;
-    color: rgba(255,255,255,0.82) !important;
-    font-size: 0.92rem !important;
-    font-weight: 500 !important;
-    text-align: left !important;
-    padding: 0.45rem 0.8rem !important;
-    border-radius: 6px !important;
-}
-[data-testid="stSidebar"] button[kind="secondary"]:hover {
-    background: rgba(255,255,255,0.08) !important;
-    color: #ffffff !important;
-}
-[data-testid="stSidebar"] button[kind="secondary"] p {
-    color: rgba(255,255,255,0.82) !important;
-    font-size: 0.92rem !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ================================================================
-# SECCIÓN 3 — BASE DE DATOS SUPABASE
-# ================================================================
-from supabase_db import (
-    leer_inmuebles, leer_movimientos,
-    guardar_inmuebles, eliminar_inmueble, guardar_movimientos_completo,
-    agregar_movimientos, generar_csv_backup,
-    login_usuario, registrar_usuario,
-    leer_gastos_recurrentes, guardar_gasto_recurrente,
-    actualizar_gasto_recurrente, eliminar_gasto_recurrente,
-    generar_codigo_acceso, obtener_codigo_activo, revocar_codigo_acceso,
-    upsert_inmueble, guardar_logo_usuario, leer_logo_usuario, health_check,
-    subir_factura, obtener_url_factura, eliminar_factura,
-    actualizar_estado_fiscal_movimiento,
-    leer_perfil_usuario, guardar_perfil_usuario,
-    cambiar_contrasena, cambiar_email,
-    leer_plantillas_factura, guardar_plantilla_factura,
-    leer_facturas_emitidas, crear_factura_emitida,
-    actualizar_estado_factura, guardar_pdf_factura,
-    crear_factura_rectificativa
-)
-
-COLS_INM = [
-    "Nombre","Inquilino","Renta","Renta_Mercado","Comunidad","Valor_Construccion",
-    "Año_Reforma","Año_Construccion","Mobiliario","Tipo","Ref_Catastral","Titular",
-    "M2_Construidos","Habitaciones","CP","Planta","Parking","Estado",
-    "Tipo_Arrendamiento","Cochera_Vinculada","Zona_Tensionada",
-    "Fecha_Inicio_Contrato","Fecha_Vencimiento_Contrato",
-    "NIF_Inquilino","Intereses_Hipoteca","IBI_Anual","Seguro_Anual",
-    "Gastos_Juridicos","Retenciones_IRPF","Gastos_Formalizacion",
-    "Fecha_Adquisicion","Precio_Compra","Impuestos_Compra","Gastos_Compra",
-    "Valor_Catastral","Valor_Catastral_Piso","Pct_Suelo","Pct_Construccion",
-    "Valor_Real_Construccion","Amortizacion_Fiscal","Seguro_Vida",
-    "Gasto_Ascensor","Ref_Catastral_Cochera","IBI_Cocheras","Comunidad_Cocheras",
-    "IVA_Aplicable","Tipo_IVA","Retencion_IRPF_Pct","Dias_Arrendados_Anio",
-    "Gastos_Pendientes_Años_Ant","Servicios_Suministros"
-]
-
-DEFAULTS_FISCAL = {
-    "Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N",
-    "Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01",
-    "NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":0,"Seguro_Anual":0,
-    "Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,
-    "Fecha_Adquisicion":None,"Precio_Compra":0,"Impuestos_Compra":0,"Gastos_Compra":0,
-    "Valor_Catastral":0,"Valor_Catastral_Piso":0,"Pct_Suelo":0.25,"Pct_Construccion":0.75,
-    "Valor_Real_Construccion":0,"Amortizacion_Fiscal":0,"Seguro_Vida":0,
-    "Gasto_Ascensor":0,"Ref_Catastral_Cochera":"","IBI_Cocheras":0,"Comunidad_Cocheras":0,
-    "IVA_Aplicable":False,"Tipo_IVA":21,"Retencion_IRPF_Pct":0,"Dias_Arrendados_Anio":365,
-    "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
-}
-
-# ================================================================
-# SECCIÓN 4 — AUTENTICACIÓN
-# ================================================================
-if "user_logged_in" not in st.session_state:
-    st.session_state.user_logged_in = False
-if "user_id" not in st.session_state:
-    st.session_state.user_id = None
-if "user_email" not in st.session_state:
-    st.session_state.user_email = None
-if "filtro_año" not in st.session_state:
-    st.session_state.filtro_año = "Todos"
-if "filtro_mes" not in st.session_state:
-    st.session_state.filtro_mes = "Todos"
