@@ -51,11 +51,19 @@ def calcular_resumen_global(df_inm, df_mov, safe_float_fn, calcular_modelo_100_f
     filas = []
     for _, row in df_inm.iterrows():
         modelo = calcular_modelo_100_fn(row, df_mov, año_fiscal=año_fiscal)
-        # Claves IS (Modelo 200) — presentes si tipo_cuenta="sociedad"
-        m200_318 = modelo.get("m200_318", modelo["0102"])
-        m200_319 = modelo.get("m200_319", modelo["0107"])
-        m200_320 = modelo.get("m200_320", modelo["0113"])
-        m200_399 = modelo.get("m200_399", modelo["0152"])
+        # Claves IS (Modelo 200)
+        # m200_318 = ingresos íntegros = 0102
+        # m200_319 = total gastos deducibles = 0107
+        # m200_320 = amortización pura = 0113 (NUNCA total_gastos)
+        # m200_399 = resultado IS = ingresos - gastos (sin reducción 60%)
+        _ing_is   = modelo.get("m200_318", modelo["0102"])
+        _gas_is   = modelo.get("m200_319", modelo["0107"])
+        _amort_is = modelo["0113"]  # siempre la amortización pura, nunca fallback a gastos
+        _res_is   = modelo.get("m200_399", round(_ing_is - _gas_is, 2))
+        m200_318  = _ing_is
+        m200_319  = _gas_is
+        m200_320  = _amort_is
+        m200_399  = _res_is
         filas.append({
             "inmueble":          row.get("Nombre", ""),
             "ref_catastral":     row.get("Ref_Catastral", "") or "",
