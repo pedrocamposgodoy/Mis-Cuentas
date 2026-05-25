@@ -1095,19 +1095,7 @@ if menu == "Torre de Control":
     df_mov_fecha = df_mov.copy()
     df_mov_fecha["Fecha"] = pd.to_datetime(df_mov_fecha["Fecha"], errors="coerce")
     df_mes = df_mov_fecha[(df_mov_fecha["Fecha"].dt.month==mes_actual)&(df_mov_fecha["Fecha"].dt.year==anio_actual)]
-    ing_mes_movimientos = df_mes[df_mes["Tipo"]=="Ingreso"]["Importe"].sum()
-    # Sumar facturas cobradas del mes actual
-    _df_facs_mes = _df_facs_tc.copy() if not _df_facs_tc.empty else pd.DataFrame()
-    ing_mes_facturas = 0
-    if not _df_facs_mes.empty:
-        _df_facs_mes["fecha"] = pd.to_datetime(_df_facs_mes.get("fecha", _df_facs_mes.get("fecha_emision","")), errors="coerce")
-        _facs_cobradas_mes = _df_facs_mes[
-            (_df_facs_mes["estado"]=="cobrada") &
-            (_df_facs_mes["fecha"].dt.month==mes_actual) &
-            (_df_facs_mes["fecha"].dt.year==anio_actual)
-        ]
-        ing_mes_facturas = _facs_cobradas_mes["total"].sum() if not _facs_cobradas_mes.empty else 0
-    ing_mes_real = ing_mes_movimientos + ing_mes_facturas
+    ing_mes_real = df_mes[df_mes["Tipo"]=="Ingreso"]["Importe"].sum()
     gas_mes_real = df_mes[df_mes["Tipo"]=="Gasto"]["Importe"].sum()
     bal_mes_real = ing_mes_real - gas_mes_real
 
@@ -1440,6 +1428,72 @@ elif menu == "Fichas (Benchmark)":
 
     # KPIs de Fichas — nuevo estilo grande y prominente
     st.markdown('<div style="margin:24px 0 16px;"></div>', unsafe_allow_html=True)
+
+    # ── KPIs IS si es sociedad ────────────────────────────────────
+    _perfil_fic = st.session_state.get("perfil_datos", {})
+    _es_soc_fic = _perfil_fic.get("tipo_cuenta","particular") == "sociedad"
+
+    if _es_soc_fic:
+        # Calcular KPIs IS de este inmueble
+        _renta_anual_fic   = renta_act * 12
+        _ibi_fic     = safe_float(f.get("IBI_Anual", 0))
+        _seguro_fic  = safe_float(f.get("Seguro_Anual", 0))
+        _com_fic     = safe_float(f.get("Comunidad", 0)) * 12
+        _int_fic     = safe_float(f.get("Intereses_Hipoteca", 0))
+        _amort_fic   = safe_float(f.get("Amortizacion_Fiscal", 0))
+        _rep_fic     = df_gf["Importe"].sum()
+        _gas_op_fic  = _ibi_fic + _seguro_fic + _com_fic + _rep_fic  # operativos excl. intereses y amort
+        _gas_tot_fic = _gas_op_fic + _int_fic + _amort_fic
+        _ebitda_fic  = _renta_anual_fic - _gas_op_fic
+        _resultado_fic = _renta_anual_fic - _gas_tot_fic
+        _is_fic      = round(max(_resultado_fic * 0.25, 0), 0)
+        # ROI
+        _precio_fic  = safe_float(f.get("Precio_Compra", 0)) + safe_float(f.get("Impuestos_Compra", 0)) + safe_float(f.get("Gastos_Compra", 0))
+        _roi_fic     = round(_resultado_fic / _precio_fic * 100, 1) if _precio_fic > 0 else 0
+        # Cobertura hipoteca: renta anual / cuota anual
+        _df_hip_fic  = st.session_state.get("df_hip", pd.DataFrame())
+        _cuota_fic   = 0
+        if not _df_hip_fic.empty:
+            _match = _df_hip_fic[_df_hip_fic["Inmueble"].str.lower()==str(sel).lower()]
+            if not _match.empty:
+                _hrow   = _match.iloc[0]
+                _p_h    = safe_float(_hrow.get("Principal", 0))
+                _r_h    = safe_float(_hrow.get("Tasa_Inicial", 0)) / 100 / 12
+                _n_h    = int(safe_float(_hrow.get("Plazo_Años", 20))) * 12
+                if _r_h > 0 and _n_h > 0:
+                    _cuota_fic = _p_h * (_r_h*(1+_r_h)**_n_h) / ((1+_r_h)**_n_h-1) * 12
+                elif _n_h > 0:
+                    _cuota_fic = _p_h / _n_h * 12
+        _cobertura_fic = round(_renta_anual_fic / _cuota_fic, 2) if _cuota_fic > 0 else 0
+        _cob_color = RED if 0 < _cobertura_fic < 1.20 else GREEN if _cobertura_fic >= 1.20 else AMBER
+
+        # Badge IS
+        st.markdown(
+            '<div style="display:inline-block;background:#0d1a0d;border:1px solid #059669;'
+            'border-radius:6px;padding:4px 12px;font-size:12px;color:#059669;margin-bottom:10px;">'
+            '🏢 Modo IS · Sociedad Patrimonial · 25%</div>',
+            unsafe_allow_html=True)
+
+        render_kpi_row([
+            {"label": "EBITDA del activo",
+             "value": f"{_ebitda_fic:,.0f} €",
+             "color": GREEN if _ebitda_fic >= 0 else RED,
+             "subtitle": "Renta − gastos operativos"},
+            {"label": "IS estimado 25%",
+             "value": f"−{_is_fic:,.0f} €",
+             "color": RED,
+             "subtitle": "[562] Cuota IS orientativa"},
+            {"label": "ROI del activo",
+             "value": f"{_roi_fic:.1f}%" if _precio_fic > 0 else "Sin precio",
+             "color": GREEN if _roi_fic > 5 else AMBER,
+             "subtitle": "Resultado / inversión"},
+            {"label": f"Cobertura hipoteca {'✅' if _cobertura_fic >= 1.20 else '⚠️' if _cobertura_fic > 0 else ''}",
+             "value": f"{_cobertura_fic:.2f}×" if _cobertura_fic > 0 else "Sin hipoteca",
+             "color": _cob_color,
+             "subtitle": "Renta anual / cuota anual"},
+        ])
+        st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+
     render_kpi_row([
         {
             "label": "Renta Actual",
