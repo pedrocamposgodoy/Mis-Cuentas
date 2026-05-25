@@ -328,7 +328,7 @@ with st.sidebar:
 </div>
 """, unsafe_allow_html=True)
 
-    if st.button("🚪 Cerrar Sesión", use_container_width=True):
+    if st.button("🚪 Cerrar Sesión", use_container_width=True, key="btn_logout_1"):
         st.session_state.user_logged_in = False
         st.session_state.user_id = None
         st.session_state.user_email = None
@@ -4873,7 +4873,7 @@ with st.sidebar:
 </div>
 """, unsafe_allow_html=True)
 
-    if st.button("🚪 Cerrar Sesión", use_container_width=True):
+    if st.button("🚪 Cerrar Sesión", use_container_width=True, key="btn_logout_2"):
         st.session_state.user_logged_in = False
         st.session_state.user_id = None
         st.session_state.user_email = None
