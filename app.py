@@ -8,7 +8,9 @@ import os
 import io
 import base64
 import plotly.graph_objects as go
-from datetime im# ================================================================
+from datetime import datetime, date
+
+# ================================================================
 # SECCIÓN 0 — IMPORTS Y LIBRERÍAS
 # No tocar esto salvo que añadas una librería nueva
 # ================================================================
@@ -6536,7 +6538,10 @@ elif menu == "Fichas (Benchmark)":
         max_renta=int(renta_act*1.03); st.warning(f"🔒 Zona tensionada: subida máxima al IPC (3%). Renta máxima: {max_renta:,.0f} €/mes")
         nueva_renta=st.slider("Ajusta la renta (€)",min_value=int(renta_act*0.9),max_value=max_renta,value=int(renta_act),step=10)
     else:
-        nueva_renta=st.slider("Ajusta la renta mensual (€)",min_value=int(renta_act*0.8),max_value=int(renta_mer*1.2),value=int(renta_act),step=25)
+        _sl_min = max(100, int(renta_act * 0.8))
+        _sl_max = max(_sl_min + 100, int(max(renta_mer, renta_act) * 1.2))
+        _sl_val = max(_sl_min, min(int(renta_act), _sl_max))
+        nueva_renta = st.slider("Ajusta la renta mensual (€)", min_value=_sl_min, max_value=_sl_max, value=_sl_val, step=25)
     ganancia_m=nueva_renta-renta_act; ganancia_a=ganancia_m*12
     nueva_neta=((nueva_renta-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
     s1,s2,s3=st.columns(3)
