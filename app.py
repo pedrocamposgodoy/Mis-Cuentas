@@ -2653,16 +2653,18 @@ elif menu == "Fiscalidad":
                     _mapeo_final = {}
 
                     if _subcods_detectados:
-                        _cols_map = st.columns(min(len(_subcods_detectados), 3))
-                        for _idx_s, _sc in enumerate(_subcods_detectados):
-                            with _cols_map[_idx_s % 3]:
-                                _sel_inm = st.selectbox(
-                                    f"Subcódigo **{_sc}**",
-                                    ["— Sin asignar —"] + _nombres_inm,
-                                    key=f"bss_map_{_sc}"
-                                )
-                                if _sel_inm != "— Sin asignar —":
-                                    _mapeo_final[_sc] = _sel_inm
+                        # Un selector por fila para evitar problemas de estado en columnas dinámicas
+                        for _sc in _subcods_detectados:
+                            _col_a, _col_b = st.columns([1, 3])
+                            _col_a.markdown(f"**Subcódigo `{_sc}`**")
+                            _sel_inm = _col_b.selectbox(
+                                f"Inmueble para subcódigo {_sc}",
+                                ["— Sin asignar —"] + _nombres_inm,
+                                key=f"bss_map_{_sc}",
+                                label_visibility="collapsed"
+                            )
+                            if _sel_inm != "— Sin asignar —":
+                                _mapeo_final[_sc] = _sel_inm
 
                     # Guardar en Supabase
                     if st.button("💾 Guardar datos BSS en Nolasco Capital",
@@ -2672,27 +2674,26 @@ elif menu == "Fiscalidad":
                         _ok_count = 0
 
                         # Guardar como movimientos contables con fuente BSS
+                        _lote_movs = []
                         for _cod, _v in {**_gastos}.items():
                             _sc = _v["subcod"]
                             _inm_nombre = _mapeo_final.get(_sc, "")
                             if not _inm_nombre:
                                 continue
-                            _nuevo_mov = {
-                                "user_id":    _uid_bss,
-                                "Fecha":      pd.Timestamp.now().strftime("%Y-%m-%d"),
-                                "Concepto":   f"[BSS][{_cod}] {_v['desc'][:60]}",
-                                "Importe":    _v["debe"],
-                                "Tipo":       "Gasto",
-                                "Categoria":  "Contabilidad IS",
+                            _lote_movs.append({
+                                "Fecha":       pd.Timestamp.now().strftime("%Y-%m-%d"),
+                                "Concepto":    f"[BSS][{_cod}] {_v['desc'][:60]}",
+                                "Importe":     round(_v["debe"], 2),
+                                "Tipo":        "Gasto",
+                                "Categoria":   "Contabilidad IS",
                                 "Apartamento": _inm_nombre,
-                                "Fuente":     "BSS_A3",
-                            }
+                            })
+                        if _lote_movs:
                             try:
-                                agregar_movimientos(pd.DataFrame([_nuevo_mov]),
-                                                    _uid_bss)
-                                _ok_count += 1
-                            except:
-                                pass
+                                _ok = agregar_movimientos(_lote_movs, _uid_bss)
+                                _ok_count = len(_lote_movs) if _ok else 0
+                            except Exception as _ex:
+                                st.error(f"Error al guardar: {_ex}")
 
                         if _ok_count > 0:
                             st.success(f"✅ {_ok_count} apuntes contables guardados. "
