@@ -1551,21 +1551,90 @@ elif menu == "Fichas (Benchmark)":
         if perdida_a>0: lucro_html=f'<div style="margin-top:12px;padding-top:12px;border-top:1px dashed rgba(0,0,0,0.15);"><span style="font-size:0.88rem;"><b>💸 Lucro Cesante:</b><br>Pérdida mensual: <b>{perdida_m:,.2f} €</b><br>Pérdida anualizada: <b style="color:{RED};font-size:1.15rem;">{perdida_a:,.2f} €/año</b></span></div>'
         st.markdown(f'<div class="{clase}"><b style="font-size:1.1rem;">{icon} {msg}</b><br>Desviación: <b>{desv:.1f}%</b>{lucro_html}</div>',unsafe_allow_html=True)
 
-    st.markdown('<div class="nc-section-title">⚖️ Comparativa Fiscal por Modalidad</div>',unsafe_allow_html=True)
-    st.caption("Rentabilidad neta real tras aplicar reducción IRPF según tipo de arrendamiento")
-    rto_neto=(renta_act-gastos_u)*12; tipo_irpf=0.45
-    modalidades={"Larga Duración":{"reduccion":0.60,"iva":False},"Temporada":{"reduccion":0.00,"iva":False},"Vacacional":{"reduccion":0.00,"iva":True}}
-    cf1,cf2,cf3=st.columns(3); cols_fiscal=[cf1,cf2,cf3]; mejor_mod,mejor_rn=None,-99999
-    for idx,(mod,params) in enumerate(modalidades.items()):
-        red=params["reduccion"]; impuesto=max(0,rto_neto*(1-red)*tipo_irpf)
-        rn_real=(rto_neto-impuesto)/safe_float(f.get("Valor_Construccion",0))*100 if safe_float(f.get("Valor_Construccion",0))>0 else 0
-        if rn_real>mejor_rn: mejor_rn=rn_real; mejor_mod=mod
-        es_actual=(mod==tipo_arr); borde=f"border:2px solid {ACCENT};" if es_actual else f"border:1px solid {BORDER};"
-        iva_txt="<br><span style='font-size:0.7rem;color:#854F0B;'>⚠️ Puede llevar IVA</span>" if params["iva"] else ""
-        red_txt=f"Reducción IRPF: <b>{int(red*100)}%</b>" if red>0 else "Sin reducción fiscal"
-        badge="<div style='margin-top:8px;font-size:0.7rem;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;'>✅ Modalidad actual</div>" if es_actual else ""
-        cols_fiscal[idx].markdown(f"""<div style="background:{CARD_BG};{borde}border-radius:10px;padding:1.1rem;text-align:center;"><div style="font-size:0.72rem;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">{mod}</div><div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div><div style="font-size:0.7rem;color:{TEXT_SEC};margin-top:4px;">Rent. neta real/año</div><div style="font-size:0.75rem;color:{TEXT_PRI};margin-top:8px;">{red_txt}{iva_txt}</div><div style="font-size:0.7rem;color:{RED};margin-top:4px;">Impuesto est.: {impuesto:,.0f} €/año</div>{badge}</div>""",unsafe_allow_html=True)
-    if mejor_mod: st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%).</div>',unsafe_allow_html=True)
+    if _es_soc_fic:
+        # ── Análisis Fiscal IS — Sociedad Patrimonial ─────────────
+        st.markdown('<div class="nc-section-title">🏛️ Análisis Fiscal IS — Sociedad Patrimonial</div>', unsafe_allow_html=True)
+        st.caption("Impuesto de Sociedades 25% · Sin reducción arrendamiento · Doble imposición si distribuyes dividendos")
+
+        _rto_sin = _renta_anual_fic                          # sin deducir gastos
+        _rto_con = _renta_anual_fic - _gas_tot_fic           # con todos los gastos
+        _is_sin  = round(max(_rto_sin * 0.25, 0), 2)
+        _is_con  = round(max(_rto_con * 0.25, 0), 2)
+        _neto_sin = round(_rto_sin - _is_sin, 2)
+        _neto_con = round(_rto_con - _is_con, 2)
+        _div_sin  = round(max(_neto_sin * 0.19, 0), 2)       # retención dividendos 19%
+        _div_con  = round(max(_neto_con * 0.19, 0), 2)
+        _final_sin = round(_neto_sin - _div_sin, 2)
+        _final_con = round(_neto_con - _div_con, 2)
+        _ahorro_is = round(_is_sin - _is_con, 2)
+
+        cf1, cf2, cf3 = st.columns(3)
+        for _col, _titulo, _rto, _is_v, _neto, _div, _final, _es_actual in [
+            (cf1, "Sin gastos deducidos", _rto_sin, _is_sin, _neto_sin, _div_sin, _final_sin, False),
+            (cf2, "Con gastos deducidos", _rto_con, _is_con, _neto_con, _div_con, _final_con, True),
+        ]:
+            _borde = f"border:2px solid {ACCENT};" if _es_actual else f"border:1px solid #E5E7EB;"
+            _col.markdown(f"""
+            <div style="background:#FAFAFA;{_borde}border-radius:10px;padding:1rem;text-align:center;">
+              <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;
+                          letter-spacing:0.06em;margin-bottom:10px;">{_titulo}</div>
+              <div style="font-size:0.75rem;color:#6B7280;margin-bottom:2px;">[399] Resultado neto</div>
+              <div style="font-size:1.5rem;font-weight:800;color:{ACCENT};">{_rto:,.0f} €</div>
+              <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
+              <div style="font-size:0.75rem;color:#6B7280;">[562] IS 25%</div>
+              <div style="font-size:1.2rem;font-weight:700;color:{RED};">−{_is_v:,.0f} €</div>
+              <div style="font-size:0.75rem;color:#6B7280;margin-top:8px;">Neto tras IS</div>
+              <div style="font-size:1.1rem;font-weight:700;color:#059669;">{_neto:,.0f} €</div>
+              <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
+              <div style="font-size:0.72rem;color:#6B7280;">Si distribuyes dividendos (19%)</div>
+              <div style="font-size:0.95rem;font-weight:600;color:{RED};">−{_div:,.0f} €</div>
+              <div style="font-size:0.75rem;color:#6B7280;margin-top:6px;">Neto final al socio</div>
+              <div style="font-size:1.3rem;font-weight:800;color:#059669;">{_final:,.0f} €</div>
+            </div>""", unsafe_allow_html=True)
+
+        cf3.markdown(f"""
+        <div style="background:#0d1a0d;border:1px solid #059669;border-radius:10px;
+                    padding:1rem;text-align:center;">
+          <div style="font-size:0.72rem;font-weight:700;color:#059669;text-transform:uppercase;
+                      letter-spacing:0.06em;margin-bottom:10px;">💡 Ahorro fiscal</div>
+          <div style="font-size:0.75rem;color:#6B7280;">Deduciendo gastos ahorras en IS</div>
+          <div style="font-size:1.8rem;font-weight:900;color:#059669;">{_ahorro_is:,.0f} €</div>
+          <div style="height:1px;background:#1a3a1a;margin:10px 0;"></div>
+          <div style="font-size:0.72rem;color:#6B7280;">Tipo efectivo IS</div>
+          <div style="font-size:1.2rem;font-weight:700;color:#059669;">
+            {round(_is_con/_rto_con*100,1) if _rto_con>0 else 0:.1f}%
+          </div>
+          <div style="font-size:0.72rem;color:#6B7280;margin-top:8px;">
+            ⚠️ Sin reducción 60% arrendamiento<br>
+            (Art. 23.2 LIRPF no aplica a sociedades)
+          </div>
+        </div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div style="background:#FFF9E6;border:1px solid #D97706;border-radius:8px;
+                    padding:10px 16px;margin-top:12px;font-size:0.82rem;color:#854F0B;">
+          <b>⚠️ Doble imposición:</b> El beneficio tributa al 25% en IS y si lo distribuyes como dividendo
+          tributa de nuevo al 19% (tipo general ahorro IRPF). Tipo efectivo total:
+          <b>{round((1-(1-0.25)*(1-0.19))*100,1)}%</b>.
+          Valora si compensa reinvertir en la sociedad vs distribuir.
+        </div>""", unsafe_allow_html=True)
+
+    else:
+        st.markdown('<div class="nc-section-title">⚖️ Comparativa Fiscal por Modalidad</div>',unsafe_allow_html=True)
+        st.caption("Rentabilidad neta real tras aplicar reducción IRPF según tipo de arrendamiento")
+        rto_neto=(renta_act-gastos_u)*12; tipo_irpf=0.45
+        modalidades={"Larga Duración":{"reduccion":0.60,"iva":False},"Temporada":{"reduccion":0.00,"iva":False},"Vacacional":{"reduccion":0.00,"iva":True}}
+        cf1,cf2,cf3=st.columns(3); cols_fiscal=[cf1,cf2,cf3]; mejor_mod,mejor_rn=None,-99999
+        for idx,(mod,params) in enumerate(modalidades.items()):
+            red=params["reduccion"]; impuesto=max(0,rto_neto*(1-red)*tipo_irpf)
+            rn_real=(rto_neto-impuesto)/safe_float(f.get("Valor_Construccion",0))*100 if safe_float(f.get("Valor_Construccion",0))>0 else 0
+            if rn_real>mejor_rn: mejor_rn=rn_real; mejor_mod=mod
+            es_actual=(mod==tipo_arr); borde=f"border:2px solid {ACCENT};" if es_actual else f"border:1px solid {BORDER};"
+            iva_txt="<br><span style='font-size:0.7rem;color:#854F0B;'>⚠️ Puede llevar IVA</span>" if params["iva"] else ""
+            red_txt=f"Reducción IRPF: <b>{int(red*100)}%</b>" if red>0 else "Sin reducción fiscal"
+            badge="<div style='margin-top:8px;font-size:0.7rem;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;'>✅ Modalidad actual</div>" if es_actual else ""
+            cols_fiscal[idx].markdown(f"""<div style="background:{CARD_BG};{borde}border-radius:10px;padding:1.1rem;text-align:center;"><div style="font-size:0.72rem;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">{mod}</div><div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div><div style="font-size:0.7rem;color:{TEXT_SEC};margin-top:4px;">Rent. neta real/año</div><div style="font-size:0.75rem;color:{TEXT_PRI};margin-top:8px;">{red_txt}{iva_txt}</div><div style="font-size:0.7rem;color:{RED};margin-top:4px;">Impuesto est.: {impuesto:,.0f} €/año</div>{badge}</div>""",unsafe_allow_html=True)
+        if mejor_mod: st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%).</div>',unsafe_allow_html=True)
 
     st.markdown('<div class="nc-section-title">Simulador de Subida de Renta</div>',unsafe_allow_html=True)
     if zona_tens:
