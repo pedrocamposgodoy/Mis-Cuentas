@@ -1729,3 +1729,90 @@ def eliminar_hipoteca(user_id, hip_id):
         return r.status_code in (200, 204)
     except Exception:
         return False
+
+
+# ================================================================
+# ASIENTOS BSS — Contabilidad importada desde A3/Holded/Sage
+# ================================================================
+
+def guardar_asientos_bss(user_id, ejercicio, fuente, asientos):
+    """
+    Reemplaza TODOS los asientos BSS del user+ejercicio y guarda los nuevos.
+    asientos: lista de dicts {cuenta, descripcion, inmueble, debe, haber}
+    """
+    try:
+        h = _headers()
+        # 1. Borrar asientos anteriores del mismo ejercicio
+        requests.delete(
+            f"{SUPABASE_URL}/rest/v1/asientos_bss"
+            f"?user_id=eq.{user_id}&ejercicio=eq.{ejercicio}",
+            headers={**h, "Prefer": "return=minimal"},
+            timeout=10
+        )
+        # 2. Insertar nuevos en lote
+        if not asientos:
+            return True
+        records = [{
+            "user_id":     user_id,
+            "ejercicio":   ejercicio,
+            "fuente":      fuente,
+            "cuenta":      a.get("cuenta", ""),
+            "descripcion": a.get("descripcion", "")[:200],
+            "inmueble":    a.get("inmueble", ""),
+            "debe":        float(a.get("debe", 0)),
+            "haber":       float(a.get("haber", 0)),
+        } for a in asientos]
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/asientos_bss",
+            headers={**h, "Prefer": "return=minimal"},
+            json=records, timeout=15
+        )
+        return r.status_code in (200, 201, 204)
+    except Exception as e:
+        return False
+
+
+def leer_asientos_bss(user_id, ejercicio=None):
+    """Lee asientos BSS del usuario. Si ejercicio=None lee todos."""
+    try:
+        h = _headers()
+        url = f"{SUPABASE_URL}/rest/v1/asientos_bss?user_id=eq.{user_id}&order=cuenta.asc"
+        if ejercicio:
+            url += f"&ejercicio=eq.{ejercicio}"
+        r = requests.get(url, headers=h, timeout=10)
+        if r.status_code == 200 and r.json():
+            df = pd.DataFrame(r.json())
+            for col in ["debe", "haber"]:
+                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+            return df
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+def hay_asientos_bss(user_id, ejercicio):
+    """Devuelve True si hay datos BSS importados para ese ejercicio."""
+    try:
+        h = _headers()
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/asientos_bss"
+            f"?user_id=eq.{user_id}&ejercicio=eq.{ejercicio}&select=id&limit=1",
+            headers=h, timeout=10
+        )
+        return r.status_code == 200 and bool(r.json())
+    except Exception:
+        return False
+
+
+def guardar_modo_contable(user_id, modo):
+    """Actualiza modo_contable en user_profiles: 'manual' | 'bss_a3' | 'bss_holded'"""
+    try:
+        h = _headers()
+        r = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/user_profiles?user_id=eq.{user_id}",
+            headers={**h, "Prefer": "return=minimal"},
+            json={"modo_contable": modo}, timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
