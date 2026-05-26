@@ -324,7 +324,12 @@ with st.sidebar:
 </div>
 """, unsafe_allow_html=True)
 
-    if st.button("🚪 Cerrar Sesión", use_container_width=True):
+    if st.button("🔄 Recargar datos", use_container_width=True, key="btn_refresh"):
+        for k in ["df_inm_persistent","df_mov_persistent","perfil_datos","df_hip"]:
+            if k in st.session_state: del st.session_state[k]
+        st.rerun()
+
+    if st.button("🚪 Cerrar Sesión", use_container_width=True, key="btn_logout_1"):
         st.session_state.user_logged_in = False
         st.session_state.user_id = None
         st.session_state.user_email = None
