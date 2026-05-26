@@ -1325,9 +1325,12 @@ if menu == "Torre de Control":
         # ── Calcular KPIs societarios ─────────────────────────────
         _intereses_tc  = df_inm["Intereses_Hipoteca"].apply(lambda x: safe_float(x)).sum()
         _amort_tc      = df_inm["Amortizacion_Fiscal"].apply(lambda x: safe_float(x)).sum()
+        # IS usa renta contractual anualizada (no cobros reales)
+        # La AEAT calcula IS sobre el derecho a cobrar, no sobre lo cobrado
+        _renta_contractual = df_inm["Renta"].apply(lambda x: safe_float(x)).sum() * 12
         _gas_op_tc     = total_gastos_registrados - _intereses_tc - _amort_tc
-        _ebitda_tc     = total_ingresos_registrados - _gas_op_tc
-        _resultado_tc  = total_ingresos_registrados - total_gastos_registrados
+        _ebitda_tc     = _renta_contractual - _gas_op_tc
+        _resultado_tc  = _renta_contractual - total_gastos_registrados
         _is_tc         = round(max(_resultado_tc * 0.25, 0), 0)
 
         # DSCR — cuota anual desde hipotecas
@@ -1393,7 +1396,7 @@ if menu == "Torre de Control":
             {"label": "EBITDA Inmobiliario",
              "value": f"{_ebitda_tc:,.0f} €",
              "color": GREEN,
-             "subtitle": "Ingresos − Gastos operativos"},
+             "subtitle": f"Renta {_renta_contractual:,.0f}€/año − gastos op."},
             {"label": "IS Estimado 25%",
              "value": f"−{_is_tc:,.0f} €",
              "color": RED,
