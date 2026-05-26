@@ -1349,7 +1349,13 @@ if menu == "Torre de Control":
                 _cuota_anual_tc += _cuota_m * 12
                 _saldo_deuda_tc += safe_float(_h.get("Saldo_Actual", 0)) or _p
 
-        _cash_flow_tc = _ebitda_tc - _is_tc - _cuota_anual_tc
+        # Cash Flow usa cobros reales vs gastos reales vs cuotas
+        _cash_flow_tc = total_ingresos_registrados - total_gastos_registrados - _cuota_anual_tc
+
+        # Cobrado vs pendiente (renta contractual acumulada hasta hoy vs cobrado real)
+        _meses_transcurridos = pd.Timestamp.now().month
+        _renta_acumulada_teorica = _renta_contractual / 12 * _meses_transcurridos
+        _pendiente_cobro = max(_renta_acumulada_teorica - total_ingresos_registrados, 0)
         _dscr_tc      = round(_ebitda_tc / _cuota_anual_tc, 2) if _cuota_anual_tc > 0 else 0
         _dscr_color   = RED if _dscr_tc < 1.20 and _dscr_tc > 0 else GREEN if _dscr_tc >= 1.20 else AMBER
 
@@ -1430,6 +1436,36 @@ if menu == "Torre de Control":
         with _b4: _btn_ratio("btn_info_dscr", "DSCR")
         with _b5: _btn_ratio("btn_info_roi", "ROI")
         with _b6: _btn_ratio("btn_info_ltv", "LTV")
+
+        # ── Cobrado vs pendiente ─────────────────────────────────
+        _col_cob1, _col_cob2, _col_cob3 = st.columns(3)
+        _col_cob1.markdown(
+            f'<div style="background:#F0FDF4;border-radius:8px;padding:10px 14px;' +
+            f'border:1px solid #059669;margin-top:4px;">' +
+            f'<div style="font-size:10px;font-weight:700;color:#059669;' +
+            f'text-transform:uppercase;">💶 Cobrado hasta hoy (real)</div>' +
+            f'<div style="font-size:1.3rem;font-weight:800;color:#059669;">' +
+            f'{total_ingresos_registrados:,.0f} €</div>' +
+            f'<div style="font-size:10px;color:#64748B;">Facturas cobradas + movimientos</div>' +
+            f'</div>', unsafe_allow_html=True)
+        _col_cob2.markdown(
+            f'<div style="background:#FEF3C7;border-radius:8px;padding:10px 14px;' +
+            f'border:1px solid #D97706;margin-top:4px;">' +
+            f'<div style="font-size:10px;font-weight:700;color:#D97706;' +
+            f'text-transform:uppercase;">⏳ Pendiente de cobro</div>' +
+            f'<div style="font-size:1.3rem;font-weight:800;color:#D97706;">' +
+            f'{_pendiente_cobro:,.0f} €</div>' +
+            f'<div style="font-size:10px;color:#64748B;">Renta devengada no cobrada</div>' +
+            f'</div>', unsafe_allow_html=True)
+        _col_cob3.markdown(
+            f'<div style="background:#EFF6FF;border-radius:8px;padding:10px 14px;' +
+            f'border:1px solid #185FA5;margin-top:4px;">' +
+            f'<div style="font-size:10px;font-weight:700;color:#185FA5;' +
+            f'text-transform:uppercase;">📋 Renta contractual {pd.Timestamp.now().year}</div>' +
+            f'<div style="font-size:1.3rem;font-weight:800;color:#185FA5;">' +
+            f'{_renta_contractual:,.0f} €</div>' +
+            f'<div style="font-size:10px;color:#64748B;">Base IS · {len(df_inm)} inmuebles</div>' +
+            f'</div>', unsafe_allow_html=True)
 
     else:
         render_kpi_row([
