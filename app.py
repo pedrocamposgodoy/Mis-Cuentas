@@ -1245,7 +1245,22 @@ if menu == "Torre de Control":
     df_mov_fecha = df_mov.copy()
     df_mov_fecha["Fecha"] = pd.to_datetime(df_mov_fecha["Fecha"], errors="coerce")
     df_mes = df_mov_fecha[(df_mov_fecha["Fecha"].dt.month==mes_actual)&(df_mov_fecha["Fecha"].dt.year==anio_actual)]
-    ing_mes_real = df_mes[df_mes["Tipo"]=="Ingreso"]["Importe"].sum()
+    ing_mes_movimientos = df_mes[df_mes["Tipo"]=="Ingreso"]["Importe"].sum()
+    # Sumar también facturas cobradas del mes actual (tabla facturas_emitidas)
+    ing_mes_facturas = 0
+    _df_facs_mes = _df_facs_tc.copy() if not _df_facs_tc.empty else pd.DataFrame()
+    if not _df_facs_mes.empty:
+        try:
+            _fcol = "fecha" if "fecha" in _df_facs_mes.columns else "fecha_emision"
+            _df_facs_mes[_fcol] = pd.to_datetime(_df_facs_mes[_fcol], errors="coerce")
+            _facs_mes = _df_facs_mes[
+                (_df_facs_mes["estado"]=="cobrada") &
+                (_df_facs_mes[_fcol].dt.month==mes_actual) &
+                (_df_facs_mes[_fcol].dt.year==anio_actual)
+            ]
+            ing_mes_facturas = _facs_mes["total"].sum() if not _facs_mes.empty else 0
+        except: pass
+    ing_mes_real = ing_mes_movimientos + ing_mes_facturas
     gas_mes_real = df_mes[df_mes["Tipo"]=="Gasto"]["Importe"].sum()
     bal_mes_real = ing_mes_real - gas_mes_real
 
