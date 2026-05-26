@@ -247,7 +247,11 @@ _sin_inmuebles = df_inm is None or len(df_inm) == 0
 
 # ── Cargar perfil UNA VEZ al inicio — evita parpadeo IS/IRPF ──
 if "perfil_datos" not in st.session_state or not st.session_state.get("perfil_datos"):
-    st.session_state.perfil_datos = leer_perfil_usuario(st.session_state.get("user_id","")) or {}
+    _perfil_cargado = leer_perfil_usuario(st.session_state.get("user_id","")) or {}
+    st.session_state.perfil_datos = _perfil_cargado
+    # Si es sociedad, forzar rerun INMEDIATO para que todo renderice en modo IS desde el inicio
+    if _perfil_cargado.get("tipo_cuenta") == "sociedad":
+        st.rerun()
 
 # ================================================================
 # SECCIÓN 5B — DATOS DE HIPOTECAS
@@ -1337,6 +1341,22 @@ if menu == "Torre de Control":
         _ltv_tc = round(_saldo_deuda_tc / _val_cat_tc * 100, 1) if _val_cat_tc > 0 else 0
         _ltv_color = RED if _ltv_tc > 70 else AMBER if _ltv_tc > 50 else GREEN
 
+        # Guardar datos en session_state para página de detalle
+        st.session_state["ratio_detalle_datos"] = {
+            "ebitda": _ebitda_tc, "is_est": _is_tc, "cf_neto": _cash_flow_tc,
+            "dscr": _dscr_tc, "roi": _roi_tc, "ltv": _ltv_tc,
+            "ingresos": total_ingresos_registrados, "gas_op": _gas_op_tc,
+            "cuota_anual": _cuota_anual_tc, "resultado": _resultado_tc,
+            "inversion": _inversion_tc, "deuda": _saldo_deuda_tc,
+            "val_cat": _val_cat_tc,
+        }
+
+        def _btn_ratio(key, ratio_id):
+            if st.button("ℹ️", key=key, help=f"Ver explicación de {ratio_id}"):
+                st.session_state.ratio_detalle_sel = ratio_id
+                st.session_state.menu = "Ratio_Detalle"
+                st.rerun()
+
         # Banner DSCR si < 1.20
         if _dscr_tc > 0 and _dscr_tc < 1.20:
             st.markdown(f"""
@@ -1363,7 +1383,11 @@ if menu == "Torre de Control":
              "color": ACCENT if _cash_flow_tc >= 0 else RED,
              "subtitle": "EBITDA − IS − cuotas hipoteca"},
         ])
-        st.markdown('<div style="height:10px"></div>', unsafe_allow_html=True)
+        _b1, _b2, _b3 = st.columns(3)
+        with _b1: _btn_ratio("btn_info_ebitda", "EBITDA")
+        with _b2: _btn_ratio("btn_info_is", "IS")
+        with _b3: _btn_ratio("btn_info_cf", "CashFlow")
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
         # Fila 2 — Ratios
         render_kpi_row([
             {"label": f"DSCR {'⚠️' if _dscr_tc < 1.20 and _dscr_tc > 0 else '✅'}",
@@ -1379,6 +1403,10 @@ if menu == "Torre de Control":
              "color": _ltv_color,
              "subtitle": "Deuda / valor catastral"},
         ])
+        _b4, _b5, _b6 = st.columns(3)
+        with _b4: _btn_ratio("btn_info_dscr", "DSCR")
+        with _b5: _btn_ratio("btn_info_roi", "ROI")
+        with _b6: _btn_ratio("btn_info_ltv", "LTV")
 
     else:
         render_kpi_row([
@@ -4388,3 +4416,241 @@ elif menu == "Ingresos · Rentas":
 # ================================================================
 # FUNCIÓN: GENERAR PDF FACTURA EMITIDA (ReportLab)
 # ================================================================
+
+# ================================================================
+# PÁGINA: DETALLE DE RATIO IS
+# Navegación desde Torre de Control IS — botones ℹ️ por ratio
+# ================================================================
+elif menu == "Ratio_Detalle":
+    _ratio_sel = st.session_state.get("ratio_detalle_sel", "DSCR")
+
+    if st.button("← Volver a Torre de Control", key="btn_back_ratio"):
+        st.session_state.menu = "Torre de Control"
+        st.rerun()
+
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+    # Datos calculados en Torre de Control (guardados en session_state)
+    _rd = st.session_state.get("ratio_detalle_datos", {})
+    _ebitda   = _rd.get("ebitda", 0)
+    _is_est   = _rd.get("is_est", 0)
+    _cf_neto  = _rd.get("cf_neto", 0)
+    _dscr     = _rd.get("dscr", 0)
+    _roi      = _rd.get("roi", 0)
+    _ltv      = _rd.get("ltv", 0)
+    _ingresos = _rd.get("ingresos", 0)
+    _gas_op   = _rd.get("gas_op", 0)
+    _cuota_a  = _rd.get("cuota_anual", 0)
+    _resultado= _rd.get("resultado", 0)
+    _inversion= _rd.get("inversion", 0)
+    _deuda    = _rd.get("deuda", 0)
+    _val_cat  = _rd.get("val_cat", 0)
+
+    RATIOS = {
+        "EBITDA": {
+            "titulo":   "EBITDA Inmobiliario",
+            "subtitulo":"Lo que genera tu cartera antes de pagar al banco y a Hacienda",
+            "icono":    "📊",
+            "color":    "#059669",
+            "que_es": (
+                "El **EBITDA** (Earnings Before Interest, Taxes, Depreciation and Amortization) "
+                "es el beneficio operativo de tu cartera inmobiliaria **antes** de descontar "
+                "los intereses de las hipotecas, el Impuesto de Sociedades y la amortización fiscal. "
+                "Es la métrica que mejor refleja la capacidad real de generar caja de tus activos."
+            ),
+            "formula": "EBITDA = Ingresos por arrendamiento − Gastos operativos",
+            "nota": "Los gastos operativos NO incluyen intereses hipotecarios ni amortización — esos son financieros, no operativos.",
+            "calculo": [
+                ("Ingresos arrendamiento", f"{_ingresos:,.2f} €"),
+                ("− Gastos operativos", f"−{_gas_op:,.2f} €"),
+                ("= EBITDA", f"{_ebitda:,.2f} €"),
+            ],
+            "interpretacion": (
+                f"Tu EBITDA de **{_ebitda:,.0f}€** significa que tu cartera genera ese importe "
+                f"de beneficio operativo bruto. "
+                + ("✅ Es positivo — tus inmuebles cubren sus gastos operativos." if _ebitda >= 0
+                   else "⚠️ Es negativo — los gastos operativos superan los ingresos. Revisa si hay gastos extraordinarios.")
+            ),
+            "referencia": "Un EBITDA saludable para una cartera patrimonial debe cubrir al menos 1.2× las cuotas hipotecarias anuales (DSCR ≥ 1.20).",
+        },
+        "IS": {
+            "titulo":   "IS Estimado — Impuesto de Sociedades",
+            "subtitulo":"Lo que Hacienda se lleva del beneficio de la sociedad",
+            "icono":    "🏛️",
+            "color":    "#DC2626",
+            "que_es": (
+                "El **Impuesto de Sociedades (IS)** es el impuesto que paga la sociedad patrimonial "
+                "sobre su beneficio neto. El tipo general es el **25%** (Art. 29 LIS). "
+                "A diferencia del IRPF de una persona física, no aplica la reducción del 60% "
+                "por arrendamiento de vivienda habitual."
+            ),
+            "formula": "IS = max(Resultado neto × 25%, 0)",
+            "nota": "El resultado neto = Ingresos − TODOS los gastos deducibles (incluidos intereses y amortización).",
+            "calculo": [
+                ("Resultado neto (base imponible)", f"{_resultado:,.2f} €"),
+                ("× Tipo general IS", "25%"),
+                ("= Cuota IS estimada", f"{_is_est:,.2f} €"),
+            ],
+            "interpretacion": (
+                f"Tu cuota IS estimada es **{_is_est:,.0f}€**. "
+                + ("✅ El resultado es positivo — pagas IS porque ganas dinero." if _resultado >= 0
+                   else "ℹ️ El resultado es negativo — no payas IS este ejercicio. Las bases negativas pueden compensarse en los 10 años siguientes.")
+            ),
+            "referencia": "Tipo nueva empresa: 15% los 2 primeros ejercicios con base imponible positiva (Art. 29.1 LIS).",
+        },
+        "CashFlow": {
+            "titulo":   "Cash Flow Neto",
+            "subtitulo":"Lo que realmente queda en tu cuenta bancaria cada año",
+            "icono":    "💶",
+            "color":    "#185FA5",
+            "que_es": (
+                "El **Cash Flow Neto** es el dinero que efectivamente entra en la cuenta de "
+                "la sociedad después de pagar todos los gastos operativos, las cuotas hipotecarias "
+                "y el Impuesto de Sociedades. Es el dato más real de la salud financiera."
+            ),
+            "formula": "Cash Flow Neto = EBITDA − IS estimado − Cuotas hipotecarias anuales",
+            "nota": "Un Cash Flow negativo no significa quiebra — puede que estés amortizando deuda (la cuota incluye capital además de intereses).",
+            "calculo": [
+                ("EBITDA", f"{_ebitda:,.2f} €"),
+                ("− IS estimado (25%)", f"−{_is_est:,.2f} €"),
+                ("− Cuotas hipotecarias anuales", f"−{_cuota_a:,.2f} €"),
+                ("= Cash Flow Neto", f"{_cf_neto:,.2f} €"),
+            ],
+            "interpretacion": (
+                f"Tu Cash Flow Neto es **{_cf_neto:,.0f}€/año** ({_cf_neto/12:,.0f}€/mes). "
+                + ("✅ Positivo — la cartera se autofinancia y genera excedente." if _cf_neto >= 0
+                   else "⚠️ Negativo — necesitas aportar capital adicional cada año para cubrir las hipotecas.")
+            ),
+            "referencia": "Un Cash Flow positivo es requisito mínimo para una cartera sostenible a largo plazo.",
+        },
+        "DSCR": {
+            "titulo":   "DSCR — Cobertura de Deuda",
+            "subtitulo":"El ratio que miran los bancos antes de darte una hipoteca",
+            "icono":    "🏦",
+            "color":    "#DC2626" if _dscr < 1.20 and _dscr > 0 else "#059669",
+            "que_es": (
+                "El **DSCR** (Debt Service Coverage Ratio) mide cuántas veces el EBITDA de tu "
+                "cartera cubre las cuotas anuales de las hipotecas. Es el ratio más importante "
+                "para cualquier banco o entidad financiera al evaluar si prestarte dinero."
+            ),
+            "formula": "DSCR = EBITDA / Cuota anual hipotecas",
+            "nota": "Los bancos exigen un DSCR mínimo de 1.20×. Por debajo de ese umbral consideran la operación de alto riesgo.",
+            "calculo": [
+                ("EBITDA", f"{_ebitda:,.2f} €"),
+                ("÷ Cuota anual hipotecas", f"{_cuota_a:,.2f} €"),
+                ("= DSCR", f"{_dscr:.2f}×" if _dscr > 0 else "Sin hipotecas"),
+            ],
+            "interpretacion": (
+                f"Tu DSCR es **{_dscr:.2f}×**. "
+                + ("🔴 Por debajo del umbral bancario (1.20×). Si fueras a pedir financiación, el banco lo rechazaría con estos números. "
+                   "Considera amortizar deuda o incrementar rentas." if _dscr < 1.20 and _dscr > 0
+                   else "✅ Por encima del mínimo bancario (1.20×). Tu cartera tiene capacidad de endeudamiento adicional." if _dscr >= 1.20
+                   else "ℹ️ Sin hipotecas registradas — DSCR no aplicable.")
+            ),
+            "referencia": "Umbral mínimo bancario: 1.20×. Óptimo para refinanciación: > 1.50×.",
+        },
+        "ROI": {
+            "titulo":   "ROI Societario",
+            "subtitulo":"Cuánto rinde cada euro que invertiste en la cartera",
+            "icono":    "📈",
+            "color":    "#059669" if _roi > 5 else "#D97706",
+            "que_es": (
+                "El **ROI** (Return on Investment) mide el porcentaje de beneficio que genera "
+                "la cartera respecto al capital total invertido en adquirirla "
+                "(precio de compra + impuestos de adquisición + gastos de escritura)."
+            ),
+            "formula": "ROI = Resultado neto / Inversión total × 100",
+            "nota": "El ROI societario usa el resultado neto IS (sin reducción del 60%), no el rendimiento IRPF.",
+            "calculo": [
+                ("Resultado neto (IS)", f"{_resultado:,.2f} €"),
+                ("÷ Inversión total", f"{_inversion:,.2f} €" if _inversion > 0 else "Sin datos"),
+                ("= ROI", f"{_roi:.1f}%" if _inversion > 0 else "Sin datos de inversión"),
+            ],
+            "interpretacion": (
+                f"Tu ROI es **{_roi:.1f}%**. "
+                + (f"✅ Por encima del 5% — rendimiento competitivo vs renta fija (Bono 10Y ~3.5%)." if _roi > 5
+                   else f"⚠️ Por debajo del 5% — evalúa si hay alternativas de inversión más rentables." if _roi > 0
+                   else "ℹ️ Sin datos de precio de compra — añade el precio de adquisición en Datos de Cartera.")
+            ),
+            "referencia": "ROI inmobiliario medio en España (2024): 4-7% en activos residenciales. Comercial/industrial: 5-9%.",
+        },
+        "LTV": {
+            "titulo":   "LTV — Loan to Value",
+            "subtitulo":"Cuánta deuda tienes respecto al valor de tus activos",
+            "icono":    "⚖️",
+            "color":    "#DC2626" if _ltv > 70 else "#D97706" if _ltv > 50 else "#059669",
+            "que_es": (
+                "El **LTV** (Loan to Value) mide qué porcentaje del valor catastral de la cartera "
+                "está financiado con deuda hipotecaria. Indica el nivel de apalancamiento "
+                "y el margen disponible para nueva financiación."
+            ),
+            "formula": "LTV = Saldo deuda hipotecas / Valor catastral total × 100",
+            "nota": "Usamos el valor catastral como proxy. El valor de mercado real suele ser superior, por lo que el LTV real puede ser menor.",
+            "calculo": [
+                ("Saldo deuda hipotecas", f"{_deuda:,.2f} €"),
+                ("÷ Valor catastral total", f"{_val_cat:,.2f} €" if _val_cat > 0 else "Sin datos"),
+                ("= LTV", f"{_ltv:.1f}%" if _val_cat > 0 else "Sin datos catastrales"),
+            ],
+            "interpretacion": (
+                f"Tu LTV es **{_ltv:.1f}%**. "
+                + ("🔴 Alto (>70%) — poco margen para nueva financiación. Los bancos suelen exigir LTV < 70-80%." if _ltv > 70
+                   else "⚠️ Moderado (50-70%) — margen limitado pero aceptable para la mayoría de entidades." if _ltv > 50
+                   else "✅ Bajo (<50%) — amplio margen de endeudamiento. Tu cartera tiene capacidad para nueva inversión." if _ltv > 0
+                   else "ℹ️ Sin datos de hipotecas o valor catastral.")
+            ),
+            "referencia": "LTV máximo habitual en financiación bancaria: 70-80% en residencial, 60-65% en comercial.",
+        },
+    }
+
+    _info = RATIOS.get(_ratio_sel, RATIOS["DSCR"])
+
+    # Cabecera
+    st.markdown(f"""
+    <div style="background:{'#0d1a0d' if _info['color']=="#059669" else '#fff'};
+                border:2px solid {_info['color']};border-radius:14px;
+                padding:20px 24px;margin-bottom:20px;">
+      <div style="font-size:2rem;margin-bottom:4px;">{_info['icono']}</div>
+      <div style="font-size:1.6rem;font-weight:900;color:{_info['color']};">{_info['titulo']}</div>
+      <div style="font-size:14px;color:#64748B;margin-top:4px;font-style:italic;">"{_info['subtitulo']}"</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _t1, _t2, _t3 = st.tabs(["❓ ¿Qué es?", "🧮 Tu cálculo", "💡 ¿Qué significa?"])
+
+    with _t1:
+        st.markdown(_info["que_es"])
+        st.markdown("---")
+        st.markdown(f"**Fórmula:**")
+        st.code(_info["formula"], language=None)
+        st.info(f"ℹ️ {_info['nota']}")
+
+    with _t2:
+        st.markdown("**Datos de tu cartera:**")
+        for _concepto, _valor in _info["calculo"]:
+            _es_resultado = _concepto.startswith("=")
+            _bg = f"background:{_info['color']}15;" if _es_resultado else ""
+            _fw = "font-weight:900;" if _es_resultado else ""
+            st.markdown(
+                f'<div style="display:flex;justify-content:space-between;'
+                f'padding:10px 14px;border-radius:8px;margin-bottom:4px;'
+                f'border:1px solid #E2E8F0;{_bg}">'
+                f'<span style="font-size:14px;color:#475569;{_fw}">{_concepto}</span>'
+                f'<span style="font-size:16px;font-weight:800;color:{_info["color"] if _es_resultado else "#1e293b"};">'
+                f'{_valor}</span></div>',
+                unsafe_allow_html=True
+            )
+
+    with _t3:
+        st.markdown(_info["interpretacion"])
+        st.markdown("---")
+        st.caption(f"📚 Referencia: {_info['referencia']}")
+
+    # Navegación rápida a otros ratios
+    st.markdown("---")
+    st.markdown("**Ver explicación de otro ratio:**")
+    _otros = [k for k in RATIOS.keys() if k != _ratio_sel]
+    _cols_nav = st.columns(len(_otros))
+    for _i, (_k, _col_n) in enumerate(zip(_otros, _cols_nav)):
+        if _col_n.button(f"{RATIOS[_k]['icono']} {RATIOS[_k]['titulo']}", key=f"nav_ratio_{_k}"):
+            st.session_state.ratio_detalle_sel = _k
+            st.rerun()
