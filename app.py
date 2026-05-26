@@ -1468,8 +1468,12 @@ if menu == "Torre de Control":
     _renta_prevista = df_inm["Renta"].apply(lambda x: safe_float(x)).sum() * 12
     _deuda_tc       = 0
     _df_hip_pat     = st.session_state.get("df_hip", pd.DataFrame())
-    if not _df_hip_pat.empty and "Saldo_Actual" in _df_hip_pat.columns:
-        _deuda_tc = _df_hip_pat["Saldo_Actual"].apply(lambda x: safe_float(x)).sum()
+    if not _df_hip_pat.empty:
+        for _, _hrow in _df_hip_pat.iterrows():
+            _sal = safe_float(_hrow.get("Saldo_Actual", 0))
+            _pri = safe_float(_hrow.get("Principal", 0))
+            # Usar Saldo_Actual si existe, si no usar Principal como proxy
+            _deuda_tc += _sal if _sal > 0 else _pri
 
     if _es_sociedad_tc:
         # Modo IS — énfasis en LTV, amortización y base fiscal
