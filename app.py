@@ -245,6 +245,10 @@ df_inm = st.session_state.df_inm_persistent
 df_mov = st.session_state.df_mov_persistent
 _sin_inmuebles = df_inm is None or len(df_inm) == 0
 
+# ── Cargar perfil UNA VEZ al inicio — evita parpadeo IS/IRPF ──
+if "perfil_datos" not in st.session_state or not st.session_state.get("perfil_datos"):
+    st.session_state.perfil_datos = leer_perfil_usuario(st.session_state.get("user_id","")) or {}
+
 # ================================================================
 # SECCIÓN 5B — DATOS DE HIPOTECAS
 # Hipotecas cargadas desde Supabase por user_id
@@ -1211,10 +1215,8 @@ if menu == "Torre de Control":
         st.stop()
 
     # ── Detectar modo fiscal ──────────────────────────────────────
-    _perfil_tc = st.session_state.get("perfil_datos", {})
-    if not _perfil_tc:
-        from supabase_db import leer_perfil_usuario
-        _perfil_tc = leer_perfil_usuario(st.session_state.get("user_id","")) or {}
+    # Perfil ya cargado al inicio — leer directamente del session_state
+    _perfil_tc      = st.session_state.get("perfil_datos", {})
     _es_sociedad_tc = _perfil_tc.get("tipo_cuenta","particular") == "sociedad"
     _nom_soc_tc = _perfil_tc.get("nombre_sociedad","Sociedad Patrimonial")
 
