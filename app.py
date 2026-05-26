@@ -1566,10 +1566,13 @@ if menu == "Torre de Control":
     st.markdown(f'<div class="nc-section-title">{_titulo_activos}</div>', unsafe_allow_html=True)
     def _roof_color(row):
         texto = str(row.get("Nombre","")).lower()+" "+str(row.get("Tipo",row.get("Tipo_Arrendamiento",""))).lower()
-        if any(x in texto for x in ["despacho","oficina","comercial","local","salón","salon","coworking"]): return "#185FA5","Despacho"
-        if any(x in texto for x in ["casa","chalet","adosado","unifamiliar","abarqueros","villa"]): return "#6B2737","Casa"
+        if any(x in texto for x in ["nave","industrial","almacen","almacén","taller","fabrica","fábrica"]): return "#374151","Nave Industrial"
+        if any(x in texto for x in ["despacho","oficina","comercial","local","salón","salon","coworking"]): return "#185FA5","Despacho/Local"
+        if any(x in texto for x in ["casa","chalet","adosado","unifamiliar","abarqueros","villa","cortijo","finca"]): return "#6B2737","Casa"
         if any(x in texto for x in ["cochera","garaje","parking","trastero"]): return "#4A5568","Garaje"
-        return "#B8924A","Apartamento"
+        if any(x in texto for x in ["estudio","loft","ático","atico"]): return "#6D4C9E","Estudio"
+        if any(x in texto for x in ["piso","apartamento","huerto","campus","cadiz","gojar","rosario"]): return "#B8924A","Piso"
+        return "#B8924A","Inmueble"
 
     st.markdown("""<style>
     .casita-body{background:var(--background-color,#fff);border:0.5px solid rgba(0,0,0,0.1);border-top:none;border-radius:0 0 12px 12px;padding:12px 12px 10px;box-sizing:border-box;}
