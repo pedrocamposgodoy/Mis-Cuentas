@@ -1963,56 +1963,108 @@ elif menu == "Fichas (Benchmark)":
             _c2.markdown(f"<span style='font-size:12px;'>{_desc}</span>", unsafe_allow_html=True)
             _c3.markdown(f"**{_pts:.1f}/{_max:.1f}**")
 
-    st.markdown('<div class="nc-section-title">📊 Evolución mensual — ingresos y gastos</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-section-title">📊 Evolución mensual — real vs estimado</div>', unsafe_allow_html=True)
     try:
-        _anio_evol = datetime.now().year
-        _uid_evol  = st.session_state.get("user_id", "")
-        _meses_anio = [f"{_anio_evol}-{str(m).zfill(2)}" for m in range(1, 13)]
-        _df_mov_fic = df_mov[df_mov["Apartamento"] == sel].copy()
-        _df_mov_fic["_mes"] = pd.to_datetime(_df_mov_fic["Fecha"], errors="coerce").dt.strftime("%Y-%m")
-        _df_mov_fic = _df_mov_fic[_df_mov_fic["_mes"].notna() & (_df_mov_fic["_mes"] != "NaT")]
-        _gas_s     = _df_mov_fic[_df_mov_fic["Tipo"]=="Gasto"].groupby("_mes")["Importe"].sum()
-        _ing_mov_s = _df_mov_fic[_df_mov_fic["Tipo"]=="Ingreso"].groupby("_mes")["Importe"].sum()
-        _ing_fe_s  = pd.Series(dtype=float)
-        _df_fe_ev  = leer_facturas_emitidas(_uid_evol)
-        if not _df_fe_ev.empty and "inmueble" in _df_fe_ev.columns:
+        _anio_evol   = datetime.now().year
+        _mes_act     = datetime.now().month
+        _mes_act_str = f"{_anio_evol}-{str(_mes_act).zfill(2)}"
+        _uid_evol    = st.session_state.get("user_id", "")
+        _meses_anio  = [f"{_anio_evol}-{str(m).zfill(2)}" for m in range(1, 13)]
+        # ── Gastos reales (movimientos) ───────────────────────────
+        _df_mov_e = df_mov[df_mov["Apartamento"] == sel].copy()
+        _df_mov_e["_mes"] = pd.to_datetime(_df_mov_e["Fecha"], errors="coerce").dt.strftime("%Y-%m")
+        _df_mov_e = _df_mov_e[_df_mov_e["_mes"].notna() & (_df_mov_e["_mes"] != "NaT")]
+        _gas_real_s = _df_mov_e[_df_mov_e["Tipo"]=="Gasto"].groupby("_mes")["Importe"].sum()
+        _ing_mov_s  = _df_mov_e[_df_mov_e["Tipo"]=="Ingreso"].groupby("_mes")["Importe"].sum()
+        # ── Ingresos reales (facturas emitidas cobradas) ──────────
+        _ing_fe_s = pd.Series(dtype=float)
+        _df_fe_e  = leer_facturas_emitidas(_uid_evol)
+        if not _df_fe_e.empty and "inmueble" in _df_fe_e.columns:
             try:
-                _fcol_e  = "fecha" if "fecha" in _df_fe_ev.columns else "fecha_emision"
-                _df_fe_ev[_fcol_e] = pd.to_datetime(_df_fe_ev[_fcol_e], errors="coerce")
-                _fe_ev_fil = _df_fe_ev[
-                    (_df_fe_ev["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
-                    (_df_fe_ev["estado"] == "cobrada") &
-                    (_df_fe_ev[_fcol_e].dt.year == _anio_evol)
+                _fc = "fecha" if "fecha" in _df_fe_e.columns else "fecha_emision"
+                _df_fe_e[_fc] = pd.to_datetime(_df_fe_e[_fc], errors="coerce")
+                _fe_fil = _df_fe_e[
+                    (_df_fe_e["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
+                    (_df_fe_e["estado"] == "cobrada") &
+                    (_df_fe_e[_fc].dt.year == _anio_evol)
                 ].copy()
-                if not _fe_ev_fil.empty:
-                    _fe_ev_fil["_mes"] = _fe_ev_fil[_fcol_e].dt.strftime("%Y-%m")
-                    _ing_fe_s = _fe_ev_fil.groupby("_mes")["total"].sum()
+                if not _fe_fil.empty:
+                    _fe_fil["_mes"] = _fe_fil[_fc].dt.strftime("%Y-%m")
+                    _ing_fe_s = _fe_fil.groupby("_mes")["total"].sum()
             except Exception:
                 pass
-        _df_evol = pd.DataFrame({"_mes": _meses_anio})
-        _df_evol["Ingresos"] = (_df_evol["_mes"].map(_ing_fe_s).fillna(0)
-                                 + _df_evol["_mes"].map(_ing_mov_s).fillna(0))
-        _df_evol["Gastos"]   = _df_evol["_mes"].map(_gas_s).fillna(0)
-        _fig_evol = go.Figure()
-        _fig_evol.add_trace(go.Bar(
-            name="Ingresos", x=_df_evol["_mes"], y=_df_evol["Ingresos"],
+        # ── Forecast: gastos recurrentes + programados ────────────
+        _gas_fijos_mes = 0.0
+        try:
+            _df_gr = leer_gastos_recurrentes(_uid_evol)
+            if not _df_gr.empty and "inmueble" in _df_gr.columns:
+                _gr_inm = _df_gr[_df_gr["inmueble"].str.lower().str.strip() == sel.lower().strip()]
+                _gas_fijos_mes = float(_gr_inm["importe"].sum())
+        except Exception:
+            pass
+        _cfp_gas_mes = {}
+        _cfp_ing_mes = {}
+        try:
+            _df_cfp = leer_cashflow_programado(_uid_evol, inmueble=sel)
+            if not _df_cfp.empty:
+                for _, _ev in _df_cfp.iterrows():
+                    _em = f"{_anio_evol}-{str(int(_ev.get('mes',0))).zfill(2)}"
+                    _ei = float(_ev.get("importe", 0))
+                    if _ev.get("tipo") == "gasto":
+                        _cfp_gas_mes[_em] = _cfp_gas_mes.get(_em, 0) + _ei
+                    else:
+                        _cfp_ing_mes[_em] = _cfp_ing_mes.get(_em, 0) + _ei
+        except Exception:
+            pass
+        # ── Arrays por mes ────────────────────────────────────────
+        _ir_arr = []  # ingresos reales
+        _gr_arr = []  # gastos reales
+        _ie_arr = []  # ingresos estimados
+        _ge_arr = []  # gastos estimados
+        for _m in _meses_anio:
+            _pasado = _m <= _mes_act_str
+            _ir_arr.append(float(_ing_fe_s.get(_m, 0) + _ing_mov_s.get(_m, 0)) if _pasado else 0)
+            _gr_arr.append(float(_gas_real_s.get(_m, 0)) if _pasado else 0)
+            if not _pasado:
+                _ie_arr.append(renta_act + _cfp_ing_mes.get(_m, 0))
+                _ge_arr.append(_gas_fijos_mes + _cfp_gas_mes.get(_m, 0))
+            else:
+                _ie_arr.append(0)
+                _ge_arr.append(0)
+        # ── Gráfico ───────────────────────────────────────────────
+        _fig_e = go.Figure()
+        _fig_e.add_trace(go.Bar(
+            name="Ingresos cobrados", x=_meses_anio, y=_ir_arr,
             marker_color=ACCENT,
-            text=[f"{v:,.0f}€" if v > 0 else "" for v in _df_evol["Ingresos"]],
+            text=[f"{v:,.0f}€" if v > 0 else "" for v in _ir_arr],
             textposition="outside"))
-        _fig_evol.add_trace(go.Bar(
-            name="Gastos", x=_df_evol["_mes"], y=_df_evol["Gastos"],
+        _fig_e.add_trace(go.Bar(
+            name="Gastos reales", x=_meses_anio, y=_gr_arr,
             marker_color=RED,
-            text=[f"{v:,.0f}€" if v > 0 else "" for v in _df_evol["Gastos"]],
+            text=[f"{v:,.0f}€" if v > 0 else "" for v in _gr_arr],
             textposition="outside"))
-        _fig_evol.update_layout(
+        _fig_e.add_trace(go.Bar(
+            name="Ingresos est.", x=_meses_anio, y=_ie_arr,
+            marker_color="rgba(24,95,165,0.18)",
+            marker_line_color=ACCENT, marker_line_width=1.5,
+            text=[f"{v:,.0f}€" if v > 0 else "" for v in _ie_arr],
+            textposition="outside"))
+        _fig_e.add_trace(go.Bar(
+            name="Gastos est.", x=_meses_anio, y=_ge_arr,
+            marker_color="rgba(192,57,43,0.18)",
+            marker_line_color=RED, marker_line_width=1.5,
+            text=[f"{v:,.0f}€" if v > 0 else "" for v in _ge_arr],
+            textposition="outside"))
+        _fig_e.update_layout(
             barmode="group",
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(l=10, r=10, t=20, b=10), height=270,
+            margin=dict(l=10, r=10, t=30, b=10), height=290,
             yaxis=dict(showgrid=False, visible=False),
             xaxis=dict(showgrid=False, tickangle=-30, type="category"),
             font=dict(family="DM Sans", size=12),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(_fig_evol, use_container_width=True)
+        st.plotly_chart(_fig_e, use_container_width=True)
+        st.caption("Barras sólidas: datos reales · Barras con borde: estimación (renta fija + gastos recurrentes + programados)")
     except Exception:
         st.caption("Sin datos suficientes para el gráfico.")
 
