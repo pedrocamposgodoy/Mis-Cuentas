@@ -1998,33 +1998,192 @@ elif menu == "Fichas (Benchmark)":
             cols_fiscal[idx].markdown(f"""<div style="background:{CARD_BG};{borde}border-radius:10px;padding:1.1rem;text-align:center;"><div style="font-size:0.72rem;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">{mod}</div><div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div><div style="font-size:0.7rem;color:{TEXT_SEC};margin-top:4px;">Rent. neta real/año</div><div style="font-size:0.75rem;color:{TEXT_PRI};margin-top:8px;">{red_txt}{iva_txt}</div><div style="font-size:0.7rem;color:{RED};margin-top:4px;">Impuesto est.: {impuesto:,.0f} €/año</div>{badge}</div>""",unsafe_allow_html=True)
         if mejor_mod: st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%).</div>',unsafe_allow_html=True)
 
-    st.markdown('<div class="nc-section-title">Simulador de Subida de Renta</div>',unsafe_allow_html=True)
-    if zona_tens:
-        max_renta=int(renta_act*1.03); st.warning(f"🔒 Zona tensionada: subida máxima al IPC (3%). Renta máxima: {max_renta:,.0f} €/mes")
-        nueva_renta=st.slider("Ajusta la renta (€)",min_value=int(renta_act*0.9),max_value=max_renta,value=int(renta_act),step=10)
-    else:
-        _sl_min = max(100, int(renta_act * 0.8))
-        _sl_max = max(_sl_min + 100, int(max(renta_mer, renta_act) * 1.2))
-        _sl_val = max(_sl_min, min(int(renta_act), _sl_max))
-        nueva_renta = st.slider("Ajusta la renta mensual (€)", min_value=_sl_min, max_value=_sl_max, value=_sl_val, step=25)
-    ganancia_m=nueva_renta-renta_act; ganancia_a=ganancia_m*12
-    nueva_neta=((nueva_renta-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
-    s1,s2,s3=st.columns(3)
-    s1.metric("Nueva Renta",f"{nueva_renta:,.0f} €/mes",delta=f"{ganancia_m:+.0f} €")
-    s2.metric("Impacto Anual",f"{ganancia_a:+,.0f} €/año")
-    s3.metric("Nueva Rent. Neta",f"{nueva_neta:.1f}%",delta=f"{nueva_neta-rent_neta:+.1f}%")
-
-    st.markdown('<div class="nc-section-title">Comparativa de Activos — Renta vs Tasación</div>',unsafe_allow_html=True)
-    rt=[tasacion(r) for _,r in df_inm.iterrows()]
-    fig_comp=go.Figure()
-    fig_comp.add_trace(go.Bar(name="Renta Actual",x=df_inm["Nombre"],y=df_inm["Renta"],marker_color=ACCENT,text=[f"{r:,.0f}€" for r in df_inm["Renta"]],textposition="outside"))
-    fig_comp.add_trace(go.Bar(name="Renta Tasada",x=df_inm["Nombre"],y=rt,marker_color="#D0DFF0",text=[f"{r:,.0f}€" for r in rt],textposition="outside"))
-    fig_comp.update_layout(barmode="group",paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=300,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=12),legend=dict(orientation="h",yanchor="bottom",y=1.02,xanchor="right",x=1))
-    st.plotly_chart(fig_comp,use_container_width=True)
+    with st.expander("📐 Simulador de subida de renta", expanded=False):
+        if zona_tens:
+            max_renta=int(renta_act*1.03); st.warning(f"🔒 Zona tensionada: subida máxima al IPC (3%). Renta máxima: {max_renta:,.0f} €/mes")
+            nueva_renta=st.slider("Ajusta la renta (€)",min_value=int(renta_act*0.9),max_value=max_renta,value=int(renta_act),step=10)
+        else:
+            _sl_min = max(100, int(renta_act * 0.8))
+            _sl_max = max(_sl_min + 100, int(max(renta_mer, renta_act) * 1.2))
+            _sl_val = max(_sl_min, min(int(renta_act), _sl_max))
+            nueva_renta = st.slider("Ajusta la renta mensual (€)", min_value=_sl_min, max_value=_sl_max, value=_sl_val, step=25)
+        ganancia_m=nueva_renta-renta_act; ganancia_a=ganancia_m*12
+        nueva_neta=((nueva_renta-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
+        s1,s2,s3=st.columns(3)
+        s1.metric("Nueva Renta",f"{nueva_renta:,.0f} €/mes",delta=f"{ganancia_m:+.0f} €")
+        s2.metric("Impacto Anual",f"{ganancia_a:+,.0f} €/año")
+        s3.metric("Nueva Rent. Neta",f"{nueva_neta:.1f}%",delta=f"{nueva_neta-rent_neta:+.1f}%")
 
     st.markdown('<div class="nc-section-title">Análisis de Gastos Reales</div>',unsafe_allow_html=True)
     res=pd.concat([pd.DataFrame([{"Concepto":"Comunidad","Importe":safe_float(f.get("Comunidad",0)) if pd.notna(f.get("Comunidad",0)) else 0,"Deducible":"S"}]),df_gf[["Concepto","Importe","Deducible"]]])
     st.dataframe(res.style.format({"Importe":"{:,.2f} €"}),hide_index=True,use_container_width=True)
+
+    # ── EVOLUCIÓN MENSUAL — ESTE ACTIVO ─────────────────────────
+    st.markdown('<div class="nc-section-title">📊 Evolución mensual — ingresos y gastos</div>', unsafe_allow_html=True)
+    _df_mov_fic = df_mov[df_mov["Apartamento"] == sel].copy()
+    if not _df_mov_fic.empty:
+        _df_mov_fic["_mes"] = pd.to_datetime(_df_mov_fic["Fecha"], errors="coerce").dt.to_period("M").astype(str)
+        _ing_fic = _df_mov_fic[_df_mov_fic["Tipo"]=="Ingreso"].groupby("_mes")["Importe"].sum().reset_index(name="Ingresos")
+        _gas_fic = _df_mov_fic[_df_mov_fic["Tipo"]=="Gasto"].groupby("_mes")["Importe"].sum().reset_index(name="Gastos")
+        _df_evol = pd.merge(_ing_fic, _gas_fic, on="_mes", how="outer").fillna(0).sort_values("_mes").tail(12)
+        if not _df_evol.empty:
+            _fig_evol = go.Figure()
+            _fig_evol.add_trace(go.Bar(name="Ingresos", x=_df_evol["_mes"], y=_df_evol["Ingresos"],
+                                       marker_color=ACCENT, text=[f"{v:,.0f}€" for v in _df_evol["Ingresos"]], textposition="outside"))
+            _fig_evol.add_trace(go.Bar(name="Gastos", x=_df_evol["_mes"], y=_df_evol["Gastos"],
+                                       marker_color=RED, text=[f"{v:,.0f}€" for v in _df_evol["Gastos"]], textposition="outside"))
+            _fig_evol.update_layout(barmode="group", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                                    margin=dict(l=10,r=10,t=10,b=10), height=260,
+                                    yaxis=dict(showgrid=False, visible=False),
+                                    xaxis=dict(showgrid=False),
+                                    font=dict(family="DM Sans", size=12),
+                                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(_fig_evol, use_container_width=True)
+    else:
+        st.caption("Sin movimientos registrados para este inmueble.")
+
+    # ── GASTOS PROGRAMADOS + FACTURAS RECIBIDAS ──────────────────
+    _tab_gp, _tab_fr = st.tabs(["📅 Gastos programados", "🧾 Facturas recibidas"])
+
+    with _tab_gp:
+        from supabase_db import (leer_cashflow_programado, crear_cashflow_programado,
+                                  eliminar_cashflow_programado)
+        _uid_gp   = st.session_state.get("user_id", "")
+        _df_gp    = leer_cashflow_programado(_uid_gp, inmueble=sel)
+        _meses_n  = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+
+        if not _df_gp.empty:
+            for _, _ev in _df_gp.iterrows():
+                _es_gasto = _ev.get("tipo") == "gasto"
+                _color_ev = "#FDECEA" if _es_gasto else "#EAF3DE"
+                _tc_ev    = "#C0392B" if _es_gasto else "#1a7a40"
+                _icono_ev = "↓" if _es_gasto else "↑"
+                _mn       = int(_ev.get("mes", 0))
+                _mes_txt  = _meses_n[_mn] if 1 <= _mn <= 12 else str(_mn)
+                _rec_txt  = "Anual" if _ev.get("recurrencia") == "anual" else str(_ev.get("anio",""))
+                _gp_col1, _gp_col2 = st.columns([6, 1])
+                with _gp_col1:
+                    st.markdown(f"""
+                    <div style="background:{_color_ev};border-radius:8px;padding:8px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+                      <div>
+                        <span style="font-size:12px;font-weight:700;color:{_tc_ev};">{_icono_ev} {_ev.get('descripcion','')}</span>
+                        <span style="font-size:11px;color:#6B7280;margin-left:10px;">{_mes_txt} · {_rec_txt}</span>
+                      </div>
+                      <span style="font-size:13px;font-weight:700;color:{_tc_ev};">{float(_ev.get('importe',0)):,.0f} €</span>
+                    </div>""", unsafe_allow_html=True)
+                with _gp_col2:
+                    if st.button("🗑", key=f"del_gp_{_ev['id']}", help="Eliminar evento"):
+                        eliminar_cashflow_programado(str(_ev["id"]), _uid_gp)
+                        st.rerun()
+        else:
+            st.caption("Sin gastos programados para este inmueble.")
+
+        with st.form(f"form_gp_{sel.replace(' ','_')}", clear_on_submit=True):
+            st.markdown("**Añadir evento programado**")
+            _gp_c1, _gp_c2 = st.columns(2)
+            with _gp_c1:
+                _gp_tipo = st.selectbox("Tipo", ["gasto","ingreso"], key=f"gp_tipo_{sel}")
+                _gp_cat  = st.selectbox("Categoría", ["ibi","seguro_anual","derrama","obra","revision_renta","fianza","otro"], key=f"gp_cat_{sel}")
+                _gp_mes  = st.selectbox("Mes", list(range(1,13)), format_func=lambda x: _meses_n[x], key=f"gp_mes_{sel}")
+            with _gp_c2:
+                _gp_desc = st.text_input("Descripción", key=f"gp_desc_{sel}")
+                _gp_imp  = st.number_input("Importe (€)", min_value=0.0, step=10.0, key=f"gp_imp_{sel}")
+                _gp_rec  = st.selectbox("Recurrencia", ["unico","anual"],
+                                         format_func=lambda x: "Una vez" if x=="unico" else "Anual (cada año)",
+                                         key=f"gp_rec_{sel}")
+            _gp_anio = None if _gp_rec == "anual" else datetime.now().year
+            if st.form_submit_button("💾 Guardar evento", use_container_width=True):
+                if _gp_imp > 0 and _gp_desc.strip():
+                    _res_gp = crear_cashflow_programado(_uid_gp, {
+                        "tipo": _gp_tipo, "categoria": _gp_cat,
+                        "descripcion": _gp_desc, "importe": _gp_imp,
+                        "mes": _gp_mes, "anio": _gp_anio,
+                        "recurrencia": _gp_rec, "inmueble": sel,
+                    })
+                    if _res_gp.get("ok"):
+                        st.success("Evento guardado ✓"); st.rerun()
+                    else:
+                        st.error(f"Error: {_res_gp.get('error')}")
+                else:
+                    st.warning("Rellena descripción e importe.")
+
+    with _tab_fr:
+        from supabase_db import (leer_facturas_recibidas, crear_factura_recibida,
+                                  eliminar_factura_recibida, subir_archivo_factura_recibida,
+                                  actualizar_factura_recibida)
+        _uid_fr = st.session_state.get("user_id", "")
+        _fr_fc1, _fr_fc2 = st.columns([2,1])
+        with _fr_fc1:
+            _ej_fr  = st.selectbox("Ejercicio fiscal", [2026,2025,2024,2023], key=f"ej_fr_{sel}")
+        with _fr_fc2:
+            _tip_fr = st.radio("Tipo", ["Todos","gasto","ingreso"], horizontal=True, key=f"tip_fr_{sel}")
+        _df_fr = leer_facturas_recibidas(_uid_fr, inmueble=sel, ejercicio=_ej_fr,
+                                          tipo=None if _tip_fr=="Todos" else _tip_fr)
+
+        if not _df_fr.empty:
+            _total_gas_fr = _df_fr[_df_fr["tipo"]=="gasto"]["importe_total"].fillna(0).sum()
+            _total_ing_fr = _df_fr[_df_fr["tipo"]=="ingreso"]["importe_total"].fillna(0).sum()
+            _kf1,_kf2,_kf3 = st.columns(3)
+            _kf1.metric("Facturas", len(_df_fr))
+            _kf2.metric("Total gastos", f"{_total_gas_fr:,.0f} €")
+            _kf3.metric("Total ingresos", f"{_total_ing_fr:,.0f} €")
+            st.divider()
+            for _, _fr_row in _df_fr.iterrows():
+                _es_g_fr  = _fr_row.get("tipo") == "gasto"
+                _color_fr = "#FDECEA" if _es_g_fr else "#EAF3DE"
+                _tc_fr    = "#C0392B" if _es_g_fr else "#1a7a40"
+                _ai_fr    = " 🤖" if _fr_row.get("interpretado_ia") else ""
+                _trim_fr  = f"T{_fr_row.get('trimestre','')}" if _fr_row.get("trimestre") else ""
+                st.markdown(f"""
+                <div style="background:{_color_fr};border-radius:8px;padding:9px 14px;margin-bottom:5px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:12px;font-weight:700;color:{_tc_fr};">{_fr_row.get('proveedor','—')}{_ai_fr}</span>
+                    <span style="font-size:13px;font-weight:700;color:{_tc_fr};">{float(_fr_row.get('importe_total') or 0):,.2f} €</span>
+                  </div>
+                  <span style="font-size:11px;color:#6B7280;">{str(_fr_row.get('fecha',''))[:10]} · {_trim_fr} · {_fr_row.get('categoria','')}</span>
+                  <br><span style="font-size:11px;color:#374151;">{_fr_row.get('concepto','')}</span>
+                </div>""", unsafe_allow_html=True)
+        else:
+            st.caption(f"Sin facturas registradas en {_ej_fr} para este inmueble.")
+
+        st.divider()
+        with st.expander("➕ Registrar nueva factura"):
+            _fr_c1, _fr_c2 = st.columns(2)
+            with _fr_c1:
+                _fr_tipo = st.selectbox("Tipo", ["gasto","ingreso"], key=f"fr_tipo_{sel}")
+                _fr_cat_opts = (["comunidad","mantenimiento","seguro","ibi","suministros","honorarios","otro"]
+                                if _fr_tipo == "gasto" else ["alquiler","fianza","otro"])
+                _fr_cat  = st.selectbox("Categoría", _fr_cat_opts, key=f"fr_cat_{sel}")
+                _fr_fecha = st.date_input("Fecha factura", key=f"fr_fecha_{sel}")
+                _fr_prov  = st.text_input("Proveedor / inquilino", key=f"fr_prov_{sel}")
+            with _fr_c2:
+                _fr_conc  = st.text_input("Concepto", key=f"fr_conc_{sel}")
+                _fr_imp   = st.number_input("Importe sin IVA (€)", min_value=0.0, step=1.0, key=f"fr_imp_{sel}")
+                _fr_iva   = st.number_input("IVA (€)", min_value=0.0, step=1.0, key=f"fr_iva_{sel}")
+                _fr_arch  = st.file_uploader("Adjuntar PDF / imagen", type=["pdf","png","jpg","jpeg"], key=f"fr_arch_{sel}")
+            if st.button("💾 Guardar factura", key=f"btn_fr_{sel}", use_container_width=True):
+                if _fr_imp > 0:
+                    _fr_datos = {
+                        "tipo": _fr_tipo, "categoria": _fr_cat,
+                        "fecha": str(_fr_fecha), "ejercicio": _fr_fecha.year,
+                        "inmueble": sel, "proveedor": _fr_prov,
+                        "concepto": _fr_conc, "importe": _fr_imp,
+                        "iva": _fr_iva, "importe_total": _fr_imp + _fr_iva,
+                    }
+                    _res_fr = crear_factura_recibida(_uid_fr, _fr_datos)
+                    if _res_fr.get("ok") and _fr_arch:
+                        _ext_fr = _fr_arch.name.split(".")[-1].lower()
+                        _up_fr  = subir_archivo_factura_recibida(_uid_fr, _res_fr["id"], _fr_arch.read(), _ext_fr)
+                        if _up_fr.get("ok"):
+                            actualizar_factura_recibida(_res_fr["id"], _uid_fr,
+                                                        {"archivo_ruta": _up_fr["ruta"],
+                                                         "archivo_nombre": _fr_arch.name})
+                    if _res_fr.get("ok"):
+                        st.success("Factura registrada ✓"); st.rerun()
+                    else:
+                        st.error(f"Error: {_res_fr.get('error')}")
+                else:
+                    st.warning("El importe no puede ser 0.")
 
     # ── SABIO PATRIMONIAL — Fichas ──────────────────────────────
     _tipo_v, _msg_v = alerta_vencimiento(f)
