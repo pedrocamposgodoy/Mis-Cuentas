@@ -1875,16 +1875,18 @@ elif menu == "Fichas (Benchmark)":
             (df_mov["Apartamento"] == sel) &
             (pd.to_datetime(df_mov["Fecha"], errors="coerce").dt.year == _anio_donut)
         ].copy()
-        # Ingresos: facturas emitidas cobradas (fuente principal) + movimientos Ingreso
+        # Ingresos: facturas emitidas cobradas (búsqueda flexible por inmueble)
         _uid_donut  = st.session_state.get("user_id", "")
         _df_fe_don  = leer_facturas_emitidas(_uid_donut)
         _ing_facturas_don = 0.0
-        if not _df_fe_don.empty:
+        if not _df_fe_don.empty and "inmueble" in _df_fe_don.columns:
             try:
                 _fcol_d = "fecha" if "fecha" in _df_fe_don.columns else "fecha_emision"
                 _df_fe_don[_fcol_d] = pd.to_datetime(_df_fe_don[_fcol_d], errors="coerce")
+                _sel_low = sel.lower().strip()
+                _mask_inm = (_df_fe_don["inmueble"].str.lower().str.strip() == _sel_low)
                 _fe_don_fil = _df_fe_don[
-                    (_df_fe_don["inmueble"] == sel) &
+                    _mask_inm &
                     (_df_fe_don["estado"] == "cobrada") &
                     (_df_fe_don[_fcol_d].dt.year == _anio_donut)
                 ]
@@ -1963,60 +1965,54 @@ elif menu == "Fichas (Benchmark)":
 
     st.markdown('<div class="nc-section-title">📊 Evolución mensual — ingresos y gastos</div>', unsafe_allow_html=True)
     try:
-        _anio_evol  = datetime.now().year
-        _uid_evol   = st.session_state.get("user_id", "")
-        # ── Gastos desde movimientos ──────────────────────────────
+        _anio_evol = datetime.now().year
+        _uid_evol  = st.session_state.get("user_id", "")
+        _meses_anio = [f"{_anio_evol}-{str(m).zfill(2)}" for m in range(1, 13)]
         _df_mov_fic = df_mov[df_mov["Apartamento"] == sel].copy()
         _df_mov_fic["_mes"] = pd.to_datetime(_df_mov_fic["Fecha"], errors="coerce").dt.strftime("%Y-%m")
         _df_mov_fic = _df_mov_fic[_df_mov_fic["_mes"].notna() & (_df_mov_fic["_mes"] != "NaT")]
-        _gas_s = _df_mov_fic[_df_mov_fic["Tipo"]=="Gasto"].groupby("_mes")["Importe"].sum()
+        _gas_s     = _df_mov_fic[_df_mov_fic["Tipo"]=="Gasto"].groupby("_mes")["Importe"].sum()
         _ing_mov_s = _df_mov_fic[_df_mov_fic["Tipo"]=="Ingreso"].groupby("_mes")["Importe"].sum()
-        # ── Ingresos desde facturas emitidas cobradas ─────────────
-        _ing_fe_s = pd.Series(dtype=float)
-        _df_fe_ev = leer_facturas_emitidas(_uid_evol)
-        if not _df_fe_ev.empty:
+        _ing_fe_s  = pd.Series(dtype=float)
+        _df_fe_ev  = leer_facturas_emitidas(_uid_evol)
+        if not _df_fe_ev.empty and "inmueble" in _df_fe_ev.columns:
             try:
-                _fcol_e = "fecha" if "fecha" in _df_fe_ev.columns else "fecha_emision"
+                _fcol_e  = "fecha" if "fecha" in _df_fe_ev.columns else "fecha_emision"
                 _df_fe_ev[_fcol_e] = pd.to_datetime(_df_fe_ev[_fcol_e], errors="coerce")
                 _fe_ev_fil = _df_fe_ev[
-                    (_df_fe_ev["inmueble"] == sel) &
-                    (_df_fe_ev["estado"] == "cobrada")
+                    (_df_fe_ev["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
+                    (_df_fe_ev["estado"] == "cobrada") &
+                    (_df_fe_ev[_fcol_e].dt.year == _anio_evol)
                 ].copy()
-                _fe_ev_fil["_mes"] = _fe_ev_fil[_fcol_e].dt.strftime("%Y-%m")
-                _ing_fe_s = _fe_ev_fil.groupby("_mes")["total"].sum()
+                if not _fe_ev_fil.empty:
+                    _fe_ev_fil["_mes"] = _fe_ev_fil[_fcol_e].dt.strftime("%Y-%m")
+                    _ing_fe_s = _fe_ev_fil.groupby("_mes")["total"].sum()
             except Exception:
                 pass
-        # ── Combinar ingresos y construir DataFrame por mes ───────
-        _todos_meses = sorted(set(list(_gas_s.index) + list(_ing_mov_s.index) + list(_ing_fe_s.index)))[-12:]
-        if _todos_meses:
-            _df_evol = pd.DataFrame({"_mes": _todos_meses})
-            _df_evol["Ingresos"] = _df_evol["_mes"].map(_ing_fe_s).fillna(0) + _df_evol["_mes"].map(_ing_mov_s).fillna(0)
-            _df_evol["Gastos"]   = _df_evol["_mes"].map(_gas_s).fillna(0)
-            if (_df_evol["Ingresos"].sum() + _df_evol["Gastos"].sum()) > 0:
-                _fig_evol = go.Figure()
-                _fig_evol.add_trace(go.Bar(
-                    name="Ingresos", x=_df_evol["_mes"], y=_df_evol["Ingresos"],
-                    marker_color=ACCENT,
-                    text=[f"{v:,.0f}€" if v > 0 else "" for v in _df_evol["Ingresos"]],
-                    textposition="outside"))
-                _fig_evol.add_trace(go.Bar(
-                    name="Gastos", x=_df_evol["_mes"], y=_df_evol["Gastos"],
-                    marker_color=RED,
-                    text=[f"{v:,.0f}€" if v > 0 else "" for v in _df_evol["Gastos"]],
-                    textposition="outside"))
-                _fig_evol.update_layout(
-                    barmode="group",
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    margin=dict(l=10, r=10, t=20, b=10), height=260,
-                    yaxis=dict(showgrid=False, visible=False),
-                    xaxis=dict(showgrid=False, tickangle=-30),
-                    font=dict(family="DM Sans", size=12),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-                st.plotly_chart(_fig_evol, use_container_width=True)
-            else:
-                st.caption("Sin movimientos registrados para este inmueble.")
-        else:
-            st.caption("Sin movimientos registrados para este inmueble.")
+        _df_evol = pd.DataFrame({"_mes": _meses_anio})
+        _df_evol["Ingresos"] = (_df_evol["_mes"].map(_ing_fe_s).fillna(0)
+                                 + _df_evol["_mes"].map(_ing_mov_s).fillna(0))
+        _df_evol["Gastos"]   = _df_evol["_mes"].map(_gas_s).fillna(0)
+        _fig_evol = go.Figure()
+        _fig_evol.add_trace(go.Bar(
+            name="Ingresos", x=_df_evol["_mes"], y=_df_evol["Ingresos"],
+            marker_color=ACCENT,
+            text=[f"{v:,.0f}€" if v > 0 else "" for v in _df_evol["Ingresos"]],
+            textposition="outside"))
+        _fig_evol.add_trace(go.Bar(
+            name="Gastos", x=_df_evol["_mes"], y=_df_evol["Gastos"],
+            marker_color=RED,
+            text=[f"{v:,.0f}€" if v > 0 else "" for v in _df_evol["Gastos"]],
+            textposition="outside"))
+        _fig_evol.update_layout(
+            barmode="group",
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=10, r=10, t=20, b=10), height=270,
+            yaxis=dict(showgrid=False, visible=False),
+            xaxis=dict(showgrid=False, tickangle=-30, type="category"),
+            font=dict(family="DM Sans", size=12),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(_fig_evol, use_container_width=True)
     except Exception:
         st.caption("Sin datos suficientes para el gráfico.")
 
