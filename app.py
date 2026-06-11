@@ -1759,37 +1759,6 @@ elif menu == "Fichas (Benchmark)":
     _df_hip_score = st.session_state.get("df_hip", pd.DataFrame())
     _sd = calcular_score_salud(f, df_mov, tipo_cuenta=_perfil_fic.get("tipo_cuenta","particular"), df_hip=_df_hip_score)
 
-    _col_sc, _col_al = st.columns([1, 2])
-    with _col_sc:
-        st.markdown(
-            f'<div style="background:#fff;border-radius:12px;padding:16px 18px;' +
-            f'border:2px solid {_sd["color"]};box-shadow:0 2px 8px rgba(0,0,0,0.07);' +
-            f'margin-bottom:10px;">' +
-            f'<div style="font-size:10px;font-weight:700;color:#94A3B8;' +
-            f'text-transform:uppercase;margin-bottom:6px;">Score Salud Activo</div>' +
-            render_score_badge(_sd, size="large") +
-            f'</div>', unsafe_allow_html=True)
-    with _col_al:
-        for _a in _sd["alertas"][:2]:
-            _ec = "🔴" in _a or "URGENTE" in _a or "FATIGA" in _a
-            st.markdown(
-                f'<div style="background:{"#FEE2E2" if _ec else "#FEF3C7"};' +
-                f'border-left:4px solid {"#DC2626" if _ec else "#D97706"};' +
-                f'border-radius:6px;padding:7px 12px;margin-bottom:5px;' +
-                f'font-size:13px;">{_a}</div>', unsafe_allow_html=True)
-        if _sd["suger"]:
-            _cs = "#DC2626" if _sd["score"]<4 else "#D97706" if _sd["score"]<7 else "#059669"
-            st.markdown(
-                f'<div style="border:2px solid {_cs};border-radius:8px;' +
-                f'padding:8px 12px;font-size:13px;font-weight:700;color:{_cs};">' +
-                f'💡 {_sd["suger"]}</div>', unsafe_allow_html=True)
-    with st.expander("📊 Desglose del score"):
-        for _comp, _desc, _pts, _max in _sd["detalle"]:
-            _c1,_c2,_c3 = st.columns([2,4,1])
-            _c1.markdown(f"**{_comp}**")
-            _c2.markdown(f"<span style='font-size:12px;'>{_desc}</span>", unsafe_allow_html=True)
-            _c3.markdown(f"**{_pts:.1f}/{_max:.1f}**")
-
     # KPIs de Fichas — nuevo estilo grande y prominente
     st.markdown('<div style="margin:12px 0 8px;"></div>', unsafe_allow_html=True)
 
@@ -1899,150 +1868,240 @@ elif menu == "Fichas (Benchmark)":
         st.markdown(f'<div class="{cls_v}" style="margin-bottom:1rem;"><b>📅 Contrato:</b> {msg_v}</div>',unsafe_allow_html=True)
 
     c1,c2=st.columns(2)
-    with c1:
-        st.markdown('<div class="nc-section-title">Renta Actual vs Tasada</div>',unsafe_allow_html=True)
-        fig_bar=go.Figure(go.Bar(x=["Renta Actual","Renta Tasada"],y=[renta_act,renta_mer],marker_color=[ACCENT,"#D0DFF0"],text=[f"{renta_act:,.0f} €",f"{renta_mer:,.0f} €"],textposition="outside",width=0.4))
-        fig_bar.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=240,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=13),showlegend=False)
-        st.plotly_chart(fig_bar,use_container_width=True)
-    with c2:
-        st.markdown('<div class="nc-section-title">Estatus de Mercado</div>',unsafe_allow_html=True)
-        if desv<-15:   clase,msg,icon="status-red","Rentabilidad Crítica","🔴"
-        elif desv<-5:  clase,msg,icon="status-yellow","Margen de Mejora","🟡"
-        else:          clase,msg,icon="status-green","Activo en Mercado","🟢"
-        lucro_html=""
-        if perdida_a>0: lucro_html=f'<div style="margin-top:12px;padding-top:12px;border-top:1px dashed rgba(0,0,0,0.15);"><span style="font-size:0.88rem;"><b>💸 Lucro Cesante:</b><br>Pérdida mensual: <b>{perdida_m:,.2f} €</b><br>Pérdida anualizada: <b style="color:{RED};font-size:1.15rem;">{perdida_a:,.2f} €/año</b></span></div>'
-        st.markdown(f'<div class="{clase}"><b style="font-size:1.1rem;">{icon} {msg}</b><br>Desviación: <b>{desv:.1f}%</b>{lucro_html}</div>',unsafe_allow_html=True)
+    # ── DONUT INGRESOS VS GASTOS — AÑO EN CURSO ────────────────
+    _anio_donut = datetime.now().year
+    try:
+        _df_donut = df_mov[
+            (df_mov["Apartamento"] == sel) &
+            (pd.to_datetime(df_mov["Fecha"], errors="coerce").dt.year == _anio_donut)
+        ].copy()
+        _ing_donut = float(_df_donut[_df_donut["Tipo"]=="Ingreso"]["Importe"].sum())
+        _gas_donut = float(_df_donut[_df_donut["Tipo"]=="Gasto"]["Importe"].sum())
+        _neto_donut = _ing_donut - _gas_donut
+        _neto_color = GREEN if _neto_donut >= 0 else RED
+        _d1, _d2 = st.columns([1, 1])
+        with _d1:
+            st.markdown(f'<div class="nc-section-title">💰 {_anio_donut} — Ingresos vs Gastos</div>', unsafe_allow_html=True)
+            if _ing_donut > 0 or _gas_donut > 0:
+                _fig_donut = go.Figure(go.Pie(
+                    values=[max(_ing_donut, 0.01), max(_gas_donut, 0.01)],
+                    labels=["Ingresos", "Gastos"],
+                    hole=0.62,
+                    marker_colors=[ACCENT, RED],
+                    textinfo="label+percent",
+                    hovertemplate="%{label}: %{value:,.0f} €<extra></extra>",
+                ))
+                _fig_donut.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(l=0, r=0, t=10, b=10),
+                    height=230,
+                    showlegend=False,
+                    annotations=[{"text": f"<b>{_neto_donut:,.0f}€</b><br>neto",
+                                   "x": 0.5, "y": 0.5, "font_size": 14,
+                                   "font_color": _neto_color, "showarrow": False}]
+                )
+                st.plotly_chart(_fig_donut, use_container_width=True)
+            else:
+                st.caption(f"Sin movimientos en {_anio_donut}.")
+        with _d2:
+            st.markdown('<div class="nc-section-title">&nbsp;</div>', unsafe_allow_html=True)
+            _card_ing = f'<div style="background:#EAF3DE;border-radius:10px;padding:14px 18px;margin-bottom:10px;"><div style="font-size:11px;color:#3B6D11;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Ingresos {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:#185FA5;">{_ing_donut:,.0f} €</div></div>'
+            _card_gas = f'<div style="background:#FDECEA;border-radius:10px;padding:14px 18px;margin-bottom:10px;"><div style="font-size:11px;color:#A32D2D;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Gastos {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:{RED};">{_gas_donut:,.0f} €</div></div>'
+            _bg_neto  = '#EAF3DE' if _neto_donut >= 0 else '#FDECEA'
+            _card_net = f'<div style="background:{_bg_neto};border-radius:10px;padding:14px 18px;border:2px solid {_neto_color};"><div style="font-size:11px;color:{_neto_color};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Beneficio neto {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:{_neto_color};">{_neto_donut:+,.0f} €</div></div>'
+            st.markdown(_card_ing + _card_gas + _card_net, unsafe_allow_html=True)
+    except Exception:
+        st.caption("Sin datos para el gráfico.")
 
-    if _es_soc_fic:
-        # ── Análisis Fiscal IS — Sociedad Patrimonial ─────────────
-        st.markdown('<div class="nc-section-title">🏛️ Análisis Fiscal IS — Sociedad Patrimonial</div>', unsafe_allow_html=True)
-        st.caption("Impuesto de Sociedades 25% · Sin reducción arrendamiento · Doble imposición si distribuyes dividendos")
+    _col_sc, _col_al = st.columns([1, 2])
+    with _col_sc:
+        st.markdown(
+            f'<div style="background:#fff;border-radius:12px;padding:16px 18px;' +
+            f'border:2px solid {_sd["color"]};box-shadow:0 2px 8px rgba(0,0,0,0.07);' +
+            f'margin-bottom:10px;">' +
+            f'<div style="font-size:10px;font-weight:700;color:#94A3B8;' +
+            f'text-transform:uppercase;margin-bottom:6px;">Score Salud Activo</div>' +
+            render_score_badge(_sd, size="large") +
+            f'</div>', unsafe_allow_html=True)
+    with _col_al:
+        for _a in _sd["alertas"][:2]:
+            _ec = "🔴" in _a or "URGENTE" in _a or "FATIGA" in _a
+            st.markdown(
+                f'<div style="background:{"#FEE2E2" if _ec else "#FEF3C7"};' +
+                f'border-left:4px solid {"#DC2626" if _ec else "#D97706"};' +
+                f'border-radius:6px;padding:7px 12px;margin-bottom:5px;' +
+                f'font-size:13px;">{_a}</div>', unsafe_allow_html=True)
+        if _sd["suger"]:
+            _cs = "#DC2626" if _sd["score"]<4 else "#D97706" if _sd["score"]<7 else "#059669"
+            st.markdown(
+                f'<div style="border:2px solid {_cs};border-radius:8px;' +
+                f'padding:8px 12px;font-size:13px;font-weight:700;color:{_cs};">' +
+                f'💡 {_sd["suger"]}</div>', unsafe_allow_html=True)
+    with st.expander("📊 Desglose del score"):
+        for _comp, _desc, _pts, _max in _sd["detalle"]:
+            _c1,_c2,_c3 = st.columns([2,4,1])
+            _c1.markdown(f"**{_comp}**")
+            _c2.markdown(f"<span style='font-size:12px;'>{_desc}</span>", unsafe_allow_html=True)
+            _c3.markdown(f"**{_pts:.1f}/{_max:.1f}**")
 
-        _rto_sin = _renta_anual_fic                          # sin deducir gastos
-        _rto_con = _renta_anual_fic - _gas_tot_fic           # con todos los gastos
-        _is_sin  = round(max(_rto_sin * 0.25, 0), 2)
-        _is_con  = round(max(_rto_con * 0.25, 0), 2)
-        _neto_sin = round(_rto_sin - _is_sin, 2)
-        _neto_con = round(_rto_con - _is_con, 2)
-        _div_sin  = round(max(_neto_sin * 0.19, 0), 2)       # retención dividendos 19%
-        _div_con  = round(max(_neto_con * 0.19, 0), 2)
-        _final_sin = round(_neto_sin - _div_sin, 2)
-        _final_con = round(_neto_con - _div_con, 2)
-        _ahorro_is = round(_is_sin - _is_con, 2)
-
-        cf1, cf2, cf3 = st.columns(3)
-        for _col, _titulo, _rto, _is_v, _neto, _div, _final, _es_actual in [
-            (cf1, "Sin gastos deducidos", _rto_sin, _is_sin, _neto_sin, _div_sin, _final_sin, False),
-            (cf2, "Con gastos deducidos", _rto_con, _is_con, _neto_con, _div_con, _final_con, True),
-        ]:
-            _borde = f"border:2px solid {ACCENT};" if _es_actual else f"border:1px solid #E5E7EB;"
-            _col.markdown(f"""
-            <div style="background:#FAFAFA;{_borde}border-radius:10px;padding:1rem;text-align:center;">
-              <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;
-                          letter-spacing:0.06em;margin-bottom:10px;">{_titulo}</div>
-              <div style="font-size:0.75rem;color:#6B7280;margin-bottom:2px;">[399] Resultado neto</div>
-              <div style="font-size:1.5rem;font-weight:800;color:{ACCENT};">{_rto:,.0f} €</div>
-              <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
-              <div style="font-size:0.75rem;color:#6B7280;">[562] IS 25%</div>
-              <div style="font-size:1.2rem;font-weight:700;color:{RED};">−{_is_v:,.0f} €</div>
-              <div style="font-size:0.75rem;color:#6B7280;margin-top:8px;">Neto tras IS</div>
-              <div style="font-size:1.1rem;font-weight:700;color:#059669;">{_neto:,.0f} €</div>
-              <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
-              <div style="font-size:0.72rem;color:#6B7280;">Si distribuyes dividendos (19%)</div>
-              <div style="font-size:0.95rem;font-weight:600;color:{RED};">−{_div:,.0f} €</div>
-              <div style="font-size:0.75rem;color:#6B7280;margin-top:6px;">Neto final al socio</div>
-              <div style="font-size:1.3rem;font-weight:800;color:#059669;">{_final:,.0f} €</div>
-            </div>""", unsafe_allow_html=True)
-
-        cf3.markdown(f"""
-        <div style="background:#0d1a0d;border:1px solid #059669;border-radius:10px;
-                    padding:1rem;text-align:center;">
-          <div style="font-size:0.72rem;font-weight:700;color:#059669;text-transform:uppercase;
-                      letter-spacing:0.06em;margin-bottom:10px;">💡 Ahorro fiscal</div>
-          <div style="font-size:0.75rem;color:#6B7280;">Deduciendo gastos ahorras en IS</div>
-          <div style="font-size:1.8rem;font-weight:900;color:#059669;">{_ahorro_is:,.0f} €</div>
-          <div style="height:1px;background:#1a3a1a;margin:10px 0;"></div>
-          <div style="font-size:0.72rem;color:#6B7280;">Tipo efectivo IS</div>
-          <div style="font-size:1.2rem;font-weight:700;color:#059669;">
-            {round(_is_con/_rto_con*100,1) if _rto_con>0 else 0:.1f}%
-          </div>
-          <div style="font-size:0.72rem;color:#6B7280;margin-top:8px;">
-            ⚠️ Sin reducción 60% arrendamiento<br>
-            (Art. 23.2 LIRPF no aplica a sociedades)
-          </div>
-        </div>""", unsafe_allow_html=True)
-
-        st.markdown(f"""
-        <div style="background:#FFF9E6;border:1px solid #D97706;border-radius:8px;
-                    padding:10px 16px;margin-top:12px;font-size:0.82rem;color:#854F0B;">
-          <b>⚠️ Doble imposición:</b> El beneficio tributa al 25% en IS y si lo distribuyes como dividendo
-          tributa de nuevo al 19% (tipo general ahorro IRPF). Tipo efectivo total:
-          <b>{round((1-(1-0.25)*(1-0.19))*100,1)}%</b>.
-          Valora si compensa reinvertir en la sociedad vs distribuir.
-        </div>""", unsafe_allow_html=True)
-
-    else:
-        st.markdown('<div class="nc-section-title">⚖️ Comparativa Fiscal por Modalidad</div>',unsafe_allow_html=True)
-        st.caption("Rentabilidad neta real tras aplicar reducción IRPF según tipo de arrendamiento")
-        rto_neto=(renta_act-gastos_u)*12; tipo_irpf=0.45
-        modalidades={"Larga Duración":{"reduccion":0.60,"iva":False},"Temporada":{"reduccion":0.00,"iva":False},"Vacacional":{"reduccion":0.00,"iva":True}}
-        cf1,cf2,cf3=st.columns(3); cols_fiscal=[cf1,cf2,cf3]; mejor_mod,mejor_rn=None,-99999
-        for idx,(mod,params) in enumerate(modalidades.items()):
-            red=params["reduccion"]; impuesto=max(0,rto_neto*(1-red)*tipo_irpf)
-            rn_real=(rto_neto-impuesto)/safe_float(f.get("Valor_Construccion",0))*100 if safe_float(f.get("Valor_Construccion",0))>0 else 0
-            if rn_real>mejor_rn: mejor_rn=rn_real; mejor_mod=mod
-            es_actual=(mod==tipo_arr); borde=f"border:2px solid {ACCENT};" if es_actual else f"border:1px solid {BORDER};"
-            iva_txt="<br><span style='font-size:0.7rem;color:#854F0B;'>⚠️ Puede llevar IVA</span>" if params["iva"] else ""
-            red_txt=f"Reducción IRPF: <b>{int(red*100)}%</b>" if red>0 else "Sin reducción fiscal"
-            badge="<div style='margin-top:8px;font-size:0.7rem;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;'>✅ Modalidad actual</div>" if es_actual else ""
-            cols_fiscal[idx].markdown(f"""<div style="background:{CARD_BG};{borde}border-radius:10px;padding:1.1rem;text-align:center;"><div style="font-size:0.72rem;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">{mod}</div><div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div><div style="font-size:0.7rem;color:{TEXT_SEC};margin-top:4px;">Rent. neta real/año</div><div style="font-size:0.75rem;color:{TEXT_PRI};margin-top:8px;">{red_txt}{iva_txt}</div><div style="font-size:0.7rem;color:{RED};margin-top:4px;">Impuesto est.: {impuesto:,.0f} €/año</div>{badge}</div>""",unsafe_allow_html=True)
-        if mejor_mod: st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%).</div>',unsafe_allow_html=True)
-
-    with st.expander("📐 Simulador de subida de renta", expanded=False):
-        if zona_tens:
-            max_renta=int(renta_act*1.03); st.warning(f"🔒 Zona tensionada: subida máxima al IPC (3%). Renta máxima: {max_renta:,.0f} €/mes")
-            nueva_renta=st.slider("Ajusta la renta (€)",min_value=int(renta_act*0.9),max_value=max_renta,value=int(renta_act),step=10)
+    st.markdown('<div class="nc-section-title">📊 Evolución mensual — ingresos y gastos</div>', unsafe_allow_html=True)
+    try:
+        _df_mov_fic = df_mov[df_mov["Apartamento"] == sel].copy()
+        _df_mov_fic["_mes"] = pd.to_datetime(_df_mov_fic["Fecha"], errors="coerce").dt.to_period("M").astype(str)
+        _df_mov_fic = _df_mov_fic.dropna(subset=["_mes"])
+        _meses_all = sorted(_df_mov_fic["_mes"].unique())[-12:]
+        _ing_s = _df_mov_fic[_df_mov_fic["Tipo"]=="Ingreso"].groupby("_mes")["Importe"].sum()
+        _gas_s = _df_mov_fic[_df_mov_fic["Tipo"]=="Gasto"].groupby("_mes")["Importe"].sum()
+        _df_evol = pd.DataFrame({"_mes": _meses_all})
+        _df_evol["Ingresos"] = _df_evol["_mes"].map(_ing_s).fillna(0)
+        _df_evol["Gastos"]   = _df_evol["_mes"].map(_gas_s).fillna(0)
+        if not _df_evol.empty and (_df_evol["Ingresos"].sum() + _df_evol["Gastos"].sum()) > 0:
+            _fig_evol = go.Figure()
+            _fig_evol.add_trace(go.Bar(name="Ingresos", x=_df_evol["_mes"], y=_df_evol["Ingresos"],
+                                       marker_color=ACCENT,
+                                       text=[f"{v:,.0f}€" for v in _df_evol["Ingresos"]],
+                                       textposition="outside"))
+            _fig_evol.add_trace(go.Bar(name="Gastos", x=_df_evol["_mes"], y=_df_evol["Gastos"],
+                                       marker_color=RED,
+                                       text=[f"{v:,.0f}€" for v in _df_evol["Gastos"]],
+                                       textposition="outside"))
+            _fig_evol.update_layout(
+                barmode="group",
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(l=10, r=10, t=20, b=10), height=260,
+                yaxis=dict(showgrid=False, visible=False),
+                xaxis=dict(showgrid=False),
+                font=dict(family="DM Sans", size=12),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(_fig_evol, use_container_width=True)
         else:
-            _sl_min = max(100, int(renta_act * 0.8))
-            _sl_max = max(_sl_min + 100, int(max(renta_mer, renta_act) * 1.2))
-            _sl_val = max(_sl_min, min(int(renta_act), _sl_max))
-            nueva_renta = st.slider("Ajusta la renta mensual (€)", min_value=_sl_min, max_value=_sl_max, value=_sl_val, step=25)
-        ganancia_m=nueva_renta-renta_act; ganancia_a=ganancia_m*12
-        nueva_neta=((nueva_renta-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
-        s1,s2,s3=st.columns(3)
-        s1.metric("Nueva Renta",f"{nueva_renta:,.0f} €/mes",delta=f"{ganancia_m:+.0f} €")
-        s2.metric("Impacto Anual",f"{ganancia_a:+,.0f} €/año")
-        s3.metric("Nueva Rent. Neta",f"{nueva_neta:.1f}%",delta=f"{nueva_neta-rent_neta:+.1f}%")
+            st.caption("Sin movimientos registrados para este inmueble.")
+    except Exception:
+        st.caption("Sin datos suficientes para el gráfico.")
 
+    # ── GASTOS PROGRAMADOS + FACTURAS RECIBIDAS ──────────────────
     st.markdown('<div class="nc-section-title">Análisis de Gastos Reales</div>',unsafe_allow_html=True)
     res=pd.concat([pd.DataFrame([{"Concepto":"Comunidad","Importe":safe_float(f.get("Comunidad",0)) if pd.notna(f.get("Comunidad",0)) else 0,"Deducible":"S"}]),df_gf[["Concepto","Importe","Deducible"]]])
     st.dataframe(res.style.format({"Importe":"{:,.2f} €"}),hide_index=True,use_container_width=True)
 
     # ── EVOLUCIÓN MENSUAL — ESTE ACTIVO ─────────────────────────
-    st.markdown('<div class="nc-section-title">📊 Evolución mensual — ingresos y gastos</div>', unsafe_allow_html=True)
-    _df_mov_fic = df_mov[df_mov["Apartamento"] == sel].copy()
-    if not _df_mov_fic.empty:
-        _df_mov_fic["_mes"] = pd.to_datetime(_df_mov_fic["Fecha"], errors="coerce").dt.to_period("M").astype(str)
-        _ing_fic = _df_mov_fic[_df_mov_fic["Tipo"]=="Ingreso"].groupby("_mes")["Importe"].sum().reset_index(name="Ingresos")
-        _gas_fic = _df_mov_fic[_df_mov_fic["Tipo"]=="Gasto"].groupby("_mes")["Importe"].sum().reset_index(name="Gastos")
-        _df_evol = pd.merge(_ing_fic, _gas_fic, on="_mes", how="outer").fillna(0).sort_values("_mes").tail(12)
-        if not _df_evol.empty:
-            _fig_evol = go.Figure()
-            _fig_evol.add_trace(go.Bar(name="Ingresos", x=_df_evol["_mes"], y=_df_evol["Ingresos"],
-                                       marker_color=ACCENT, text=[f"{v:,.0f}€" for v in _df_evol["Ingresos"]], textposition="outside"))
-            _fig_evol.add_trace(go.Bar(name="Gastos", x=_df_evol["_mes"], y=_df_evol["Gastos"],
-                                       marker_color=RED, text=[f"{v:,.0f}€" for v in _df_evol["Gastos"]], textposition="outside"))
-            _fig_evol.update_layout(barmode="group", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                                    margin=dict(l=10,r=10,t=10,b=10), height=260,
-                                    yaxis=dict(showgrid=False, visible=False),
-                                    xaxis=dict(showgrid=False),
-                                    font=dict(family="DM Sans", size=12),
-                                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-            st.plotly_chart(_fig_evol, use_container_width=True)
-    else:
-        st.caption("Sin movimientos registrados para este inmueble.")
+    with st.expander("📊 Análisis fiscal avanzado", expanded=False):
+        c1,c2=st.columns(2)
+        with c1:
+            st.markdown('<div class="nc-section-title">Renta Actual vs Tasada</div>',unsafe_allow_html=True)
+            fig_bar=go.Figure(go.Bar(x=["Renta Actual","Renta Tasada"],y=[renta_act,renta_mer],marker_color=[ACCENT,"#D0DFF0"],text=[f"{renta_act:,.0f} €",f"{renta_mer:,.0f} €"],textposition="outside",width=0.4))
+            fig_bar.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=240,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=13),showlegend=False)
+            st.plotly_chart(fig_bar,use_container_width=True)
+        with c2:
+            st.markdown('<div class="nc-section-title">Estatus de Mercado</div>',unsafe_allow_html=True)
+            if desv<-15:   clase,msg,icon="status-red","Rentabilidad Crítica","🔴"
+            elif desv<-5:  clase,msg,icon="status-yellow","Margen de Mejora","🟡"
+            else:          clase,msg,icon="status-green","Activo en Mercado","🟢"
+            lucro_html=""
+            if perdida_a>0: lucro_html=f'<div style="margin-top:12px;padding-top:12px;border-top:1px dashed rgba(0,0,0,0.15);"><span style="font-size:0.88rem;"><b>💸 Lucro Cesante:</b><br>Pérdida mensual: <b>{perdida_m:,.2f} €</b><br>Pérdida anualizada: <b style="color:{RED};font-size:1.15rem;">{perdida_a:,.2f} €/año</b></span></div>'
+            st.markdown(f'<div class="{clase}"><b style="font-size:1.1rem;">{icon} {msg}</b><br>Desviación: <b>{desv:.1f}%</b>{lucro_html}</div>',unsafe_allow_html=True)
 
-    # ── GASTOS PROGRAMADOS + FACTURAS RECIBIDAS ──────────────────
+        if _es_soc_fic:
+            # ── Análisis Fiscal IS — Sociedad Patrimonial ─────────────
+            st.markdown('<div class="nc-section-title">🏛️ Análisis Fiscal IS — Sociedad Patrimonial</div>', unsafe_allow_html=True)
+            st.caption("Impuesto de Sociedades 25% · Sin reducción arrendamiento · Doble imposición si distribuyes dividendos")
+
+            _rto_sin = _renta_anual_fic                          # sin deducir gastos
+            _rto_con = _renta_anual_fic - _gas_tot_fic           # con todos los gastos
+            _is_sin  = round(max(_rto_sin * 0.25, 0), 2)
+            _is_con  = round(max(_rto_con * 0.25, 0), 2)
+            _neto_sin = round(_rto_sin - _is_sin, 2)
+            _neto_con = round(_rto_con - _is_con, 2)
+            _div_sin  = round(max(_neto_sin * 0.19, 0), 2)       # retención dividendos 19%
+            _div_con  = round(max(_neto_con * 0.19, 0), 2)
+            _final_sin = round(_neto_sin - _div_sin, 2)
+            _final_con = round(_neto_con - _div_con, 2)
+            _ahorro_is = round(_is_sin - _is_con, 2)
+
+            cf1, cf2, cf3 = st.columns(3)
+            for _col, _titulo, _rto, _is_v, _neto, _div, _final, _es_actual in [
+                (cf1, "Sin gastos deducidos", _rto_sin, _is_sin, _neto_sin, _div_sin, _final_sin, False),
+                (cf2, "Con gastos deducidos", _rto_con, _is_con, _neto_con, _div_con, _final_con, True),
+            ]:
+                _borde = f"border:2px solid {ACCENT};" if _es_actual else f"border:1px solid #E5E7EB;"
+                _col.markdown(f"""
+                <div style="background:#FAFAFA;{_borde}border-radius:10px;padding:1rem;text-align:center;">
+                  <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;
+                              letter-spacing:0.06em;margin-bottom:10px;">{_titulo}</div>
+                  <div style="font-size:0.75rem;color:#6B7280;margin-bottom:2px;">[399] Resultado neto</div>
+                  <div style="font-size:1.5rem;font-weight:800;color:{ACCENT};">{_rto:,.0f} €</div>
+                  <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
+                  <div style="font-size:0.75rem;color:#6B7280;">[562] IS 25%</div>
+                  <div style="font-size:1.2rem;font-weight:700;color:{RED};">−{_is_v:,.0f} €</div>
+                  <div style="font-size:0.75rem;color:#6B7280;margin-top:8px;">Neto tras IS</div>
+                  <div style="font-size:1.1rem;font-weight:700;color:#059669;">{_neto:,.0f} €</div>
+                  <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
+                  <div style="font-size:0.72rem;color:#6B7280;">Si distribuyes dividendos (19%)</div>
+                  <div style="font-size:0.95rem;font-weight:600;color:{RED};">−{_div:,.0f} €</div>
+                  <div style="font-size:0.75rem;color:#6B7280;margin-top:6px;">Neto final al socio</div>
+                  <div style="font-size:1.3rem;font-weight:800;color:#059669;">{_final:,.0f} €</div>
+                </div>""", unsafe_allow_html=True)
+
+            cf3.markdown(f"""
+            <div style="background:#0d1a0d;border:1px solid #059669;border-radius:10px;
+                        padding:1rem;text-align:center;">
+              <div style="font-size:0.72rem;font-weight:700;color:#059669;text-transform:uppercase;
+                          letter-spacing:0.06em;margin-bottom:10px;">💡 Ahorro fiscal</div>
+              <div style="font-size:0.75rem;color:#6B7280;">Deduciendo gastos ahorras en IS</div>
+              <div style="font-size:1.8rem;font-weight:900;color:#059669;">{_ahorro_is:,.0f} €</div>
+              <div style="height:1px;background:#1a3a1a;margin:10px 0;"></div>
+              <div style="font-size:0.72rem;color:#6B7280;">Tipo efectivo IS</div>
+              <div style="font-size:1.2rem;font-weight:700;color:#059669;">
+                {round(_is_con/_rto_con*100,1) if _rto_con>0 else 0:.1f}%
+              </div>
+              <div style="font-size:0.72rem;color:#6B7280;margin-top:8px;">
+                ⚠️ Sin reducción 60% arrendamiento<br>
+                (Art. 23.2 LIRPF no aplica a sociedades)
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+            st.markdown(f"""
+            <div style="background:#FFF9E6;border:1px solid #D97706;border-radius:8px;
+                        padding:10px 16px;margin-top:12px;font-size:0.82rem;color:#854F0B;">
+              <b>⚠️ Doble imposición:</b> El beneficio tributa al 25% en IS y si lo distribuyes como dividendo
+              tributa de nuevo al 19% (tipo general ahorro IRPF). Tipo efectivo total:
+              <b>{round((1-(1-0.25)*(1-0.19))*100,1)}%</b>.
+              Valora si compensa reinvertir en la sociedad vs distribuir.
+            </div>""", unsafe_allow_html=True)
+
+        else:
+            st.markdown('<div class="nc-section-title">⚖️ Comparativa Fiscal por Modalidad</div>',unsafe_allow_html=True)
+            st.caption("Rentabilidad neta real tras aplicar reducción IRPF según tipo de arrendamiento")
+            rto_neto=(renta_act-gastos_u)*12; tipo_irpf=0.45
+            modalidades={"Larga Duración":{"reduccion":0.60,"iva":False},"Temporada":{"reduccion":0.00,"iva":False},"Vacacional":{"reduccion":0.00,"iva":True}}
+            cf1,cf2,cf3=st.columns(3); cols_fiscal=[cf1,cf2,cf3]; mejor_mod,mejor_rn=None,-99999
+            for idx,(mod,params) in enumerate(modalidades.items()):
+                red=params["reduccion"]; impuesto=max(0,rto_neto*(1-red)*tipo_irpf)
+                rn_real=(rto_neto-impuesto)/safe_float(f.get("Valor_Construccion",0))*100 if safe_float(f.get("Valor_Construccion",0))>0 else 0
+                if rn_real>mejor_rn: mejor_rn=rn_real; mejor_mod=mod
+                es_actual=(mod==tipo_arr); borde=f"border:2px solid {ACCENT};" if es_actual else f"border:1px solid {BORDER};"
+                iva_txt="<br><span style='font-size:0.7rem;color:#854F0B;'>⚠️ Puede llevar IVA</span>" if params["iva"] else ""
+                red_txt=f"Reducción IRPF: <b>{int(red*100)}%</b>" if red>0 else "Sin reducción fiscal"
+                badge="<div style='margin-top:8px;font-size:0.7rem;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;'>✅ Modalidad actual</div>" if es_actual else ""
+                cols_fiscal[idx].markdown(f"""<div style="background:{CARD_BG};{borde}border-radius:10px;padding:1.1rem;text-align:center;"><div style="font-size:0.72rem;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">{mod}</div><div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div><div style="font-size:0.7rem;color:{TEXT_SEC};margin-top:4px;">Rent. neta real/año</div><div style="font-size:0.75rem;color:{TEXT_PRI};margin-top:8px;">{red_txt}{iva_txt}</div><div style="font-size:0.7rem;color:{RED};margin-top:4px;">Impuesto est.: {impuesto:,.0f} €/año</div>{badge}</div>""",unsafe_allow_html=True)
+            if mejor_mod: st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%).</div>',unsafe_allow_html=True)
+
+        with st.expander("📐 Simulador de subida de renta", expanded=False):
+            if zona_tens:
+                max_renta=int(renta_act*1.03); st.warning(f"🔒 Zona tensionada: subida máxima al IPC (3%). Renta máxima: {max_renta:,.0f} €/mes")
+                nueva_renta=st.slider("Ajusta la renta (€)",min_value=int(renta_act*0.9),max_value=max_renta,value=int(renta_act),step=10)
+            else:
+                _sl_min = max(100, int(renta_act * 0.8))
+                _sl_max = max(_sl_min + 100, int(max(renta_mer, renta_act) * 1.2))
+                _sl_val = max(_sl_min, min(int(renta_act), _sl_max))
+                nueva_renta = st.slider("Ajusta la renta mensual (€)", min_value=_sl_min, max_value=_sl_max, value=_sl_val, step=25)
+            ganancia_m=nueva_renta-renta_act; ganancia_a=ganancia_m*12
+            nueva_neta=((nueva_renta-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
+            s1,s2,s3=st.columns(3)
+            s1.metric("Nueva Renta",f"{nueva_renta:,.0f} €/mes",delta=f"{ganancia_m:+.0f} €")
+            s2.metric("Impacto Anual",f"{ganancia_a:+,.0f} €/año")
+            s3.metric("Nueva Rent. Neta",f"{nueva_neta:.1f}%",delta=f"{nueva_neta-rent_neta:+.1f}%")
+
     _tab_gp, _tab_fr = st.tabs(["📅 Gastos programados", "🧾 Facturas recibidas"])
 
     with _tab_gp:
