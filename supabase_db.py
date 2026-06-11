@@ -1686,3 +1686,294 @@ def guardar_modo_contable(user_id, modo):
         return r.status_code in (200, 204)
     except Exception:
         return False
+
+
+# ================================================================
+# CASHFLOW PROGRAMADO
+# Gastos e ingresos variables en meses concretos
+# ================================================================
+
+def leer_cashflow_programado(user_id: str, inmueble: str = None,
+                              mes: int = None, anio: int = None) -> pd.DataFrame:
+    """
+    Lee los eventos de cashflow programado del usuario.
+    - inmueble: filtra por inmueble (None = todos)
+    - mes:      filtra por mes 1-12 (None = todos)
+    - anio:     filtra por año concreto (None = todos)
+    """
+    if not _validar_user_id(user_id, "leer_cashflow_programado"):
+        return pd.DataFrame()
+    try:
+        url = f"{SUPABASE_URL}/rest/v1/cashflow_programado?user_id=eq.{user_id}&select=*&order=mes.asc,anio.asc"
+        if inmueble:
+            url += f"&inmueble=eq.{requests.utils.quote(inmueble)}"
+        if mes:
+            url += f"&mes=eq.{mes}"
+        if anio:
+            url += f"&anio=eq.{anio}"
+        r = requests.get(url, headers=_headers(), timeout=10)
+        if r.status_code == 200 and r.json():
+            return pd.DataFrame(r.json())
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+def crear_cashflow_programado(user_id: str, datos: dict) -> dict:
+    """
+    Crea un nuevo evento de cashflow programado.
+    datos debe contener: tipo, categoria, descripcion, importe, mes,
+                         recurrencia, inmueble (opcional), anio (opcional)
+    Devuelve: {'ok': True, 'id': uuid} o {'ok': False, 'error': ...}
+    """
+    if not _validar_user_id(user_id, "crear_cashflow_programado"):
+        return {"ok": False, "error": "user_id inválido"}
+    try:
+        payload = {
+            "user_id": user_id,
+            "tipo":        datos.get("tipo"),
+            "categoria":   datos.get("categoria", "otro"),
+            "descripcion": datos.get("descripcion", ""),
+            "importe":     float(datos.get("importe", 0)),
+            "mes":         int(datos.get("mes")),
+            "anio":        datos.get("anio"),           # None si es anual
+            "recurrencia": datos.get("recurrencia", "unico"),
+            "estado":      "programado",
+            "inmueble":    datos.get("inmueble"),       # None si es cartera general
+            "notas":       datos.get("notas", ""),
+        }
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/cashflow_programado",
+            headers={**_headers(), "Prefer": "return=representation"},
+            json=payload, timeout=10
+        )
+        if r.status_code in (200, 201):
+            nuevo = r.json()
+            return {"ok": True, "id": nuevo[0]["id"] if isinstance(nuevo, list) else nuevo.get("id")}
+        return {"ok": False, "error": f"{r.status_code}: {r.text[:200]}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def actualizar_cashflow_programado(evento_id: str, user_id: str, datos: dict) -> bool:
+    """
+    Actualiza un evento existente. Solo los campos presentes en datos se modifican.
+    Campos actualizables: tipo, categoria, descripcion, importe, mes, anio,
+                          recurrencia, estado, inmueble, movimiento_id, notas
+    """
+    if not _validar_user_id(user_id, "actualizar_cashflow_programado"):
+        return False
+    campos_validos = {"tipo", "categoria", "descripcion", "importe", "mes",
+                      "anio", "recurrencia", "estado", "inmueble", "movimiento_id", "notas"}
+    payload = {k: v for k, v in datos.items() if k in campos_validos}
+    if not payload:
+        return False
+    try:
+        r = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/cashflow_programado?id=eq.{evento_id}&user_id=eq.{user_id}",
+            headers={**_headers(), "Prefer": "return=minimal"},
+            json=payload, timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
+
+
+def eliminar_cashflow_programado(evento_id: str, user_id: str) -> bool:
+    """Elimina un evento de cashflow programado por su id."""
+    if not _validar_user_id(user_id, "eliminar_cashflow_programado"):
+        return False
+    try:
+        r = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/cashflow_programado?id=eq.{evento_id}&user_id=eq.{user_id}",
+            headers=_headers(), timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
+
+
+def realizar_evento_cashflow(evento_id: str, user_id: str, movimiento_id: int) -> bool:
+    """
+    Marca un evento como 'realizado' y lo linkea al movimiento del diario.
+    Usar tras registrar el pago en movimientos.
+    """
+    return actualizar_cashflow_programado(evento_id, user_id, {
+        "estado": "realizado",
+        "movimiento_id": movimiento_id,
+    })
+
+
+# ================================================================
+# FACTURAS RECIBIDAS
+# Facturas de gasto (deducibles) y recibos de ingreso (alquileres)
+# ================================================================
+
+def leer_facturas_recibidas(user_id: str, inmueble: str = None,
+                             ejercicio: int = None, trimestre: int = None,
+                             tipo: str = None) -> pd.DataFrame:
+    """
+    Lee las facturas recibidas del usuario con filtros opcionales.
+    - inmueble:   nombre del inmueble (None = todos)
+    - ejercicio:  año fiscal, ej. 2025 (None = todos)
+    - trimestre:  1-4 (None = todos)
+    - tipo:       'gasto' | 'ingreso' (None = ambos)
+    """
+    if not _validar_user_id(user_id, "leer_facturas_recibidas"):
+        return pd.DataFrame()
+    try:
+        url = (f"{SUPABASE_URL}/rest/v1/facturas_recibidas"
+               f"?user_id=eq.{user_id}&select=*&order=fecha.desc")
+        if inmueble:
+            url += f"&inmueble=eq.{requests.utils.quote(inmueble)}"
+        if ejercicio:
+            url += f"&ejercicio=eq.{ejercicio}"
+        if trimestre:
+            url += f"&trimestre=eq.{trimestre}"
+        if tipo:
+            url += f"&tipo=eq.{tipo}"
+        r = requests.get(url, headers=_headers(), timeout=10)
+        if r.status_code == 200 and r.json():
+            return pd.DataFrame(r.json())
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+def crear_factura_recibida(user_id: str, datos: dict) -> dict:
+    """
+    Registra una nueva factura recibida (gasto o ingreso).
+    datos debe contener: tipo, categoria, fecha, ejercicio, importe, importe_total
+    Opcionales: inmueble, proveedor, concepto, iva, movimiento_id,
+                archivo_ruta, archivo_nombre, interpretado_ia, notas
+    Devuelve: {'ok': True, 'id': uuid} o {'ok': False, 'error': ...}
+    """
+    if not _validar_user_id(user_id, "crear_factura_recibida"):
+        return {"ok": False, "error": "user_id inválido"}
+    try:
+        payload = {
+            "user_id":         user_id,
+            "tipo":            datos.get("tipo"),
+            "categoria":       datos.get("categoria", "otro"),
+            "fecha":           str(datos.get("fecha")),
+            "ejercicio":       int(datos.get("ejercicio")),
+            "inmueble":        datos.get("inmueble"),
+            "movimiento_id":   datos.get("movimiento_id"),
+            "proveedor":       datos.get("proveedor", ""),
+            "concepto":        datos.get("concepto", ""),
+            "importe":         float(datos.get("importe", 0)),
+            "iva":             float(datos.get("iva", 0)),
+            "importe_total":   float(datos.get("importe_total") or datos.get("importe", 0)),
+            "archivo_ruta":    datos.get("archivo_ruta"),
+            "archivo_nombre":  datos.get("archivo_nombre"),
+            "interpretado_ia": bool(datos.get("interpretado_ia", False)),
+            "notas":           datos.get("notas", ""),
+        }
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/facturas_recibidas",
+            headers={**_headers(), "Prefer": "return=representation"},
+            json=payload, timeout=10
+        )
+        if r.status_code in (200, 201):
+            nuevo = r.json()
+            return {"ok": True, "id": nuevo[0]["id"] if isinstance(nuevo, list) else nuevo.get("id")}
+        return {"ok": False, "error": f"{r.status_code}: {r.text[:200]}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def actualizar_factura_recibida(factura_id: str, user_id: str, datos: dict) -> bool:
+    """
+    Actualiza campos de una factura recibida existente.
+    Útil para corregir datos tras la interpretación IA o linkar un movimiento.
+    """
+    if not _validar_user_id(user_id, "actualizar_factura_recibida"):
+        return False
+    campos_validos = {"tipo", "categoria", "fecha", "ejercicio", "inmueble",
+                      "movimiento_id", "proveedor", "concepto", "importe",
+                      "iva", "importe_total", "archivo_ruta", "archivo_nombre",
+                      "interpretado_ia", "notas"}
+    payload = {k: v for k, v in datos.items() if k in campos_validos}
+    if not payload:
+        return False
+    try:
+        r = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/facturas_recibidas?id=eq.{factura_id}&user_id=eq.{user_id}",
+            headers={**_headers(), "Prefer": "return=minimal"},
+            json=payload, timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
+
+
+def eliminar_factura_recibida(factura_id: str, user_id: str,
+                               archivo_ruta: str = None) -> bool:
+    """
+    Elimina una factura recibida. Si tiene archivo, lo borra también de Storage.
+    """
+    if not _validar_user_id(user_id, "eliminar_factura_recibida"):
+        return False
+    try:
+        # 1. Borrar archivo de Storage si existe
+        if archivo_ruta:
+            h = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                "Content-Type": "application/json",
+            }
+            requests.delete(
+                f"{SUPABASE_URL}/storage/v1/object/facturas/{archivo_ruta}",
+                headers=h, timeout=10
+            )
+        # 2. Borrar registro de la tabla
+        r = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/facturas_recibidas?id=eq.{factura_id}&user_id=eq.{user_id}",
+            headers=_headers(), timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
+
+
+def subir_archivo_factura_recibida(user_id: str, factura_id: str,
+                                    archivo_bytes: bytes,
+                                    extension: str = "pdf") -> dict:
+    """
+    Sube el archivo de una factura recibida a Supabase Storage.
+    Ruta: facturas/{user_id}/recibidas/{factura_id}.{ext}
+    Devuelve: {'ok': True, 'ruta': ..., 'url': ...} o {'ok': False, 'error': ...}
+    """
+    if not _validar_user_id(user_id, "subir_archivo_factura_recibida"):
+        return {"ok": False, "error": "user_id inválido"}
+    try:
+        ruta = f"{user_id}/recibidas/{factura_id}.{extension}"
+        content_type = "application/pdf" if extension == "pdf" else f"image/{extension}"
+        h_storage = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+            "Content-Type": content_type,
+            "x-upsert": "true",
+        }
+        r_upload = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
+            headers=h_storage, data=archivo_bytes, timeout=30
+        )
+        if r_upload.status_code not in (200, 201):
+            return {"ok": False, "error": f"Storage {r_upload.status_code}: {r_upload.text[:200]}"}
+
+        # URL firmada temporal (1 hora)
+        r_sign = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/sign/facturas/{ruta}",
+            headers={**_headers(), "Content-Type": "application/json"},
+            json={"expiresIn": 3600}, timeout=10
+        )
+        if r_sign.status_code == 200:
+            signed = r_sign.json().get("signedURL", "")
+            url = f"{SUPABASE_URL}/storage/v1{signed}" if signed.startswith("/") else signed
+        else:
+            url = f"{SUPABASE_URL}/storage/v1/object/public/facturas/{ruta}"
+
+        return {"ok": True, "ruta": ruta, "url": url}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
