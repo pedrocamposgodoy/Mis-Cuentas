@@ -3239,12 +3239,207 @@ elif menu == "Gastos":
                         st.warning('Rellena descripción e importe.')
 
 # ================================================================
-# PANTALLA: CASH FLOW
-# Módulo completo — cashflow_module.py
+# PANTALLA: CASH FLOW — Forecast anual + Calendario mensual
 # ================================================================
 elif menu == "Cash Flow":
-    df_gastos_rec_cf = leer_gastos_recurrentes(user_id=st.session_state.user_id)
-    render_cashflow(df_mov, df_inm, df_gastos_rec_cf, safe_float)
+    st.markdown('<div class="nc-brand-header">💵 Cash Flow</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Previsión anual · Ingresos y gastos programados</div>', unsafe_allow_html=True)
+
+    _uid_cf   = st.session_state.get("user_id", "")
+    _anio_cf  = datetime.now().year
+    _mes_act_cf = datetime.now().month
+    _meses_s  = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+    _meses_f  = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+    _meses_id = [f"{_anio_cf}-{str(m).zfill(2)}" for m in range(1,13)]
+    _mes_act_str = f"{_anio_cf}-{str(_mes_act_cf).zfill(2)}"
+
+    # ── Fuentes de datos ─────────────────────────────────────────
+    _df_gr_cf  = leer_gastos_recurrentes(_uid_cf)
+    _fijo_men  = float(_df_gr_cf["importe"].sum()) if not _df_gr_cf.empty else 0.0
+    _renta_tot = float(df_inm["Renta"].sum()) if not df_inm.empty else 0.0
+    _baseline  = _renta_tot - _fijo_men
+
+    # Cashflow programado — todos los inmuebles
+    _df_cfp_cf = leer_cashflow_programado(_uid_cf)
+    _cprog_gas = {}
+    _cprog_ing = {}
+    if not _df_cfp_cf.empty:
+        for _, _ev in _df_cfp_cf.iterrows():
+            _em = f"{_anio_cf}-{str(int(_ev.get('mes',0))).zfill(2)}"
+            _ei = float(_ev.get("importe", 0))
+            if _ev.get("tipo") == "gasto":
+                _cprog_gas[_em] = _cprog_gas.get(_em, 0) + _ei
+            else:
+                _cprog_ing[_em] = _cprog_ing.get(_em, 0) + _ei
+
+    # Ingresos reales — facturas cobradas
+    _ing_real_mes = {}
+    _df_fe_cf = leer_facturas_emitidas(_uid_cf)
+    if not _df_fe_cf.empty:
+        try:
+            _fc_cf = "fecha" if "fecha" in _df_fe_cf.columns else "fecha_emision"
+            _df_fe_cf[_fc_cf] = pd.to_datetime(_df_fe_cf[_fc_cf], errors="coerce")
+            _fe_cob = _df_fe_cf[
+                (_df_fe_cf["estado"] == "cobrada") &
+                (_df_fe_cf[_fc_cf].dt.year == _anio_cf)
+            ].copy()
+            if not _fe_cob.empty:
+                _fe_cob["_mes"] = _fe_cob[_fc_cf].dt.strftime("%Y-%m")
+                _ing_real_mes = _fe_cob.groupby("_mes")["total"].sum().to_dict()
+        except Exception:
+            pass
+
+    # Gastos reales — movimientos
+    _gas_real_mes = {}
+    if not df_mov.empty:
+        try:
+            _df_mov_cf = df_mov[df_mov["Tipo"] == "Gasto"].copy()
+            _df_mov_cf["_mes"] = pd.to_datetime(_df_mov_cf["Fecha"], errors="coerce").dt.strftime("%Y-%m")
+            _df_mov_cf = _df_mov_cf[_df_mov_cf["_mes"].notna()]
+            _df_mov_cf = _df_mov_cf[_df_mov_cf["_mes"].str.startswith(str(_anio_cf))]
+            _gas_real_mes = _df_mov_cf.groupby("_mes")["Importe"].sum().to_dict()
+        except Exception:
+            pass
+
+    # ── Construir datos por mes ───────────────────────────────────
+    _data_cf = []
+    for _i, _m in enumerate(_meses_id):
+        _pasado = _m <= _mes_act_str
+        if _pasado:
+            _ir = float(_ing_real_mes.get(_m, 0))
+            _gr = float(_gas_real_mes.get(_m, 0))
+            _net = _ir - _gr
+        else:
+            _ir = _renta_tot + _cprog_ing.get(_m, 0)
+            _gr = _fijo_men + _cprog_gas.get(_m, 0)
+            _net = _ir - _gr
+        _evs_m = []
+        if not _df_cfp_cf.empty:
+            for _, _ev in _df_cfp_cf.iterrows():
+                if int(_ev.get("mes", 0)) == _i + 1:
+                    _evs_m.append(_ev)
+        _st = "g" if _net >= 4000 else ("y" if _net >= 2000 else "r")
+        _data_cf.append({
+            "mes": _meses_s[_i], "mes_full": _meses_f[_i],
+            "mes_id": _m, "pasado": _pasado,
+            "ing": _ir, "gas": _gr, "net": _net,
+            "status": _st, "eventos": _evs_m
+        })
+
+    _SC  = {"g": "#3B6D11", "y": "#BA7517", "r": "#A32D2D"}
+    _SBG = {"g": "#EAF3DE", "y": "#FAEEDA", "r": "#FCEBEB"}
+    _SL  = {"g": "Saludable", "y": "Atención", "r": "Tensión"}
+
+    # ── KPI strip ─────────────────────────────────────────────────
+    _best_cf  = max(_data_cf, key=lambda x: x["net"])
+    _worst_cf = min(_data_cf, key=lambda x: x["net"])
+    _avg_cf   = sum(d["net"] for d in _data_cf) / 12
+    _k1,_k2,_k3 = st.columns(3)
+    _k1.metric("Mejor mes",    f'{_best_cf["net"]:,.0f} €',  _best_cf["mes_full"])
+    _k2.metric("Media mensual",f'{_avg_cf:,.0f} €',          f'Base {_baseline:,.0f} €')
+    _k3.metric("Peor mes",     f'{_worst_cf["net"]:,.0f} €', _worst_cf["mes_full"])
+
+    # ── Alert ─────────────────────────────────────────────────────
+    _rojos = [d for d in _data_cf if d["status"] == "r"]
+    if _rojos:
+        _wr = min(_rojos, key=lambda x: x["net"])
+        st.markdown(f"""<div style="background:#FCEBEB;border:0.5px solid #F7C1C1;
+                        border-radius:10px;padding:14px 18px;margin:12px 0;
+                        display:flex;align-items:flex-start;gap:10px;">
+            <span style="font-size:18px;">⚠️</span>
+            <div><strong style="color:#A32D2D;">Tensión de liquidez en {', '.join(d['mes_full'] for d in _rojos)}</strong>
+            <br><span style="font-size:13px;color:#791F1F;">Cashflow mínimo previsto:
+            <strong>{_wr['net']:,.0f} € en {_wr['mes_full']}</strong>
+            (base normal: {_baseline:,.0f} €/mes)</span></div>
+        </div>""", unsafe_allow_html=True)
+
+    # ── Tabs ─────────────────────────────────────────────────────
+    _cf_t1, _cf_t2 = st.tabs(["📊 Forecast anual", "📅 Calendario mensual"])
+
+    with _cf_t1:
+        _ing_real_arr = [d["ing"] if d["pasado"] else 0 for d in _data_cf]
+        _gas_real_arr = [d["gas"] if d["pasado"] else 0 for d in _data_cf]
+        _ing_est_arr  = [0 if d["pasado"] else d["ing"] for d in _data_cf]
+        _gas_est_arr  = [0 if d["pasado"] else d["gas"] for d in _data_cf]
+
+        _fig_cf = go.Figure()
+        _fig_cf.add_trace(go.Bar(name="Ingresos cobrados", x=_meses_id, y=_ing_real_arr,
+            marker_color=ACCENT, text=[f"{v:,.0f}€" if v > 0 else "" for v in _ing_real_arr],
+            textposition="outside"))
+        _fig_cf.add_trace(go.Bar(name="Gastos reales", x=_meses_id, y=_gas_real_arr,
+            marker_color=RED, text=[f"{v:,.0f}€" if v > 0 else "" for v in _gas_real_arr],
+            textposition="outside"))
+        _fig_cf.add_trace(go.Bar(name="Ingresos est.", x=_meses_id, y=_ing_est_arr,
+            marker_color="rgba(24,95,165,0.18)", marker_line_color=ACCENT, marker_line_width=1.5,
+            text=[f"{v:,.0f}€" if v > 0 else "" for v in _ing_est_arr], textposition="outside"))
+        _fig_cf.add_trace(go.Bar(name="Gastos est.", x=_meses_id, y=_gas_est_arr,
+            marker_color="rgba(192,57,43,0.18)", marker_line_color=RED, marker_line_width=1.5,
+            text=[f"{v:,.0f}€" if v > 0 else "" for v in _gas_est_arr], textposition="outside"))
+        _fig_cf.update_layout(
+            barmode="group", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            margin=dict(l=10,r=10,t=30,b=10), height=320,
+            yaxis=dict(showgrid=False, visible=False),
+            xaxis=dict(showgrid=False, tickangle=-30, type="category"),
+            font=dict(family="DM Sans", size=12),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(_fig_cf, use_container_width=True)
+        st.caption("Barras sólidas: datos reales · Barras con borde: estimación (renta + gastos fijos + programados)")
+
+    with _cf_t2:
+        _cols_cal = st.columns(4)
+        _sel_mes_cf = st.session_state.get("cf_mes_sel", None)
+        for _i, _d in enumerate(_data_cf):
+            with _cols_cal[_i % 4]:
+                _is_sel = _sel_mes_cf == _d["mes_id"]
+                _pills  = "".join([
+                    f'<span style="font-size:10px;padding:1px 6px;border-radius:10px;'
+                    f'background:{"#FDECEA" if ev.get("tipo")=="gasto" else "#EAF3DE"};'
+                    f'color:{"#A32D2D" if ev.get("tipo")=="gasto" else "#1a7a40"};'
+                    f'margin-right:3px;">{"↓" if ev.get("tipo")=="gasto" else "↑"}'
+                    f'{str(ev.get("categoria",""))[:4]}</span>'
+                    for ev in _d["eventos"]
+                ])
+                if st.button(
+                    f"**{_d['mes_full']}**\n\n{_d['net']:,.0f} €\n\n{_SL[_d['status']]}",
+                    key=f"cal_btn_{_d['mes_id']}",
+                    use_container_width=True,
+                    type="primary" if _is_sel else "secondary"
+                ):
+                    st.session_state["cf_mes_sel"] = None if _is_sel else _d["mes_id"]
+                    st.rerun()
+
+        if _sel_mes_cf:
+            _d_sel = next((d for d in _data_cf if d["mes_id"] == _sel_mes_cf), None)
+            if _d_sel:
+                st.divider()
+                _ds1, _ds2 = st.columns(2)
+                with _ds1:
+                    st.markdown(f"**{_d_sel['mes_full']} {_anio_cf}** — "
+                                f"{'Real' if _d_sel['pasado'] else 'Estimado'}")
+                    st.metric("Cash Flow Neto", f'{_d_sel["net"]:,.0f} €')
+                with _ds2:
+                    _ics, _gcs = st.columns(2)
+                    _ics.metric("Ingresos", f'{_d_sel["ing"]:,.0f} €')
+                    _gcs.metric("Gastos",   f'{_d_sel["gas"]:,.0f} €')
+                if _d_sel["eventos"]:
+                    st.markdown("**Eventos programados:**")
+                    for _ev in _d_sel["eventos"]:
+                        _eg = _ev.get("tipo") == "gasto"
+                        st.markdown(
+                            f'<div style="background:{"#FDECEA" if _eg else "#EAF3DE"};'
+                            f'border-radius:7px;padding:8px 14px;margin-bottom:5px;'
+                            f'display:flex;justify-content:space-between;">'
+                            f'<span style="color:{"#A32D2D" if _eg else "#1a7a40"};font-size:13px;">'
+                            f'{"↓" if _eg else "↑"} {_ev.get("descripcion","")}'
+                            f'<span style="font-size:11px;color:#6B7280;margin-left:8px;">'
+                            f'{_ev.get("inmueble","Cartera")}</span></span>'
+                            f'<strong style="color:{"#A32D2D" if _eg else "#1a7a40"};">'
+                            f'{"−" if _eg else "+"}{float(_ev.get("importe",0)):,.0f} €</strong></div>',
+                            unsafe_allow_html=True)
+                elif not _d_sel["pasado"]:
+                    st.caption("Sin eventos variables programados este mes — solo gastos fijos.")
+
 # ================================================================
 # PANTALLA: SUMINISTROS
 # Auditoría de potencia eléctrica, comparador de tarifas
