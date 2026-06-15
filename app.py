@@ -1306,12 +1306,7 @@ if menu == "Torre de Control":
         fondo_color = "#FDECEA" if es_critica else "#FFF9E6"
         texto_color = "#C0392B" if es_critica else "#854F0B"
         extra = f"<span style='font-size:0.75rem;color:{borde_color};margin-left:8px;'>+{len(alertas_criticas)-1} alertas más</span>" if len(alertas_criticas)>1 else ""
-        col_robot, col_alerta = st.columns([1, 11])
-        with col_robot:
-            if st.button("🤖", key="btn_robot_torre", help="Abrir Sabio IA", use_container_width=True):
-                st.session_state["sabio_torre_abierto"] = True
-        with col_alerta:
-            st.markdown(f"""
+        st.markdown(f"""
             <div style="position:relative;background:{fondo_color};border:1px solid {borde_color};
                         border-radius:10px;padding:9px 14px;margin-top:4px;">
               <span style="font-size:0.85rem;font-weight:600;color:{texto_color};">
@@ -1714,11 +1709,6 @@ if menu == "Torre de Control":
         "alertas_medias": alertas_medias,
         "num_inmuebles": len(df_inm),
     }
-    sabio_abierto = st.session_state.get("sabio_torre_abierto", False)
-    with st.expander("🧠 Sabio Patrimonial IA", expanded=sabio_abierto):
-        if sabio_abierto:
-            st.session_state["sabio_torre_abierto"] = False
-        render_sabio("torre", contexto_torre)
 
 # ================================================================
 # PANTALLA: FICHAS (BENCHMARK)
