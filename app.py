@@ -3344,6 +3344,7 @@ elif menu == "Gastos":
 # PANTALLA: CASH FLOW — Forecast anual + Calendario mensual
 # ================================================================
 elif menu == "Cash Flow":
+    from supabase_db import leer_cashflow_programado
     st.markdown('<div class="nc-brand-header">💵 Cash Flow</div>', unsafe_allow_html=True)
     st.markdown('<div class="nc-brand-sub">Previsión anual · Ingresos y gastos programados</div>', unsafe_allow_html=True)
 
