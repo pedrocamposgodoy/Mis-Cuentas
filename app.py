@@ -2524,10 +2524,6 @@ elif menu == "Fichas (Benchmark)":
         "seguro_anual":         safe_float(f.get("Seguro_Anual", 0)),
         "alerta_vencimiento":   _msg_v if _tipo_v else "Sin alerta",
     }
-    if st.session_state.get("sabio_prev_ficha") != f.get("Nombre"):
-        limpiar_insight_seccion("fichas")
-        st.session_state["sabio_prev_ficha"] = f.get("Nombre")
-    render_sabio("fichas", contexto_fichas)
 
 # ================================================================
 # PANTALLA: AUDITORÍA DE MANTENIMIENTO
