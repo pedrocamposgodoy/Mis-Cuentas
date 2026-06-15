@@ -2192,8 +2192,8 @@ elif menu == "Fichas (Benchmark)":
         _mask_gas = _df_gas_tab["_fecha_dt"].dt.year == _anio_tab
         if _mes_tab > 0:
             _mask_gas &= (_df_gas_tab["_fecha_dt"].dt.month == _mes_tab)
-        _df_gas_tab = _df_gas_tab[_mask_gas][["Fecha", "Concepto", "Categoría", "Importe", "Deducible"]].copy()
-        _df_gas_tab = _df_gas_tab.sort_values("Fecha")
+        _df_gas_tab = _df_gas_tab[_mask_gas][["id","Fecha","Concepto","Categoría","Importe","Deducible"]].copy()
+        _df_gas_tab = _df_gas_tab.sort_values("Fecha").reset_index(drop=True)
     except Exception:
         _df_gas_tab = pd.DataFrame()
 
@@ -2221,9 +2221,39 @@ elif menu == "Fichas (Benchmark)":
 
     st.markdown("**📉 Gastos**")
     if not _df_gas_tab.empty:
-        st.dataframe(
-            _df_gas_tab.style.format({"Importe": "{:,.2f} €"}),
-            hide_index=True, use_container_width=True)
+        from supabase_db import actualizar_importe_movimiento
+        _uid_edit = st.session_state.get("user_id", "")
+        _edited = st.data_editor(
+            _df_gas_tab.drop(columns=["id"]),
+            hide_index=True,
+            use_container_width=True,
+            key=f"edit_gas_{sel}_{_anio_tab}_{_mes_tab}",
+            column_config={
+                "Fecha":     st.column_config.TextColumn("Fecha",     disabled=True),
+                "Concepto":  st.column_config.TextColumn("Concepto",  disabled=True),
+                "Categoría": st.column_config.TextColumn("Categoría", disabled=True),
+                "Importe":   st.column_config.NumberColumn("Importe (€)", format="%.2f", min_value=0.0),
+                "Deducible": st.column_config.TextColumn("Deducible", disabled=True),
+            }
+        )
+        # Detectar cambios y guardar
+        _orig_imp = _df_gas_tab["Importe"].reset_index(drop=True)
+        _edit_imp = _edited["Importe"].reset_index(drop=True)
+        _changed  = _orig_imp[_orig_imp != _edit_imp].index.tolist()
+        if _changed:
+            _saved, _errors = 0, 0
+            for _idx in _changed:
+                _mov_id = _df_gas_tab.iloc[_idx]["id"]
+                _nuevo  = float(_edit_imp.iloc[_idx])
+                if actualizar_importe_movimiento(_mov_id, _uid_edit, _nuevo):
+                    _saved += 1
+                else:
+                    _errors += 1
+            if _saved:
+                st.success(f"✓ {_saved} gasto(s) actualizados.")
+                st.rerun()
+            if _errors:
+                st.error(f"Error al guardar {_errors} gasto(s).")
     else:
         st.caption("Sin gastos registrados en este período.")
 
