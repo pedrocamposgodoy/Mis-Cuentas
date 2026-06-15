@@ -2081,6 +2081,7 @@ elif menu == "Fichas (Benchmark)":
     if _key_ia_fic not in st.session_state:
         with st.spinner("Analizando el activo..."):
             try:
+                from supabase_db import leer_cashflow_programado as _leer_cfp_ia
                 # Gastos fijos del inmueble
                 _uid_ia   = st.session_state.get("user_id", "")
                 _df_gr_ia = leer_gastos_recurrentes(_uid_ia)
@@ -2091,7 +2092,7 @@ elif menu == "Fichas (Benchmark)":
                 _cf_base_ia = renta_act - _gas_fijos_ia
 
                 # Eventos programados del inmueble
-                _df_cfp_ia = leer_cashflow_programado(_uid_ia, inmueble=sel)
+                _df_cfp_ia = _leer_cfp_ia(_uid_ia, inmueble=sel)
                 _anio_ia   = datetime.now().year
                 _mes_ia    = datetime.now().month
                 _meses_ia  = ["","Ene","Feb","Mar","Abr","May","Jun",
