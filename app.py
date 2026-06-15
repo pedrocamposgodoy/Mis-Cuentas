@@ -2074,50 +2074,43 @@ elif menu == "Fichas (Benchmark)":
     _key_ia_fic = f"ia_consejo_{sel}"
     _col_ia_txt, _col_ia_btn = st.columns([5, 1])
     with _col_ia_btn:
-        if st.button("🔄 Actualizar", key=f"btn_ia_{sel}", use_container_width=True):
-            if _key_ia_fic in st.session_state:
-                del st.session_state[_key_ia_fic]
+        _btn_ia = st.button("🤖 Analizar con IA", key=f"btn_ia_{sel}", use_container_width=True)
+    if _btn_ia and _key_ia_fic in st.session_state:
+        del st.session_state[_key_ia_fic]
 
-    if _key_ia_fic not in st.session_state:
+    if _btn_ia and _key_ia_fic not in st.session_state:
         with st.spinner("Analizando el activo..."):
             try:
                 from supabase_db import leer_cashflow_programado as _leer_cfp_ia
-                # Gastos fijos del inmueble
                 _uid_ia   = st.session_state.get("user_id", "")
                 _df_gr_ia = leer_gastos_recurrentes(_uid_ia)
                 _gas_fijos_ia = 0.0
                 if not _df_gr_ia.empty and "inmueble" in _df_gr_ia.columns:
-                    _gr_ia_inm = _df_gr_ia[_df_gr_ia["inmueble"].str.lower().str.strip() == sel.lower().strip()]
+                    _gr_ia_inm = _df_gr_ia[
+                        _df_gr_ia["inmueble"].str.lower().str.strip() == sel.lower().strip()]
                     _gas_fijos_ia = float(_gr_ia_inm["importe"].sum())
                 _cf_base_ia = renta_act - _gas_fijos_ia
-
-                # Eventos programados del inmueble
-                _df_cfp_ia = _leer_cfp_ia(_uid_ia, inmueble=sel)
-                _anio_ia   = datetime.now().year
-                _mes_ia    = datetime.now().month
-                _meses_ia  = ["","Ene","Feb","Mar","Abr","May","Jun",
-                               "Jul","Ago","Sep","Oct","Nov","Dic"]
-
-                # Cashflow previsto por mes (solo meses futuros)
+                _df_cfp_ia  = _leer_cfp_ia(_uid_ia, inmueble=sel)
+                _anio_ia    = datetime.now().year
+                _mes_ia     = datetime.now().month
+                _meses_ia   = ["","Ene","Feb","Mar","Abr","May","Jun",
+                                "Jul","Ago","Sep","Oct","Nov","Dic"]
                 _cf_meses_ia = []
                 for _mi in range(1, 13):
-                    _mstr = f"{_anio_ia}-{str(_mi).zfill(2)}"
                     if _mi > _mes_ia:
-                        _cpg = 0.0
-                        _cpi = 0.0
+                        _cpg, _cpi = 0.0, 0.0
                         if not _df_cfp_ia.empty:
                             for _, _ev in _df_cfp_ia.iterrows():
                                 if int(_ev.get("mes", 0)) == _mi:
+                                    _amt = float(_ev.get("importe", 0))
                                     if _ev.get("tipo") == "gasto":
-                                        _cpg += float(_ev.get("importe", 0))
+                                        _cpg += _amt
                                     else:
-                                        _cpi += float(_ev.get("importe", 0))
-                        _net_ia = _cf_base_ia + _cpi - _cpg
-                        _cf_meses_ia.append(f"  {_meses_ia[_mi]}: {_net_ia:+,.0f}€"
-                                            + (f" (incl. gastos variables {_cpg:,.0f}€)" if _cpg > 0 else ""))
-
-                _resumen_meses_ia = "\n".join(_cf_meses_ia) if _cf_meses_ia else "Sin datos de forecast disponibles"
-
+                                        _cpi += _amt
+                        _net_mi = _cf_base_ia + _cpi - _cpg
+                        _extra  = f" (var. {_cpg:,.0f}€)" if _cpg > 0 else ""
+                        _cf_meses_ia.append(f"  {_meses_ia[_mi]}: {_net_mi:+,.0f}€{_extra}")
+                _resumen_meses_ia = "\n".join(_cf_meses_ia) or "Sin forecast disponible"
                 _eventos_ia = []
                 if not _df_cfp_ia.empty:
                     for _, _ev in _df_cfp_ia.iterrows():
@@ -2125,52 +2118,47 @@ elif menu == "Fichas (Benchmark)":
                         _tip = "GASTO" if _ev.get("tipo") == "gasto" else "INGRESO"
                         _eventos_ia.append(
                             f"  {_tip} {_meses_ia[_mn] if 1<=_mn<=12 else _mn}: "
-                            f"{_ev.get('descripcion','')} — {float(_ev.get('importe',0)):,.0f}€")
-                _eventos_texto_ia = "\n".join(_eventos_ia) if _eventos_ia else "  Ninguno registrado"
-
-                _prompt_ia = f"""Eres un asesor patrimonial inmobiliario en España. Analiza este activo y da un consejo concreto y útil.
-
-ACTIVO: {sel}
-Renta mensual actual: {renta_act:,.0f} €
-Gastos fijos mensuales: {_gas_fijos_ia:,.0f} €
-Cashflow neto base (sin eventos): {_cf_base_ia:+,.0f} €/mes
-
-PREVISIÓN CASHFLOW MESES PENDIENTES {_anio_ia}:
-{_resumen_meses_ia}
-
-EVENTOS FINANCIEROS PROGRAMADOS:
-{_eventos_texto_ia}
-
-Responde en máximo 3 frases. Sé directo, menciona meses y cifras concretas del inmueble.
-Indica: (1) si hay tensión de liquidez y cuándo, (2) si es buen momento para reformas o mejor esperar, (3) una acción concreta recomendada.
-Responde en español."""
-
+                            f"{_ev.get('descripcion','')} {float(_ev.get('importe',0)):,.0f}€")
+                _eventos_texto_ia = "\n".join(_eventos_ia) or "  Ninguno registrado"
+                _prompt_ia = (
+                    f"Eres un asesor patrimonial inmobiliario en España. Analiza este activo.\n\n"
+                    f"ACTIVO: {sel}\n"
+                    f"Renta mensual: {renta_act:,.0f}€ | Gastos fijos/mes: {_gas_fijos_ia:,.0f}€ | "
+                    f"Cashflow base: {_cf_base_ia:+,.0f}€/mes\n\n"
+                    f"PREVISIÓN MESES PENDIENTES {_anio_ia}:\n{_resumen_meses_ia}\n\n"
+                    f"EVENTOS PROGRAMADOS:\n{_eventos_texto_ia}\n\n"
+                    f"Responde en máximo 3 frases. Sé directo, menciona meses y cifras concretas. "
+                    f"Indica: (1) si hay tensión de liquidez y cuándo, "
+                    f"(2) si es buen momento para reformas, "
+                    f"(3) una acción concreta. Responde en español."
+                )
                 _resp_ia = anthropic.Anthropic(
-                    api_key=st.secrets.get("ANTHROPIC_API_KEY","")
+                    api_key=st.secrets.get("ANTHROPIC_API_KEY", "")
                 ).messages.create(
                     model="claude-sonnet-4-6",
                     max_tokens=300,
                     messages=[{"role": "user", "content": _prompt_ia}]
                 )
-                _consejo_ia = _resp_ia.content[0].text.strip()
-                st.session_state[_key_ia_fic] = _consejo_ia
+                st.session_state[_key_ia_fic] = _resp_ia.content[0].text.strip()
             except Exception as _e_ia:
                 st.session_state[_key_ia_fic] = f"Error: {str(_e_ia)[:200]}"
 
+    if not _btn_ia and _key_ia_fic not in st.session_state:
+        st.caption("Pulsa '🤖 Analizar con IA' para obtener un consejo personalizado sobre este activo.")
+
     _consejo_txt = st.session_state.get(_key_ia_fic, "")
     if _consejo_txt:
-        st.markdown(f"""
-        <div style="background:linear-gradient(135deg,#EBF3FC 0%,#F4F7FB 100%);
-                    border-left:4px solid #185FA5;border-radius:0 10px 10px 0;
-                    padding:16px 20px;margin:8px 0;">
-          <div style="font-size:12px;color:#185FA5;font-weight:600;
-                      text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
-            Asesor patrimonial IA · {sel}
-          </div>
-          <div style="font-size:14px;color:#1E293B;line-height:1.6;">{_consejo_txt}</div>
-        </div>""", unsafe_allow_html=True)
+        st.markdown(
+            f'''<div style="background:linear-gradient(135deg,#EBF3FC 0%,#F4F7FB 100%);
+                        border-left:4px solid #185FA5;border-radius:0 10px 10px 0;
+                        padding:16px 20px;margin:8px 0;">
+              <div style="font-size:12px;color:#185FA5;font-weight:600;
+                          text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
+                Asesor patrimonial IA · {sel}
+              </div>
+              <div style="font-size:14px;color:#1E293B;line-height:1.6;">{_consejo_txt}</div>
+            </div>''', unsafe_allow_html=True)
 
-    # ── GASTOS PROGRAMADOS + FACTURAS RECIBIDAS ──────────────────
     # ── TABLA DUAL INGRESOS / GASTOS ─────────────────────────────
     st.markdown('<div class="nc-section-title">📋 Ingresos y gastos — detalle por período</div>', unsafe_allow_html=True)
     _uid_tabla = st.session_state.get("user_id", "")
