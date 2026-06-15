@@ -2154,7 +2154,7 @@ Responde en español."""
                 _consejo_ia = _resp_ia.content[0].text.strip()
                 st.session_state[_key_ia_fic] = _consejo_ia
             except Exception as _e_ia:
-                st.session_state[_key_ia_fic] = "No se pudo generar el consejo. Verifica la conexión con la API."
+                st.session_state[_key_ia_fic] = f"Error: {str(_e_ia)[:200]}"
 
     _consejo_txt = st.session_state.get(_key_ia_fic, "")
     if _consejo_txt:
