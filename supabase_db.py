@@ -1977,3 +1977,26 @@ def subir_archivo_factura_recibida(user_id: str, factura_id: str,
         return {"ok": True, "ruta": ruta, "url": url}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# ================================================================
+# EDICIÓN INLINE DE MOVIMIENTOS
+# ================================================================
+
+def actualizar_importe_movimiento(mov_id, user_id: str, nuevo_importe: float) -> bool:
+    """
+    Actualiza el importe de un movimiento existente por su id.
+    Usado para edición inline desde la ficha de inmueble.
+    """
+    if not _validar_user_id(user_id, "actualizar_importe_movimiento"):
+        return False
+    try:
+        r = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
+            headers={**_headers(), "Prefer": "return=minimal"},
+            json={"importe": float(nuevo_importe)},
+            timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception:
+        return False
