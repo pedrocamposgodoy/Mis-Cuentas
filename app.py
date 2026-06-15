@@ -2069,9 +2069,83 @@ elif menu == "Fichas (Benchmark)":
         st.caption("Sin datos suficientes para el gráfico.")
 
     # ── GASTOS PROGRAMADOS + FACTURAS RECIBIDAS ──────────────────
-    st.markdown('<div class="nc-section-title">Análisis de Gastos Reales</div>',unsafe_allow_html=True)
-    res=pd.concat([pd.DataFrame([{"Concepto":"Comunidad","Importe":safe_float(f.get("Comunidad",0)) if pd.notna(f.get("Comunidad",0)) else 0,"Deducible":"S"}]),df_gf[["Concepto","Importe","Deducible"]]])
-    st.dataframe(res.style.format({"Importe":"{:,.2f} €"}),hide_index=True,use_container_width=True)
+    # ── TABLA DUAL INGRESOS / GASTOS ─────────────────────────────
+    st.markdown('<div class="nc-section-title">📋 Ingresos y gastos — detalle por período</div>', unsafe_allow_html=True)
+    _uid_tabla = st.session_state.get("user_id", "")
+    _tf1, _tf2 = st.columns([1, 1])
+    with _tf1:
+        _anio_tab = st.selectbox("Año", [2026, 2025, 2024, 2023], key=f"anio_tab_{sel}")
+    with _tf2:
+        _mes_nombres = ["Todos","Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                        "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+        _mes_tab = st.selectbox("Mes", list(range(0, 13)),
+                                format_func=lambda x: _mes_nombres[x], key=f"mes_tab_{sel}")
+
+    # ── INGRESOS: facturas emitidas cobradas ──────────────────────
+    _df_fe_tab = leer_facturas_emitidas(_uid_tabla)
+    _df_ing_tab = pd.DataFrame()
+    if not _df_fe_tab.empty and "inmueble" in _df_fe_tab.columns:
+        try:
+            _fc_tab = "fecha" if "fecha" in _df_fe_tab.columns else "fecha_emision"
+            _df_fe_tab[_fc_tab] = pd.to_datetime(_df_fe_tab[_fc_tab], errors="coerce")
+            _mask_ing = (
+                (_df_fe_tab["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
+                (_df_fe_tab["estado"] == "cobrada") &
+                (_df_fe_tab[_fc_tab].dt.year == _anio_tab)
+            )
+            if _mes_tab > 0:
+                _mask_ing &= (_df_fe_tab[_fc_tab].dt.month == _mes_tab)
+            _df_ing_tab = _df_fe_tab[_mask_ing][[_fc_tab, "concepto", "total"]].copy()
+            _df_ing_tab.columns = ["Fecha", "Concepto", "Importe"]
+            _df_ing_tab["Fecha"] = _df_ing_tab["Fecha"].dt.strftime("%Y-%m-%d")
+            _df_ing_tab = _df_ing_tab.sort_values("Fecha")
+        except Exception:
+            pass
+
+    # ── GASTOS: movimientos de tipo Gasto ─────────────────────────
+    _df_gas_tab = df_mov[
+        (df_mov["Apartamento"] == sel) &
+        (df_mov["Tipo"] == "Gasto")
+    ].copy()
+    try:
+        _df_gas_tab["_fecha_dt"] = pd.to_datetime(_df_gas_tab["Fecha"], errors="coerce")
+        _mask_gas = _df_gas_tab["_fecha_dt"].dt.year == _anio_tab
+        if _mes_tab > 0:
+            _mask_gas &= (_df_gas_tab["_fecha_dt"].dt.month == _mes_tab)
+        _df_gas_tab = _df_gas_tab[_mask_gas][["Fecha", "Concepto", "Categoría", "Importe", "Deducible"]].copy()
+        _df_gas_tab = _df_gas_tab.sort_values("Fecha")
+    except Exception:
+        _df_gas_tab = pd.DataFrame()
+
+    # ── TOTALES ───────────────────────────────────────────────────
+    _tot_ing = float(_df_ing_tab["Importe"].sum()) if not _df_ing_tab.empty else 0.0
+    _tot_gas = float(_df_gas_tab["Importe"].sum()) if not _df_gas_tab.empty else 0.0
+    _neto_tab = _tot_ing - _tot_gas
+
+    _km1, _km2, _km3 = st.columns(3)
+    _km1.metric("Ingresos cobrados", f"{_tot_ing:,.0f} €")
+    _km2.metric("Gastos",            f"{_tot_gas:,.0f} €")
+    _km3.metric("Beneficio neto",    f"{_neto_tab:+,.0f} €",
+                delta_color="normal" if _neto_tab >= 0 else "inverse")
+
+    st.divider()
+
+    # Ingresos
+    st.markdown("**📈 Ingresos cobrados**")
+    if not _df_ing_tab.empty:
+        st.dataframe(
+            _df_ing_tab.style.format({"Importe": "{:,.2f} €"}),
+            hide_index=True, use_container_width=True)
+    else:
+        st.caption("Sin ingresos cobrados en este período.")
+
+    st.markdown("**📉 Gastos**")
+    if not _df_gas_tab.empty:
+        st.dataframe(
+            _df_gas_tab.style.format({"Importe": "{:,.2f} €"}),
+            hide_index=True, use_container_width=True)
+    else:
+        st.caption("Sin gastos registrados en este período.")
 
     # ── EVOLUCIÓN MENSUAL — ESTE ACTIVO ─────────────────────────
     with st.expander("📊 Análisis fiscal avanzado", expanded=False):
