@@ -2510,7 +2510,7 @@ elif menu == "Auditoría Mantenimiento":
 elif menu == "Gastos":
     st.markdown('<div class="nc-brand-header">Gastos</div>',unsafe_allow_html=True)
     st.markdown('<div class="nc-brand-sub">Registro de gastos · Facturas recibidas</div>',unsafe_allow_html=True)
-    tab1,tab2,tab3=st.tabs(["📋 Registro de Gastos","📤 Registrar Gasto","💳 Gastos Fijos"])
+    tab1,tab2,tab3,tab4=st.tabs(["📋 Registro de Gastos","📤 Registrar Gasto","💳 Gastos Fijos","📅 Gastos Programados"])
 
     with tab1:
         # ── IMPORTS LOCALES ────────────────────────────────────────────
@@ -3124,6 +3124,119 @@ elif menu == "Gastos":
                             st.markdown("<div style='color:#C0392B;font-size:0.75rem;padding-top:0.6rem;'>Inactivo</div>",unsafe_allow_html=True)
                             if st.button("🗑️",key=f"gf_del_{gid}"):
                                 eliminar_gasto_recurrente(gid); st.session_state.reload_gf=True; st.rerun()
+
+
+    with tab4:
+        from supabase_db import (leer_cashflow_programado, crear_cashflow_programado,
+                                  actualizar_cashflow_programado, eliminar_cashflow_programado)
+        st.markdown('<div class="nc-section-title">📅 Gastos e ingresos programados</div>', unsafe_allow_html=True)
+        st.caption('Eventos financieros que no son mensuales fijos: IBI, derramas, obras, revisiones de renta, fianzas.')
+
+        _uid_gp4    = st.session_state.get('user_id', '')
+        _inm_lista4 = ['Todos'] + df_inm['Nombre'].tolist()
+        _meses_n4   = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+        _meses_f4   = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+        _cat_gas4   = ['ibi','seguro_anual','derrama','obra','otro']
+        _cat_ing4   = ['revision_renta','fianza','otro']
+
+        # ── Filtros ───────────────────────────────────────────────
+        _gp4_c1, _gp4_c2, _gp4_c3 = st.columns([2, 1, 1])
+        with _gp4_c1:
+            _gp4_inm = st.selectbox('Inmueble', _inm_lista4, key='gp4_inm')
+        with _gp4_c2:
+            _gp4_tipo = st.selectbox('Tipo', ['Todos','gasto','ingreso'], key='gp4_tipo')
+        with _gp4_c3:
+            _gp4_est  = st.selectbox('Estado', ['Todos','programado','realizado'], key='gp4_estado')
+
+        # ── Leer datos ────────────────────────────────────────────
+        _df_gp4 = leer_cashflow_programado(
+            _uid_gp4,
+            inmueble=None if _gp4_inm=='Todos' else _gp4_inm
+        )
+        if not _df_gp4.empty:
+            if _gp4_tipo != 'Todos':
+                _df_gp4 = _df_gp4[_df_gp4['tipo'] == _gp4_tipo]
+            if _gp4_est != 'Todos':
+                _df_gp4 = _df_gp4[_df_gp4['estado'] == _gp4_est]
+
+        # ── KPIs resumen ──────────────────────────────────────────
+        if not _df_gp4.empty:
+            _tot_gas4 = float(_df_gp4[_df_gp4['tipo']=='gasto']['importe'].sum())
+            _tot_ing4 = float(_df_gp4[_df_gp4['tipo']=='ingreso']['importe'].sum())
+            _k41,_k42,_k43 = st.columns(3)
+            _k41.metric('Eventos programados', len(_df_gp4))
+            _k42.metric('Total gastos previstos', f'{_tot_gas4:,.0f} €')
+            _k43.metric('Total ingresos previstos', f'{_tot_ing4:,.0f} €')
+            st.divider()
+
+            # ── Lista de eventos ──────────────────────────────────
+            for _, _ev4 in _df_gp4.iterrows():
+                _es_g4  = _ev4.get('tipo') == 'gasto'
+                _c4bg   = '#FDECEA' if _es_g4 else '#EAF3DE'
+                _c4tc   = '#C0392B' if _es_g4 else '#1a7a40'
+                _ico4   = '↓' if _es_g4 else '↑'
+                _mn4    = int(_ev4.get('mes', 0))
+                _mes4   = _meses_f4[_mn4] if 1 <= _mn4 <= 12 else str(_mn4)
+                _rec4   = 'Anual' if _ev4.get('recurrencia') == 'anual' else str(_ev4.get('anio', ''))
+                _est4   = _ev4.get('estado', 'programado')
+                _est4_badge = '✅' if _est4 == 'realizado' else '🕐'
+                _ev4_c1, _ev4_c2 = st.columns([6, 1])
+                with _ev4_c1:
+                    st.markdown(f'''
+                    <div style="background:{_c4bg};border-radius:8px;padding:10px 16px;margin-bottom:6px;
+                                display:flex;justify-content:space-between;align-items:center;">
+                      <div>
+                        <span style="font-size:13px;font-weight:600;color:{_c4tc};"
+                        >{_ico4} {_ev4.get('descripcion','')} <span style="font-size:11px;">{_est4_badge}</span></span>
+                        <br><span style="font-size:11px;color:#6B7280;">{_ev4.get('inmueble','Cartera')} · {_mes4} · {_rec4} · {_ev4.get('categoria','')}</span>
+                      </div>
+                      <span style="font-size:15px;font-weight:700;color:{_c4tc};">{float(_ev4.get('importe',0)):,.0f} €</span>
+                    </div>''', unsafe_allow_html=True)
+                with _ev4_c2:
+                    if st.button('🗑', key=f'del_gp4_{_ev4["id"]}', help='Eliminar'):
+                        eliminar_cashflow_programado(str(_ev4['id']), _uid_gp4)
+                        st.rerun()
+        else:
+            st.info('No hay eventos programados con estos filtros.')
+
+        st.divider()
+
+        # ── Formulario nuevo evento ───────────────────────────────
+        with st.expander('➕ Añadir nuevo evento programado', expanded=False):
+            with st.form('form_gp4_global', clear_on_submit=True):
+                st.markdown('**Nuevo evento financiero programado**')
+                _f41, _f42 = st.columns(2)
+                with _f41:
+                    _gp4_f_tipo = st.selectbox('Tipo', ['gasto','ingreso'], key='gp4_f_tipo')
+                    _gp4_f_inm  = st.selectbox('Inmueble', df_inm['Nombre'].tolist() + ['Cartera general'], key='gp4_f_inm')
+                    _gp4_f_cat  = st.selectbox('Categoría',
+                                               _cat_gas4 if _gp4_f_tipo == 'gasto' else _cat_ing4,
+                                               key='gp4_f_cat')
+                    _gp4_f_mes  = st.selectbox('Mes', list(range(1,13)),
+                                               format_func=lambda x: _meses_f4[x], key='gp4_f_mes')
+                with _f42:
+                    _gp4_f_desc = st.text_input('Descripción', key='gp4_f_desc')
+                    _gp4_f_imp  = st.number_input('Importe (€)', min_value=0.0, step=10.0, key='gp4_f_imp')
+                    _gp4_f_rec  = st.selectbox('Recurrencia', ['unico','anual'],
+                                               format_func=lambda x: 'Una vez' if x=='unico' else 'Anual (cada año)',
+                                               key='gp4_f_rec')
+                    _gp4_f_anio = None if _gp4_f_rec == 'anual' else datetime.now().year
+                if st.form_submit_button('💾 Guardar evento', use_container_width=True):
+                    if _gp4_f_imp > 0 and _gp4_f_desc.strip():
+                        _r4 = crear_cashflow_programado(_uid_gp4, {
+                            'tipo': _gp4_f_tipo, 'categoria': _gp4_f_cat,
+                            'descripcion': _gp4_f_desc, 'importe': _gp4_f_imp,
+                            'mes': _gp4_f_mes, 'anio': _gp4_f_anio,
+                            'recurrencia': _gp4_f_rec,
+                            'inmueble': None if _gp4_f_inm == 'Cartera general' else _gp4_f_inm,
+                        })
+                        if _r4.get('ok'):
+                            st.success('Evento guardado ✓'); st.rerun()
+                        else:
+                            st.error(f'Error: {_r4.get("error")}')
+                    else:
+                        st.warning('Rellena descripción e importe.')
 
 # ================================================================
 # PANTALLA: CASH FLOW
