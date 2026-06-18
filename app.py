@@ -2508,7 +2508,7 @@ elif menu == "Fichas (Benchmark)":
                             }
                             _mov_tipo = "Gasto" if _fr_tipo=="gasto" else "Ingreso"
                             _concepto_m = (f"{_fr_prov} — {_fr_conc}".strip(" —") if (_fr_prov or _fr_conc) else _fr_cat)
-                            agregar_movimientos([{
+                            _ok_mov = agregar_movimientos([{
                                 "Fecha":       str(_fr_fecha),
                                 "Apartamento": sel,
                                 "Concepto":    _concepto_m,
@@ -2516,9 +2516,12 @@ elif menu == "Fichas (Benchmark)":
                                 "Tipo":        _mov_tipo,
                                 "Importe":     _fr_imp + _fr_iva,
                                 "Deducible":   "S" if _fr_tipo=="gasto" else "N",
-                                "Notas":       f"Factura {_res_fr['id'][:8]}",
                             }], _uid_fr)
-                            st.success("Factura registrada y movimiento creado ✓"); st.rerun()
+                            if _ok_mov:
+                                st.success("Factura registrada y movimiento creado ✓")
+                            else:
+                                st.warning("Factura guardada pero movimiento no creado. Revisa el diario.")
+                            st.rerun()
                         else:
                             st.error(f"Error: {_res_fr.get('error')}")
                     else:
