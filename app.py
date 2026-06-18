@@ -1718,8 +1718,32 @@ if menu == "Torre de Control":
 elif menu == "Fichas (Benchmark)":
     if _sin_inmuebles:
         st.info("📭 Sin inmuebles registrados. Ve a **Datos de Cartera** para añadir el primero."); st.stop()
-    st.markdown('<div class="nc-brand-header">Benchmark y Análisis Fiscal</div>', unsafe_allow_html=True)
-    st.markdown('<div class="nc-brand-sub">Análisis de mercado · Comparativa fiscal por modalidad</div>', unsafe_allow_html=True)
+
+    # CSS tabs + ficha
+    st.markdown("""<style>
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px;
+        border-bottom: 2px solid #E2E8F0;
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 13px;
+        font-weight: 500;
+        padding: 8px 16px;
+        border-radius: 6px 6px 0 0;
+        color: #6B7280;
+        background: transparent;
+        border: none;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #0F2744 !important;
+        background: #F0F5FF !important;
+        border-bottom: 2px solid #185FA5 !important;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #185FA5;
+        background: #F8FAFC;
+    }
+    </style>""", unsafe_allow_html=True)
 
     lista_inmuebles = df_inm["Nombre"].tolist()
     default_idx = lista_inmuebles.index(st.session_state.ficha_sel) if st.session_state.ficha_sel in lista_inmuebles else 0
@@ -1736,6 +1760,23 @@ elif menu == "Fichas (Benchmark)":
 
     f = df_inm[df_inm["Nombre"]==sel].iloc[0]
     renta_act=safe_float(f.get("Renta",0)); renta_mer=tasacion(f)
+
+    # Header dinámico con nombre del inmueble
+    _tipo_inm  = str(f.get("Tipo_Arrendamiento","Larga Duración"))
+    _estado_inm = str(f.get("Estado",""))
+    st.markdown(f"""
+    <div style="margin:4px 0 16px;padding:16px 20px;background:#0F2744;border-radius:12px;
+                display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-size:20px;font-weight:600;color:#E6F1FB;">{sel}</div>
+        <div style="font-size:13px;color:#B5D4F4;margin-top:3px;">
+          {_tipo_inm} · {_estado_inm} · {str(f.get("CP",""))}
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:24px;font-weight:600;color:#E6F1FB;">{renta_act:,.0f} €<span style="font-size:13px;font-weight:400;color:#B5D4F4;">/mes</span></div>
+      </div>
+    </div>""", unsafe_allow_html=True)
     desv=(renta_act-renta_mer)/renta_mer*100 if renta_mer else 0
     perdida_m=max(0,renta_mer-renta_act); perdida_a=perdida_m*12
     df_gf=df_mov[(df_mov["Apartamento"]==sel)&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]
