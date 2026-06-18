@@ -2318,99 +2318,141 @@ elif menu == "Fichas (Benchmark)":
 
 
 
+
     with _ft2:
         from supabase_db import (leer_facturas_recibidas, crear_factura_recibida,
-                                  actualizar_factura_recibida, eliminar_factura_recibida,
-                                  subir_archivo_factura_recibida)
-        _uid_i2  = st.session_state.get("user_id","")
+                                  actualizar_factura_recibida, eliminar_factura_recibida)
+        _uid_i2   = st.session_state.get("user_id","")
         _ic1,_ic2 = st.columns([2,1])
         with _ic1:
             _anio_i2 = st.selectbox("Año",[2026,2025,2024,2023],key=f"ai2_{sel}")
         with _ic2:
             _mn_i2=["Todos","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
             _mes_i2=st.selectbox("Mes",list(range(0,13)),format_func=lambda x:_mn_i2[x],key=f"mi2_{sel}")
-        _df_i2 = leer_facturas_recibidas(_uid_i2, inmueble=sel, ejercicio=_anio_i2, tipo="ingreso")
-        if _mes_i2>0 and not _df_i2.empty:
-            try:
-                _df_i2 = _df_i2[pd.to_datetime(_df_i2["fecha"],errors="coerce").dt.month==_mes_i2]
-            except Exception:
-                pass
-        _tot_i2 = float(_df_i2["importe_total"].fillna(0).sum()) if not _df_i2.empty else 0.0
+
+        # ── Fuente 1: facturas emitidas cobradas ──────────────────
+        _rows_fe = []
+        try:
+            _df_fe_i2 = leer_facturas_emitidas(_uid_i2)
+            if not _df_fe_i2.empty and "inmueble" in _df_fe_i2.columns:
+                _fc_i2 = "fecha" if "fecha" in _df_fe_i2.columns else "fecha_emision"
+                _df_fe_i2[_fc_i2] = pd.to_datetime(_df_fe_i2[_fc_i2], errors="coerce")
+                _fe_i2_fil = _df_fe_i2[
+                    (_df_fe_i2["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
+                    (_df_fe_i2["estado"] == "cobrada") &
+                    (_df_fe_i2[_fc_i2].dt.year == _anio_i2)
+                ].copy()
+                if _mes_i2 > 0:
+                    _fe_i2_fil = _fe_i2_fil[_fe_i2_fil[_fc_i2].dt.month == _mes_i2]
+                for _, _r in _fe_i2_fil.iterrows():
+                    _rows_fe.append({
+                        "id": str(_r.get("id","")), "fuente": "emitida",
+                        "fecha": str(_r[_fc_i2])[:10],
+                        "proveedor": _r.get("inquilino",""),
+                        "concepto": _r.get("concepto",""),
+                        "categoria": "alquiler",
+                        "importe_total": float(_r.get("total") or 0),
+                    })
+        except Exception:
+            pass
+
+        # ── Fuente 2: facturas recibidas tipo ingreso ──────────────
+        _rows_fr = []
+        try:
+            _df_fr_i2 = leer_facturas_recibidas(_uid_i2, inmueble=sel, ejercicio=_anio_i2, tipo="ingreso")
+            if _mes_i2 > 0 and not _df_fr_i2.empty:
+                _df_fr_i2 = _df_fr_i2[pd.to_datetime(_df_fr_i2["fecha"],errors="coerce").dt.month==_mes_i2]
+            if not _df_fr_i2.empty:
+                for _, _r in _df_fr_i2.iterrows():
+                    _rows_fr.append({
+                        "id": str(_r.get("id","")), "fuente": "recibida",
+                        "fecha": str(_r.get("fecha",""))[:10],
+                        "proveedor": str(_r.get("proveedor","")),
+                        "concepto": str(_r.get("concepto","")),
+                        "categoria": str(_r.get("categoria","")),
+                        "importe_total": float(_r.get("importe_total") or 0),
+                    })
+        except Exception:
+            pass
+
+        _all_ing = sorted(_rows_fe + _rows_fr, key=lambda x: x["fecha"], reverse=True)
+        _tot_i2  = sum(r["importe_total"] for r in _all_ing)
         st.metric("Total ingresos período", f"{_tot_i2:,.0f} €")
         st.divider()
+
         _edit_i2 = st.session_state.get(f"edit_i2_{sel}")
-        if not _df_i2.empty:
-            for _, _ri in _df_i2.iterrows():
-                _ri_id = str(_ri["id"])
-                _ic_r1,_ic_r2,_ic_r3 = st.columns([7,1,1])
-                with _ic_r1:
-                    st.markdown(f"""<div style="background:#EAF3DE;border-radius:8px;padding:9px 14px;margin-bottom:4px;">
-                      <div style="display:flex;justify-content:space-between;">
-                        <span style="font-size:12px;font-weight:700;color:#1a7a40;">{_ri.get("proveedor","—")}</span>
-                        <span style="font-size:13px;font-weight:700;color:#1a7a40;">{float(_ri.get("importe_total") or 0):,.2f} €</span>
-                      </div>
-                      <span style="font-size:11px;color:#6B7280;">{str(_ri.get("fecha",""))[:10]} · {_ri.get("categoria","")} · {_ri.get("concepto","")}</span>
-                    </div>""", unsafe_allow_html=True)
-                with _ic_r2:
-                    if st.button("✏️", key=f"edit_i2_btn_{_ri_id}", help="Editar"):
-                        st.session_state[f"edit_i2_{sel}"] = None if _edit_i2==_ri_id else _ri_id
-                        st.rerun()
-                with _ic_r3:
-                    if st.button("🗑", key=f"del_i2_{_ri_id}", help="Eliminar"):
-                        eliminar_factura_recibida(_ri_id, _uid_i2, _ri.get("archivo_ruta"))
-                        st.success("Ingreso eliminado ✓"); st.rerun()
+        if _all_ing:
+            # Cabecera
+            _ih = st.columns([2,2,4,2,1,1])
+            for _htxt,_hc in zip(["Fecha","Categoría","Concepto / pagador","Importe","",""],_ih):
+                _hc.markdown(f"<span style='font-size:11px;color:var(--color-text-secondary);font-weight:500;'>{_htxt}</span>",unsafe_allow_html=True)
+            st.markdown("<hr style='margin:4px 0 6px;border-color:var(--color-border-tertiary);'>",unsafe_allow_html=True)
+            for _ri in _all_ing:
+                _ri_id = _ri["id"]
+                _label_i = (f"{_ri['proveedor']} · {_ri['concepto']}" if _ri["proveedor"] and _ri["concepto"]
+                            else _ri["proveedor"] or _ri["concepto"] or "—")
+                _rc = st.columns([2,2,4,2,1,1])
+                _rc[0].markdown(f"<span style='font-size:12px;'>{_ri['fecha']}</span>",unsafe_allow_html=True)
+                _rc[1].markdown(f"<span style='font-size:12px;'>{_ri['categoria']}</span>",unsafe_allow_html=True)
+                _rc[2].markdown(f"<span style='font-size:12px;'>{_label_i[:40]}</span>",unsafe_allow_html=True)
+                _rc[3].markdown(f"<span style='font-size:12px;font-weight:500;color:#1a7a40;'>{_ri['importe_total']:,.2f} €</span>",unsafe_allow_html=True)
+                if _ri["fuente"] == "recibida":
+                    with _rc[4]:
+                        if st.button("✏️",key=f"edit_i2_btn_{_ri_id}",help="Editar",use_container_width=True):
+                            st.session_state[f"edit_i2_{sel}"] = None if _edit_i2==_ri_id else _ri_id
+                            st.rerun()
+                    with _rc[5]:
+                        if st.button("🗑",key=f"del_i2_{_ri_id}",help="Eliminar",use_container_width=True):
+                            eliminar_factura_recibida(_ri_id,_uid_i2)
+                            st.success("Eliminado ✓"); st.rerun()
+                else:
+                    _rc[4].markdown("<span style='font-size:10px;color:var(--color-text-secondary);'>F.emitida</span>",unsafe_allow_html=True)
                 if _edit_i2 == _ri_id:
-                    with st.form(f"form_edit_i2_{_ri_id}", clear_on_submit=False):
-                        st.markdown("**Editar ingreso**")
+                    with st.form(f"form_edit_i2_{_ri_id}",clear_on_submit=False):
                         _e1,_e2 = st.columns(2)
                         with _e1:
-                            _ep = st.text_input("Inquilino/pagador", value=str(_ri.get("proveedor","")), key=f"ep_{_ri_id}")
-                            _ec = st.text_input("Concepto", value=str(_ri.get("concepto","")), key=f"ec_{_ri_id}")
+                            _ep=st.text_input("Pagador",value=_ri["proveedor"],key=f"ep_{_ri_id}")
+                            _ec=st.text_input("Concepto",value=_ri["concepto"],key=f"ec_{_ri_id}")
                         with _e2:
-                            _eim = st.number_input("Importe (€)", value=float(_ri.get("importe") or 0), min_value=0.0, key=f"eim_{_ri_id}")
-                            _eiv = st.number_input("IVA (€)", value=float(_ri.get("iva") or 0), min_value=0.0, key=f"eiv_{_ri_id}")
-                        if st.form_submit_button("💾 Guardar cambios", use_container_width=True):
-                            actualizar_factura_recibida(_ri_id, _uid_i2, {
-                                "proveedor": _ep, "concepto": _ec,
-                                "importe": _eim, "iva": _eiv, "importe_total": _eim+_eiv
-                            })
-                            st.session_state[f"edit_i2_{sel}"] = None
+                            _eim=st.number_input("Importe (€)",value=_ri["importe_total"],min_value=0.0,key=f"eim_{_ri_id}")
+                        if st.form_submit_button("💾 Guardar",use_container_width=True):
+                            actualizar_factura_recibida(_ri_id,_uid_i2,{"proveedor":_ep,"concepto":_ec,"importe":_eim,"importe_total":_eim})
+                            st.session_state[f"edit_i2_{sel}"]=None
                             st.success("Actualizado ✓"); st.rerun()
         else:
-            st.caption("Sin ingresos registrados en este período.")
+            st.caption("Sin ingresos en este período.")
+
         st.divider()
         with st.expander("➕ Registrar nuevo ingreso"):
-            with st.form(f"form_new_i2_{sel}", clear_on_submit=True):
-                _n1,_n2 = st.columns(2)
+            with st.form(f"form_new_i2_{sel}",clear_on_submit=True):
+                _n1,_n2=st.columns(2)
                 with _n1:
-                    _ncat = st.selectbox("Categoría",["alquiler","fianza","otro"],key=f"ncat_i2_{sel}")
-                    _nfec = st.date_input("Fecha cobro", key=f"nfec_i2_{sel}")
-                    _npag = st.text_input("Inquilino/pagador", key=f"npag_i2_{sel}")
+                    _ncat=st.selectbox("Categoría",["alquiler","fianza","otro"],key=f"ncat_i2_{sel}")
+                    _nfec=st.date_input("Fecha cobro",key=f"nfec_i2_{sel}")
+                    _npag=st.text_input("Pagador/inquilino",key=f"npag_i2_{sel}")
                 with _n2:
-                    _ncon = st.text_input("Concepto", key=f"ncon_i2_{sel}")
-                    _nimp = st.number_input("Importe (€)", min_value=0.0, step=1.0, key=f"nimp_i2_{sel}")
-                    _niva = st.number_input("IVA (€)", min_value=0.0, step=1.0, key=f"niva_i2_{sel}")
-                if st.form_submit_button("💾 Guardar ingreso", use_container_width=True):
-                    if _nimp > 0:
-                        _rni = crear_factura_recibida(_uid_i2,{
+                    _ncon=st.text_input("Concepto",key=f"ncon_i2_{sel}")
+                    _nimp=st.number_input("Importe (€)",min_value=0.0,step=1.0,key=f"nimp_i2_{sel}")
+                if st.form_submit_button("💾 Guardar ingreso",use_container_width=True):
+                    if _nimp>0:
+                        _rni=crear_factura_recibida(_uid_i2,{
                             "tipo":"ingreso","categoria":_ncat,
                             "fecha":str(_nfec),"ejercicio":_nfec.year,
                             "inmueble":sel,"proveedor":_npag,
-                            "concepto":_ncon,"importe":_nimp,
-                            "iva":_niva,"importe_total":_nimp+_niva,
+                            "concepto":_ncon,"importe":_nimp,"iva":0,"importe_total":_nimp,
                         })
                         if _rni.get("ok"):
                             agregar_movimientos([{
                                 "Fecha":str(_nfec),"Apartamento":sel,
                                 "Concepto":f"{_npag} — {_ncon}".strip(" —") or _ncat,
                                 "Categoría":"Ingresos","Tipo":"Ingreso",
-                                "Importe":_nimp+_niva,"Deducible":"N",
-                            }], _uid_i2)
+                                "Importe":_nimp,"Deducible":"N",
+                            }],_uid_i2)
                             st.success("Ingreso registrado ✓"); st.rerun()
                         else:
                             st.error(f"Error: {_rni.get('error')}")
                     else:
-                        st.warning("El importe no puede ser 0.")
+                        st.warning("Importe no puede ser 0.")
 
     with _ft3:
         _uid_t3 = st.session_state.get("user_id","")
