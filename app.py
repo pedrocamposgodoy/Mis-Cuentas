@@ -2423,12 +2423,7 @@ elif menu == "Fichas (Benchmark)":
             st.caption("Sin ingresos en este período.")
 
         st.divider()
-        if st.button("📄 Generar factura de alquiler para este inmueble",
-                     key=f"btn_gen_fac_{sel}", use_container_width=True, type="primary"):
-            st.session_state["menu"] = "Ingresos · Rentas"
-            st.session_state["ficha_goto_ingresos_inm"] = sel
-            st.rerun()
-        st.caption("Te lleva a Ingresos · Rentas con este inmueble pre-seleccionado.")
+        st.caption("Las facturas de alquiler se generan desde Ingresos · Rentas. Aquí se muestran las cobradas.")
 
     with _ft3:
         _uid_t3 = st.session_state.get("user_id","")
