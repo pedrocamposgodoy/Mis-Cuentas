@@ -2472,43 +2472,42 @@ elif menu == "Fichas (Benchmark)":
                 _kf2.metric("Total gastos", f"{_total_gas_fr:,.0f} €")
                 _kf3.metric("Total ingresos", f"{_total_ing_fr:,.0f} €")
                 st.divider()
+                # Cabecera de tabla
+                _hc = st.columns([2, 3, 3, 2, 1, 1])
+                for _htxt, _hcol in zip(["Fecha","Categoría","Concepto / proveedor","Importe","",""], _hc):
+                    _hcol.markdown(f"<span style='font-size:11px;color:var(--color-text-secondary);font-weight:500;'>{_htxt}</span>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin:4px 0 6px;border-color:var(--color-border-tertiary);'>", unsafe_allow_html=True)
+                _edit_fr = st.session_state.get(f"edit_fr_{sel}")
                 for _, _fr_row in _df_fr.iterrows():
-                    _es_g_fr  = _fr_row.get("tipo") == "gasto"
-                    _color_fr = "#FDECEA" if _es_g_fr else "#EAF3DE"
-                    _tc_fr    = "#C0392B" if _es_g_fr else "#1a7a40"
-                    _ai_fr    = " 🤖" if _fr_row.get("interpretado_ia") else ""
-                    _trim_fr  = f"T{_fr_row.get('trimestre','')}" if _fr_row.get("trimestre") else ""
-                    _fr_id    = str(_fr_row["id"])
-                    _edit_fr  = st.session_state.get(f"edit_fr_{sel}")
-                    _fr_col1, _fr_col2, _fr_col3 = st.columns([8, 1, 1])
-                    with _fr_col1:
-                        st.markdown(f"""
-                        <div style="background:{_color_fr};border-radius:8px;padding:9px 14px;margin-bottom:5px;">
-                          <div style="display:flex;justify-content:space-between;align-items:center;">
-                            <span style="font-size:12px;font-weight:700;color:{_tc_fr};">{_fr_row.get('proveedor','—')}{_ai_fr}</span>
-                            <span style="font-size:13px;font-weight:700;color:{_tc_fr};">{float(_fr_row.get('importe_total') or 0):,.2f} €</span>
-                          </div>
-                          <span style="font-size:11px;color:#6B7280;">{str(_fr_row.get('fecha',''))[:10]} · {_trim_fr} · {_fr_row.get('categoria','')}</span>
-                          <br><span style="font-size:11px;color:#374151;">{_fr_row.get('concepto','')}</span>
-                        </div>""", unsafe_allow_html=True)
-                    with _fr_col2:
-                        if st.button("✏️", key=f"edit_fr_btn_{_fr_id}", help="Editar"):
+                    _es_g_fr = _fr_row.get("tipo") == "gasto"
+                    _tc_fr   = "#C0392B" if _es_g_fr else "#1a7a40"
+                    _ai_fr   = " 🤖" if _fr_row.get("interpretado_ia") else ""
+                    _fr_id   = str(_fr_row["id"])
+                    _concepto_fr = _fr_row.get("concepto","") or _fr_row.get("proveedor","—")
+                    _proveedor_fr = _fr_row.get("proveedor","")
+                    _label_fr = f"{_proveedor_fr} · {_concepto_fr}" if _proveedor_fr and _concepto_fr and _proveedor_fr != _concepto_fr else (_proveedor_fr or _concepto_fr or "—")
+                    _rc = st.columns([2, 3, 3, 2, 1, 1])
+                    _rc[0].markdown(f"<span style='font-size:12px;'>{str(_fr_row.get('fecha',''))[:10]}</span>", unsafe_allow_html=True)
+                    _rc[1].markdown(f"<span style='font-size:12px;'>{_fr_row.get('categoria','')}{_ai_fr}</span>", unsafe_allow_html=True)
+                    _rc[2].markdown(f"<span style='font-size:12px;'>{_label_fr[:40]}</span>", unsafe_allow_html=True)
+                    _rc[3].markdown(f"<span style='font-size:12px;font-weight:500;color:{_tc_fr};'>{float(_fr_row.get('importe_total') or 0):,.2f} €</span>", unsafe_allow_html=True)
+                    with _rc[4]:
+                        if st.button("✏️", key=f"edit_fr_btn_{_fr_id}", help="Editar", use_container_width=True):
                             st.session_state[f"edit_fr_{sel}"] = None if _edit_fr==_fr_id else _fr_id
                             st.rerun()
-                    with _fr_col3:
-                        if st.button("🗑", key=f"del_fr_{_fr_id}", help="Eliminar factura"):
+                    with _rc[5]:
+                        if st.button("🗑", key=f"del_fr_{_fr_id}", help="Eliminar", use_container_width=True):
                             eliminar_factura_recibida(_fr_id, _uid_fr, _fr_row.get("archivo_ruta"))
-                            st.success("Factura eliminada ✓"); st.rerun()
+                            st.success("Eliminada ✓"); st.rerun()
                     if _edit_fr == _fr_id:
                         with st.form(f"form_edit_fr_{_fr_id}", clear_on_submit=False):
-                            st.markdown("**Editar factura**")
                             _fe1,_fe2 = st.columns(2)
                             with _fe1:
                                 _fe_prov = st.text_input("Proveedor/inquilino", value=str(_fr_row.get("proveedor","")), key=f"fep_{_fr_id}")
                                 _fe_conc = st.text_input("Concepto", value=str(_fr_row.get("concepto","")), key=f"fec_{_fr_id}")
                             with _fe2:
-                                _fe_imp  = st.number_input("Importe (€)", value=float(_fr_row.get("importe") or 0), min_value=0.0, key=f"feim_{_fr_id}")
-                                _fe_iva  = st.number_input("IVA (€)", value=float(_fr_row.get("iva") or 0), min_value=0.0, key=f"feiv_{_fr_id}")
+                                _fe_imp = st.number_input("Importe (€)", value=float(_fr_row.get("importe") or 0), min_value=0.0, key=f"feim_{_fr_id}")
+                                _fe_iva = st.number_input("IVA (€)", value=float(_fr_row.get("iva") or 0), min_value=0.0, key=f"feiv_{_fr_id}")
                             if st.form_submit_button("💾 Guardar cambios", use_container_width=True):
                                 actualizar_factura_recibida(_fr_id, _uid_fr, {
                                     "proveedor": _fe_prov, "concepto": _fe_conc,
@@ -2516,7 +2515,7 @@ elif menu == "Fichas (Benchmark)":
                                     "importe_total": _fe_imp + _fe_iva
                                 })
                                 st.session_state[f"edit_fr_{sel}"] = None
-                                st.success("Factura actualizada ✓"); st.rerun()
+                                st.success("Actualizado ✓"); st.rerun()
             else:
                 st.caption(f"Sin facturas registradas en {_ej_fr} para este inmueble.")
 
