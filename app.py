@@ -2499,7 +2499,26 @@ elif menu == "Fichas (Benchmark)":
                                                             {"archivo_ruta": _up_fr["ruta"],
                                                              "archivo_nombre": _fr_arch.name})
                         if _res_fr.get("ok"):
-                            st.success("Factura registrada ✓"); st.rerun()
+                            # Crear movimiento automático en el diario contable
+                            _cat_map = {
+                                "comunidad":"Comunidad","mantenimiento":"Mantenimiento",
+                                "seguro":"Seguros","ibi":"Tributario",
+                                "suministros":"Suministros","honorarios":"Otros",
+                                "alquiler":"Ingresos","fianza":"Ingresos","otro":"Otros",
+                            }
+                            _mov_tipo = "Gasto" if _fr_tipo=="gasto" else "Ingreso"
+                            _concepto_m = (f"{_fr_prov} — {_fr_conc}".strip(" —") if (_fr_prov or _fr_conc) else _fr_cat)
+                            agregar_movimientos([{
+                                "Fecha":       str(_fr_fecha),
+                                "Apartamento": sel,
+                                "Concepto":    _concepto_m,
+                                "Categoría":   _cat_map.get(_fr_cat,"Otros"),
+                                "Tipo":        _mov_tipo,
+                                "Importe":     _fr_imp + _fr_iva,
+                                "Deducible":   "S" if _fr_tipo=="gasto" else "N",
+                                "Notas":       f"Factura {_res_fr['id'][:8]}",
+                            }], _uid_fr)
+                            st.success("Factura registrada y movimiento creado ✓"); st.rerun()
                         else:
                             st.error(f"Error: {_res_fr.get('error')}")
                     else:
