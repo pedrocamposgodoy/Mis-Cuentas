@@ -1785,534 +1785,536 @@ elif menu == "Fichas (Benchmark)":
     rent_neta=((renta_act-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
     tipo_arr=str(f.get("Tipo_Arrendamiento","Larga Duración")); zona_tens=str(f.get("Zona_Tensionada","N"))=="S"; cochera_v=str(f.get("Cochera_Vinculada","N"))=="S"
 
-    # ── SCORE DE SALUD ───────────────────────────────────────────
-    _perfil_fic   = st.session_state.get("perfil_datos", {})
-    _es_soc_fic   = _perfil_fic.get("tipo_cuenta","particular") == "sociedad"
-    _df_hip_score = st.session_state.get("df_hip", pd.DataFrame())
-    _sd = calcular_score_salud(f, df_mov, tipo_cuenta=_perfil_fic.get("tipo_cuenta","particular"), df_hip=_df_hip_score)
-
-    # KPIs de Fichas — nuevo estilo grande y prominente
-    st.markdown('<div style="margin:12px 0 8px;"></div>', unsafe_allow_html=True)
-
-    # ── KPIs IS si es sociedad ────────────────────────────────────
-
-    if _es_soc_fic:
-        # Calcular KPIs IS de este inmueble
-        _renta_anual_fic   = renta_act * 12
-        _ibi_fic     = safe_float(f.get("IBI_Anual", 0))
-        _seguro_fic  = safe_float(f.get("Seguro_Anual", 0))
-        _com_fic     = safe_float(f.get("Comunidad", 0)) * 12
-        _int_fic     = safe_float(f.get("Intereses_Hipoteca", 0))
-        _amort_fic   = safe_float(f.get("Amortizacion_Fiscal", 0))
-        _rep_fic     = df_gf["Importe"].sum()
-        _gas_op_fic  = _ibi_fic + _seguro_fic + _com_fic + _rep_fic  # operativos excl. intereses y amort
-        _gas_tot_fic = _gas_op_fic + _int_fic + _amort_fic
-        _ebitda_fic  = _renta_anual_fic - _gas_op_fic
-        _resultado_fic = _renta_anual_fic - _gas_tot_fic
-        _is_fic      = round(max(_resultado_fic * 0.25, 0), 0)
-        # ROI
-        _precio_fic  = safe_float(f.get("Precio_Compra", 0)) + safe_float(f.get("Impuestos_Compra", 0)) + safe_float(f.get("Gastos_Compra", 0))
-        _roi_fic     = round(_resultado_fic / _precio_fic * 100, 1) if _precio_fic > 0 else 0
-        # Cobertura hipoteca: renta anual / cuota anual
-        _df_hip_fic  = st.session_state.get("df_hip", pd.DataFrame())
-        _cuota_fic   = 0
-        if not _df_hip_fic.empty:
-            _match = _df_hip_fic[_df_hip_fic["Inmueble"].str.lower()==str(sel).lower()]
-            if not _match.empty:
-                _hrow   = _match.iloc[0]
-                _p_h    = safe_float(_hrow.get("Principal", 0))
-                _r_h    = safe_float(_hrow.get("Tasa_Inicial", 0)) / 100 / 12
-                _n_h    = int(safe_float(_hrow.get("Plazo_Años", 20))) * 12
-                if _r_h > 0 and _n_h > 0:
-                    _cuota_fic = _p_h * (_r_h*(1+_r_h)**_n_h) / ((1+_r_h)**_n_h-1) * 12
-                elif _n_h > 0:
-                    _cuota_fic = _p_h / _n_h * 12
-        _cobertura_fic = round(_renta_anual_fic / _cuota_fic, 2) if _cuota_fic > 0 else 0
-        _cob_color = RED if 0 < _cobertura_fic < 1.20 else GREEN if _cobertura_fic >= 1.20 else AMBER
-
-        # Badge IS
-        st.markdown(
-            '<div style="display:inline-block;background:#0d1a0d;border:1px solid #059669;'
-            'border-radius:6px;padding:4px 12px;font-size:12px;color:#059669;margin-bottom:10px;">'
-            '🏢 Modo IS · Sociedad Patrimonial · 25%</div>',
-            unsafe_allow_html=True)
-
-        render_kpi_row([
-            {"label": "EBITDA del activo",
-             "value": f"{_ebitda_fic:,.0f} €",
-             "color": GREEN if _ebitda_fic >= 0 else RED,
-             "subtitle": "Renta − gastos operativos"},
-            {"label": "IS estimado 25%",
-             "value": f"−{_is_fic:,.0f} €",
-             "color": RED,
-             "subtitle": "[562] Cuota IS orientativa"},
-            {"label": "ROI del activo",
-             "value": f"{_roi_fic:.1f}%" if _precio_fic > 0 else "Sin precio",
-             "color": GREEN if _roi_fic > 5 else AMBER,
-             "subtitle": "Resultado / inversión"},
-            {"label": f"Cobertura hipoteca {'✅' if _cobertura_fic >= 1.20 else '⚠️' if _cobertura_fic > 0 else ''}",
-             "value": f"{_cobertura_fic:.2f}×" if _cobertura_fic > 0 else "Sin hipoteca",
-             "color": _cob_color,
-             "subtitle": "Renta anual / cuota anual"},
-        ])
-        st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
-
-    render_kpi_row([
-        {
-            "label": "Renta Actual",
-            "value": f"{renta_act:,.0f} €",
-            "color": GREEN,
-            "subtitle": "mensual"
-        },
-        {
-            "label": "Renta Tasada",
-            "value": f"{renta_mer:,.0f} €",
-            "color": "#9CA3AF",
-            "subtitle": "motor CP + características"
-        },
-        {
-            "label": "Rentabilidad Bruta",
-            "value": f"{rent_bruta:.1f}%",
-            "color": ACCENT,
-            "subtitle": "sobre valor construcción"
-        },
-        {
-            "label": "Rentabilidad Neta",
-            "value": f"{rent_neta:.1f}%",
-            "color": ACCENT,
-            "subtitle": tipo_arr
-        }
-    ])
-
-    badges=[]
-    if zona_tens: badges.append('<span style="background:#FDECEA;color:#A32D2D;font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">🔒 Zona Tensionada</span>')
-    if cochera_v: badges.append('<span style="background:#EDF7F1;color:#1a7a40;font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">🅿️ Cochera Vinculada</span>')
-    tipo_color={"Larga Duración":"#EAF3DE","Temporada":"#FFF9E6","Vacacional":"#FDECEA"}.get(tipo_arr,"#EAF3DE")
-    tipo_texto={"Larga Duración":"#3B6D11","Temporada":"#854F0B","Vacacional":"#A32D2D"}.get(tipo_arr,"#3B6D11")
-    badges.append(f'<span style="background:{tipo_color};color:{tipo_texto};font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">📋 {tipo_arr}</span>')
-    st.markdown("<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem;'>"+"".join(badges)+"</div>",unsafe_allow_html=True)
-
-    if zona_tens: st.markdown(f'<div class="status-red" style="margin-bottom:1rem;"><b>🔒 Zona Tensionada</b><br>No puedes subir la renta por encima del índice legal.</div>',unsafe_allow_html=True)
-    if not cochera_v and str(f.get("Parking","N"))=="S": st.markdown(f'<div class="status-yellow" style="margin-bottom:1rem;"><b>🅿️ Cochera Independiente</b><br>Tributa de forma separada. Revisar en declaración IRPF.</div>',unsafe_allow_html=True)
-    tipo_v,msg_v=alerta_vencimiento(f)
-    if tipo_v:
-        cls_v="status-red" if tipo_v in ("vencido","urgente") else ("status-yellow" if tipo_v=="aviso" else "status-green")
-        st.markdown(f'<div class="{cls_v}" style="margin-bottom:1rem;"><b>📅 Contrato:</b> {msg_v}</div>',unsafe_allow_html=True)
-
-    c1,c2=st.columns(2)
-    # ── DONUT INGRESOS VS GASTOS — AÑO EN CURSO ────────────────
-    _anio_donut = datetime.now().year
-    try:
-        _df_donut = df_mov[
-            (df_mov["Apartamento"] == sel) &
-            (pd.to_datetime(df_mov["Fecha"], errors="coerce").dt.year == _anio_donut)
-        ].copy()
-        # Ingresos: facturas emitidas cobradas (búsqueda flexible por inmueble)
-        _uid_donut  = st.session_state.get("user_id", "")
-        _df_fe_don  = leer_facturas_emitidas(_uid_donut)
-        _ing_facturas_don = 0.0
-        if not _df_fe_don.empty and "inmueble" in _df_fe_don.columns:
-            try:
-                _fcol_d = "fecha" if "fecha" in _df_fe_don.columns else "fecha_emision"
-                _df_fe_don[_fcol_d] = pd.to_datetime(_df_fe_don[_fcol_d], errors="coerce")
-                _sel_low = sel.lower().strip()
-                _mask_inm = (_df_fe_don["inmueble"].str.lower().str.strip() == _sel_low)
-                _fe_don_fil = _df_fe_don[
-                    _mask_inm &
-                    (_df_fe_don["estado"] == "cobrada") &
-                    (_df_fe_don[_fcol_d].dt.year == _anio_donut)
-                ]
-                _ing_facturas_don = float(_fe_don_fil["total"].sum())
-            except Exception:
-                pass
-        _ing_mov_don = float(_df_donut[_df_donut["Tipo"]=="Ingreso"]["Importe"].sum())
-        _ing_donut   = _ing_facturas_don + _ing_mov_don
-        _gas_donut   = float(_df_donut[_df_donut["Tipo"]=="Gasto"]["Importe"].sum())
-        _neto_donut = _ing_donut - _gas_donut
-        _neto_color = GREEN if _neto_donut >= 0 else RED
-        _d1, _d2 = st.columns([1, 1])
-        with _d1:
-            st.markdown(f'<div class="nc-section-title">💰 {_anio_donut} — Ingresos vs Gastos</div>', unsafe_allow_html=True)
-            if _ing_donut > 0 or _gas_donut > 0:
-                _fig_donut = go.Figure(go.Pie(
-                    values=[max(_ing_donut, 0.01), max(_gas_donut, 0.01)],
-                    labels=["Ingresos", "Gastos"],
-                    hole=0.62,
-                    marker_colors=[ACCENT, RED],
-                    textinfo="label+percent",
-                    hovertemplate="%{label}: %{value:,.0f} €<extra></extra>",
-                ))
-                _fig_donut.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    margin=dict(l=0, r=0, t=10, b=10),
-                    height=230,
-                    showlegend=False,
-                    annotations=[{"text": f"<b>{_neto_donut:,.0f}€</b><br>neto",
-                                   "x": 0.5, "y": 0.5, "font_size": 14,
-                                   "font_color": _neto_color, "showarrow": False}]
-                )
-                st.plotly_chart(_fig_donut, use_container_width=True)
-            else:
-                st.caption(f"Sin movimientos en {_anio_donut}.")
-        with _d2:
-            st.markdown('<div class="nc-section-title">&nbsp;</div>', unsafe_allow_html=True)
-            _card_ing = f'<div style="background:#EAF3DE;border-radius:10px;padding:14px 18px;margin-bottom:10px;"><div style="font-size:11px;color:#3B6D11;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Ingresos {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:#185FA5;">{_ing_donut:,.0f} €</div></div>'
-            _card_gas = f'<div style="background:#FDECEA;border-radius:10px;padding:14px 18px;margin-bottom:10px;"><div style="font-size:11px;color:#A32D2D;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Gastos {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:{RED};">{_gas_donut:,.0f} €</div></div>'
-            _bg_neto  = '#EAF3DE' if _neto_donut >= 0 else '#FDECEA'
-            _card_net = f'<div style="background:{_bg_neto};border-radius:10px;padding:14px 18px;border:2px solid {_neto_color};"><div style="font-size:11px;color:{_neto_color};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Beneficio neto {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:{_neto_color};">{_neto_donut:+,.0f} €</div></div>'
-            st.markdown(_card_ing + _card_gas + _card_net, unsafe_allow_html=True)
-    except Exception:
-        st.caption("Sin datos para el gráfico.")
-
-
     # ── 5 TABS ──────────────────────────────────────────────────
     _ft1,_ft2,_ft3,_ft4,_ft5 = st.tabs([
         "📊 Resumen","💰 Ingresos","📉 Gastos","🧾 Facturas","📅 Programado"
     ])
 
     with _ft1:
-        _col_sc, _col_al = st.columns([1, 2])
-        with _col_sc:
-            st.markdown(
-                f'<div style="background:#fff;border-radius:12px;padding:16px 18px;' +
-                f'border:2px solid {_sd["color"]};box-shadow:0 2px 8px rgba(0,0,0,0.07);' +
-                f'margin-bottom:10px;">' +
-                f'<div style="font-size:10px;font-weight:700;color:#94A3B8;' +
-                f'text-transform:uppercase;margin-bottom:6px;">Score Salud Activo</div>' +
-                render_score_badge(_sd, size="large") +
-                f'</div>', unsafe_allow_html=True)
-        with _col_al:
-            for _a in _sd["alertas"][:2]:
-                _ec = "🔴" in _a or "URGENTE" in _a or "FATIGA" in _a
-                st.markdown(
-                    f'<div style="background:{"#FEE2E2" if _ec else "#FEF3C7"};' +
-                    f'border-left:4px solid {"#DC2626" if _ec else "#D97706"};' +
-                    f'border-radius:6px;padding:7px 12px;margin-bottom:5px;' +
-                    f'font-size:13px;">{_a}</div>', unsafe_allow_html=True)
-            if _sd["suger"]:
-                _cs = "#DC2626" if _sd["score"]<4 else "#D97706" if _sd["score"]<7 else "#059669"
-                st.markdown(
-                    f'<div style="border:2px solid {_cs};border-radius:8px;' +
-                    f'padding:8px 12px;font-size:13px;font-weight:700;color:{_cs};">' +
-                    f'💡 {_sd["suger"]}</div>', unsafe_allow_html=True)
-        with st.expander("📊 Desglose del score"):
-            for _comp, _desc, _pts, _max in _sd["detalle"]:
-                _c1,_c2,_c3 = st.columns([2,4,1])
-                _c1.markdown(f"**{_comp}**")
-                _c2.markdown(f"<span style='font-size:12px;'>{_desc}</span>", unsafe_allow_html=True)
-                _c3.markdown(f"**{_pts:.1f}/{_max:.1f}**")
 
-        st.markdown('<div class="nc-section-title">📊 Evolución mensual — real vs estimado</div>', unsafe_allow_html=True)
+        # ── SCORE DE SALUD ───────────────────────────────────────────
+        _perfil_fic   = st.session_state.get("perfil_datos", {})
+        _es_soc_fic   = _perfil_fic.get("tipo_cuenta","particular") == "sociedad"
+        _df_hip_score = st.session_state.get("df_hip", pd.DataFrame())
+        _sd = calcular_score_salud(f, df_mov, tipo_cuenta=_perfil_fic.get("tipo_cuenta","particular"), df_hip=_df_hip_score)
+
+        # KPIs de Fichas — nuevo estilo grande y prominente
+        st.markdown('<div style="margin:12px 0 8px;"></div>', unsafe_allow_html=True)
+
+        # ── KPIs IS si es sociedad ────────────────────────────────────
+
+        if _es_soc_fic:
+            # Calcular KPIs IS de este inmueble
+            _renta_anual_fic   = renta_act * 12
+            _ibi_fic     = safe_float(f.get("IBI_Anual", 0))
+            _seguro_fic  = safe_float(f.get("Seguro_Anual", 0))
+            _com_fic     = safe_float(f.get("Comunidad", 0)) * 12
+            _int_fic     = safe_float(f.get("Intereses_Hipoteca", 0))
+            _amort_fic   = safe_float(f.get("Amortizacion_Fiscal", 0))
+            _rep_fic     = df_gf["Importe"].sum()
+            _gas_op_fic  = _ibi_fic + _seguro_fic + _com_fic + _rep_fic  # operativos excl. intereses y amort
+            _gas_tot_fic = _gas_op_fic + _int_fic + _amort_fic
+            _ebitda_fic  = _renta_anual_fic - _gas_op_fic
+            _resultado_fic = _renta_anual_fic - _gas_tot_fic
+            _is_fic      = round(max(_resultado_fic * 0.25, 0), 0)
+            # ROI
+            _precio_fic  = safe_float(f.get("Precio_Compra", 0)) + safe_float(f.get("Impuestos_Compra", 0)) + safe_float(f.get("Gastos_Compra", 0))
+            _roi_fic     = round(_resultado_fic / _precio_fic * 100, 1) if _precio_fic > 0 else 0
+            # Cobertura hipoteca: renta anual / cuota anual
+            _df_hip_fic  = st.session_state.get("df_hip", pd.DataFrame())
+            _cuota_fic   = 0
+            if not _df_hip_fic.empty:
+                _match = _df_hip_fic[_df_hip_fic["Inmueble"].str.lower()==str(sel).lower()]
+                if not _match.empty:
+                    _hrow   = _match.iloc[0]
+                    _p_h    = safe_float(_hrow.get("Principal", 0))
+                    _r_h    = safe_float(_hrow.get("Tasa_Inicial", 0)) / 100 / 12
+                    _n_h    = int(safe_float(_hrow.get("Plazo_Años", 20))) * 12
+                    if _r_h > 0 and _n_h > 0:
+                        _cuota_fic = _p_h * (_r_h*(1+_r_h)**_n_h) / ((1+_r_h)**_n_h-1) * 12
+                    elif _n_h > 0:
+                        _cuota_fic = _p_h / _n_h * 12
+            _cobertura_fic = round(_renta_anual_fic / _cuota_fic, 2) if _cuota_fic > 0 else 0
+            _cob_color = RED if 0 < _cobertura_fic < 1.20 else GREEN if _cobertura_fic >= 1.20 else AMBER
+
+            # Badge IS
+            st.markdown(
+                '<div style="display:inline-block;background:#0d1a0d;border:1px solid #059669;'
+                'border-radius:6px;padding:4px 12px;font-size:12px;color:#059669;margin-bottom:10px;">'
+                '🏢 Modo IS · Sociedad Patrimonial · 25%</div>',
+                unsafe_allow_html=True)
+
+            render_kpi_row([
+                {"label": "EBITDA del activo",
+                 "value": f"{_ebitda_fic:,.0f} €",
+                 "color": GREEN if _ebitda_fic >= 0 else RED,
+                 "subtitle": "Renta − gastos operativos"},
+                {"label": "IS estimado 25%",
+                 "value": f"−{_is_fic:,.0f} €",
+                 "color": RED,
+                 "subtitle": "[562] Cuota IS orientativa"},
+                {"label": "ROI del activo",
+                 "value": f"{_roi_fic:.1f}%" if _precio_fic > 0 else "Sin precio",
+                 "color": GREEN if _roi_fic > 5 else AMBER,
+                 "subtitle": "Resultado / inversión"},
+                {"label": f"Cobertura hipoteca {'✅' if _cobertura_fic >= 1.20 else '⚠️' if _cobertura_fic > 0 else ''}",
+                 "value": f"{_cobertura_fic:.2f}×" if _cobertura_fic > 0 else "Sin hipoteca",
+                 "color": _cob_color,
+                 "subtitle": "Renta anual / cuota anual"},
+            ])
+            st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+
+        render_kpi_row([
+            {
+                "label": "Renta Actual",
+                "value": f"{renta_act:,.0f} €",
+                "color": GREEN,
+                "subtitle": "mensual"
+            },
+            {
+                "label": "Renta Tasada",
+                "value": f"{renta_mer:,.0f} €",
+                "color": "#9CA3AF",
+                "subtitle": "motor CP + características"
+            },
+            {
+                "label": "Rentabilidad Bruta",
+                "value": f"{rent_bruta:.1f}%",
+                "color": ACCENT,
+                "subtitle": "sobre valor construcción"
+            },
+            {
+                "label": "Rentabilidad Neta",
+                "value": f"{rent_neta:.1f}%",
+                "color": ACCENT,
+                "subtitle": tipo_arr
+            }
+        ])
+
+        badges=[]
+        if zona_tens: badges.append('<span style="background:#FDECEA;color:#A32D2D;font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">🔒 Zona Tensionada</span>')
+        if cochera_v: badges.append('<span style="background:#EDF7F1;color:#1a7a40;font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">🅿️ Cochera Vinculada</span>')
+        tipo_color={"Larga Duración":"#EAF3DE","Temporada":"#FFF9E6","Vacacional":"#FDECEA"}.get(tipo_arr,"#EAF3DE")
+        tipo_texto={"Larga Duración":"#3B6D11","Temporada":"#854F0B","Vacacional":"#A32D2D"}.get(tipo_arr,"#3B6D11")
+        badges.append(f'<span style="background:{tipo_color};color:{tipo_texto};font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">📋 {tipo_arr}</span>')
+        st.markdown("<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem;'>"+"".join(badges)+"</div>",unsafe_allow_html=True)
+
+        if zona_tens: st.markdown(f'<div class="status-red" style="margin-bottom:1rem;"><b>🔒 Zona Tensionada</b><br>No puedes subir la renta por encima del índice legal.</div>',unsafe_allow_html=True)
+        if not cochera_v and str(f.get("Parking","N"))=="S": st.markdown(f'<div class="status-yellow" style="margin-bottom:1rem;"><b>🅿️ Cochera Independiente</b><br>Tributa de forma separada. Revisar en declaración IRPF.</div>',unsafe_allow_html=True)
+        tipo_v,msg_v=alerta_vencimiento(f)
+        if tipo_v:
+            cls_v="status-red" if tipo_v in ("vencido","urgente") else ("status-yellow" if tipo_v=="aviso" else "status-green")
+            st.markdown(f'<div class="{cls_v}" style="margin-bottom:1rem;"><b>📅 Contrato:</b> {msg_v}</div>',unsafe_allow_html=True)
+
+        c1,c2=st.columns(2)
+        # ── DONUT INGRESOS VS GASTOS — AÑO EN CURSO ────────────────
+        _anio_donut = datetime.now().year
         try:
-            _anio_evol   = datetime.now().year
-            _mes_act     = datetime.now().month
-            _mes_act_str = f"{_anio_evol}-{str(_mes_act).zfill(2)}"
-            _uid_evol    = st.session_state.get("user_id", "")
-            _meses_anio  = [f"{_anio_evol}-{str(m).zfill(2)}" for m in range(1, 13)]
-            # ── Gastos reales (movimientos) ───────────────────────────
-            _df_mov_e = df_mov[df_mov["Apartamento"] == sel].copy()
-            _df_mov_e["_mes"] = pd.to_datetime(_df_mov_e["Fecha"], errors="coerce").dt.strftime("%Y-%m")
-            _df_mov_e = _df_mov_e[_df_mov_e["_mes"].notna() & (_df_mov_e["_mes"] != "NaT")]
-            _gas_real_s = _df_mov_e[_df_mov_e["Tipo"]=="Gasto"].groupby("_mes")["Importe"].sum()
-            _ing_mov_s  = _df_mov_e[_df_mov_e["Tipo"]=="Ingreso"].groupby("_mes")["Importe"].sum()
-            # ── Ingresos reales (facturas emitidas cobradas) ──────────
-            _ing_fe_s = pd.Series(dtype=float)
-            _df_fe_e  = leer_facturas_emitidas(_uid_evol)
-            if not _df_fe_e.empty and "inmueble" in _df_fe_e.columns:
+            _df_donut = df_mov[
+                (df_mov["Apartamento"] == sel) &
+                (pd.to_datetime(df_mov["Fecha"], errors="coerce").dt.year == _anio_donut)
+            ].copy()
+            # Ingresos: facturas emitidas cobradas (búsqueda flexible por inmueble)
+            _uid_donut  = st.session_state.get("user_id", "")
+            _df_fe_don  = leer_facturas_emitidas(_uid_donut)
+            _ing_facturas_don = 0.0
+            if not _df_fe_don.empty and "inmueble" in _df_fe_don.columns:
                 try:
-                    _fc = "fecha" if "fecha" in _df_fe_e.columns else "fecha_emision"
-                    _df_fe_e[_fc] = pd.to_datetime(_df_fe_e[_fc], errors="coerce")
-                    _fe_fil = _df_fe_e[
-                        (_df_fe_e["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
-                        (_df_fe_e["estado"] == "cobrada") &
-                        (_df_fe_e[_fc].dt.year == _anio_evol)
-                    ].copy()
-                    if not _fe_fil.empty:
-                        _fe_fil["_mes"] = _fe_fil[_fc].dt.strftime("%Y-%m")
-                        _ing_fe_s = _fe_fil.groupby("_mes")["total"].sum()
+                    _fcol_d = "fecha" if "fecha" in _df_fe_don.columns else "fecha_emision"
+                    _df_fe_don[_fcol_d] = pd.to_datetime(_df_fe_don[_fcol_d], errors="coerce")
+                    _sel_low = sel.lower().strip()
+                    _mask_inm = (_df_fe_don["inmueble"].str.lower().str.strip() == _sel_low)
+                    _fe_don_fil = _df_fe_don[
+                        _mask_inm &
+                        (_df_fe_don["estado"] == "cobrada") &
+                        (_df_fe_don[_fcol_d].dt.year == _anio_donut)
+                    ]
+                    _ing_facturas_don = float(_fe_don_fil["total"].sum())
                 except Exception:
                     pass
-            # ── Forecast: gastos recurrentes + programados ────────────
-            _gas_fijos_mes = 0.0
-            try:
-                _df_gr = leer_gastos_recurrentes(_uid_evol)
-                if not _df_gr.empty and "inmueble" in _df_gr.columns:
-                    _gr_inm = _df_gr[_df_gr["inmueble"].str.lower().str.strip() == sel.lower().strip()]
-                    _gas_fijos_mes = float(_gr_inm["importe"].sum())
-            except Exception:
-                pass
-            _cfp_gas_mes = {}
-            _cfp_ing_mes = {}
-            try:
-                _df_cfp = leer_cashflow_programado(_uid_evol, inmueble=sel)
-                if not _df_cfp.empty:
-                    for _, _ev in _df_cfp.iterrows():
-                        _em = f"{_anio_evol}-{str(int(_ev.get('mes',0))).zfill(2)}"
-                        _ei = float(_ev.get("importe", 0))
-                        if _ev.get("tipo") == "gasto":
-                            _cfp_gas_mes[_em] = _cfp_gas_mes.get(_em, 0) + _ei
-                        else:
-                            _cfp_ing_mes[_em] = _cfp_ing_mes.get(_em, 0) + _ei
-            except Exception:
-                pass
-            # ── Arrays por mes ────────────────────────────────────────
-            _ir_arr = []  # ingresos reales
-            _gr_arr = []  # gastos reales
-            _ie_arr = []  # ingresos estimados
-            _ge_arr = []  # gastos estimados
-            for _m in _meses_anio:
-                _pasado = _m <= _mes_act_str
-                _ir_arr.append(float(_ing_fe_s.get(_m, 0) + _ing_mov_s.get(_m, 0)) if _pasado else 0)
-                _gr_arr.append(float(_gas_real_s.get(_m, 0)) if _pasado else 0)
-                if not _pasado:
-                    _ie_arr.append(renta_act + _cfp_ing_mes.get(_m, 0))
-                    _ge_arr.append(_gas_fijos_mes + _cfp_gas_mes.get(_m, 0))
+            _ing_mov_don = float(_df_donut[_df_donut["Tipo"]=="Ingreso"]["Importe"].sum())
+            _ing_donut   = _ing_facturas_don + _ing_mov_don
+            _gas_donut   = float(_df_donut[_df_donut["Tipo"]=="Gasto"]["Importe"].sum())
+            _neto_donut = _ing_donut - _gas_donut
+            _neto_color = GREEN if _neto_donut >= 0 else RED
+            _d1, _d2 = st.columns([1, 1])
+            with _d1:
+                st.markdown(f'<div class="nc-section-title">💰 {_anio_donut} — Ingresos vs Gastos</div>', unsafe_allow_html=True)
+                if _ing_donut > 0 or _gas_donut > 0:
+                    _fig_donut = go.Figure(go.Pie(
+                        values=[max(_ing_donut, 0.01), max(_gas_donut, 0.01)],
+                        labels=["Ingresos", "Gastos"],
+                        hole=0.62,
+                        marker_colors=[ACCENT, RED],
+                        textinfo="label+percent",
+                        hovertemplate="%{label}: %{value:,.0f} €<extra></extra>",
+                    ))
+                    _fig_donut.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(l=0, r=0, t=10, b=10),
+                        height=230,
+                        showlegend=False,
+                        annotations=[{"text": f"<b>{_neto_donut:,.0f}€</b><br>neto",
+                                       "x": 0.5, "y": 0.5, "font_size": 14,
+                                       "font_color": _neto_color, "showarrow": False}]
+                    )
+                    st.plotly_chart(_fig_donut, use_container_width=True)
                 else:
-                    _ie_arr.append(0)
-                    _ge_arr.append(0)
-            # ── Gráfico ───────────────────────────────────────────────
-            _fig_e = go.Figure()
-            _fig_e.add_trace(go.Bar(
-                name="Ingresos cobrados", x=_meses_anio, y=_ir_arr,
-                marker_color=ACCENT,
-                text=[f"{v:,.0f}€" if v > 0 else "" for v in _ir_arr],
-                textposition="outside"))
-            _fig_e.add_trace(go.Bar(
-                name="Gastos reales", x=_meses_anio, y=_gr_arr,
-                marker_color=RED,
-                text=[f"{v:,.0f}€" if v > 0 else "" for v in _gr_arr],
-                textposition="outside"))
-            _fig_e.add_trace(go.Bar(
-                name="Ingresos est.", x=_meses_anio, y=_ie_arr,
-                marker_color="rgba(24,95,165,0.18)",
-                marker_line_color=ACCENT, marker_line_width=1.5,
-                text=[f"{v:,.0f}€" if v > 0 else "" for v in _ie_arr],
-                textposition="outside"))
-            _fig_e.add_trace(go.Bar(
-                name="Gastos est.", x=_meses_anio, y=_ge_arr,
-                marker_color="rgba(192,57,43,0.18)",
-                marker_line_color=RED, marker_line_width=1.5,
-                text=[f"{v:,.0f}€" if v > 0 else "" for v in _ge_arr],
-                textposition="outside"))
-            _fig_e.update_layout(
-                barmode="group",
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                margin=dict(l=10, r=10, t=30, b=10), height=290,
-                yaxis=dict(showgrid=False, visible=False),
-                xaxis=dict(showgrid=False, tickangle=-30, type="category"),
-                font=dict(family="DM Sans", size=12),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-            st.plotly_chart(_fig_e, use_container_width=True)
-            st.caption("Barras sólidas: datos reales · Barras con borde: estimación (renta fija + gastos recurrentes + programados)")
+                    st.caption(f"Sin movimientos en {_anio_donut}.")
+            with _d2:
+                st.markdown('<div class="nc-section-title">&nbsp;</div>', unsafe_allow_html=True)
+                _card_ing = f'<div style="background:#EAF3DE;border-radius:10px;padding:14px 18px;margin-bottom:10px;"><div style="font-size:11px;color:#3B6D11;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Ingresos {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:#185FA5;">{_ing_donut:,.0f} €</div></div>'
+                _card_gas = f'<div style="background:#FDECEA;border-radius:10px;padding:14px 18px;margin-bottom:10px;"><div style="font-size:11px;color:#A32D2D;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Gastos {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:{RED};">{_gas_donut:,.0f} €</div></div>'
+                _bg_neto  = '#EAF3DE' if _neto_donut >= 0 else '#FDECEA'
+                _card_net = f'<div style="background:{_bg_neto};border-radius:10px;padding:14px 18px;border:2px solid {_neto_color};"><div style="font-size:11px;color:{_neto_color};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Beneficio neto {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:{_neto_color};">{_neto_donut:+,.0f} €</div></div>'
+                st.markdown(_card_ing + _card_gas + _card_net, unsafe_allow_html=True)
         except Exception:
-            st.caption("Sin datos suficientes para el gráfico.")
+            st.caption("Sin datos para el gráfico.")
 
-        # ── IA ASESORAMIENTO — CONSEJO PATRIMONIAL ───────────────────
-        st.markdown('<div class="nc-section-title">🤖 Consejo patrimonial IA</div>', unsafe_allow_html=True)
-        _key_ia_fic = f"ia_consejo_{sel}"
-        _col_ia_txt, _col_ia_btn = st.columns([5, 1])
-        with _col_ia_btn:
-            _btn_ia = st.button("🤖 Analizar con IA", key=f"btn_ia_{sel}", use_container_width=True)
-        if _btn_ia and _key_ia_fic in st.session_state:
-            del st.session_state[_key_ia_fic]
 
-        if _btn_ia and _key_ia_fic not in st.session_state:
-            with st.spinner("Analizando el activo..."):
+        # ── 5 TABS ──────────────────────────────────────────────────
+            _col_sc, _col_al = st.columns([1, 2])
+            with _col_sc:
+                st.markdown(
+                    f'<div style="background:#fff;border-radius:12px;padding:16px 18px;' +
+                    f'border:2px solid {_sd["color"]};box-shadow:0 2px 8px rgba(0,0,0,0.07);' +
+                    f'margin-bottom:10px;">' +
+                    f'<div style="font-size:10px;font-weight:700;color:#94A3B8;' +
+                    f'text-transform:uppercase;margin-bottom:6px;">Score Salud Activo</div>' +
+                    render_score_badge(_sd, size="large") +
+                    f'</div>', unsafe_allow_html=True)
+            with _col_al:
+                for _a in _sd["alertas"][:2]:
+                    _ec = "🔴" in _a or "URGENTE" in _a or "FATIGA" in _a
+                    st.markdown(
+                        f'<div style="background:{"#FEE2E2" if _ec else "#FEF3C7"};' +
+                        f'border-left:4px solid {"#DC2626" if _ec else "#D97706"};' +
+                        f'border-radius:6px;padding:7px 12px;margin-bottom:5px;' +
+                        f'font-size:13px;">{_a}</div>', unsafe_allow_html=True)
+                if _sd["suger"]:
+                    _cs = "#DC2626" if _sd["score"]<4 else "#D97706" if _sd["score"]<7 else "#059669"
+                    st.markdown(
+                        f'<div style="border:2px solid {_cs};border-radius:8px;' +
+                        f'padding:8px 12px;font-size:13px;font-weight:700;color:{_cs};">' +
+                        f'💡 {_sd["suger"]}</div>', unsafe_allow_html=True)
+            with st.expander("📊 Desglose del score"):
+                for _comp, _desc, _pts, _max in _sd["detalle"]:
+                    _c1,_c2,_c3 = st.columns([2,4,1])
+                    _c1.markdown(f"**{_comp}**")
+                    _c2.markdown(f"<span style='font-size:12px;'>{_desc}</span>", unsafe_allow_html=True)
+                    _c3.markdown(f"**{_pts:.1f}/{_max:.1f}**")
+
+            st.markdown('<div class="nc-section-title">📊 Evolución mensual — real vs estimado</div>', unsafe_allow_html=True)
+            try:
+                _anio_evol   = datetime.now().year
+                _mes_act     = datetime.now().month
+                _mes_act_str = f"{_anio_evol}-{str(_mes_act).zfill(2)}"
+                _uid_evol    = st.session_state.get("user_id", "")
+                _meses_anio  = [f"{_anio_evol}-{str(m).zfill(2)}" for m in range(1, 13)]
+                # ── Gastos reales (movimientos) ───────────────────────────
+                _df_mov_e = df_mov[df_mov["Apartamento"] == sel].copy()
+                _df_mov_e["_mes"] = pd.to_datetime(_df_mov_e["Fecha"], errors="coerce").dt.strftime("%Y-%m")
+                _df_mov_e = _df_mov_e[_df_mov_e["_mes"].notna() & (_df_mov_e["_mes"] != "NaT")]
+                _gas_real_s = _df_mov_e[_df_mov_e["Tipo"]=="Gasto"].groupby("_mes")["Importe"].sum()
+                _ing_mov_s  = _df_mov_e[_df_mov_e["Tipo"]=="Ingreso"].groupby("_mes")["Importe"].sum()
+                # ── Ingresos reales (facturas emitidas cobradas) ──────────
+                _ing_fe_s = pd.Series(dtype=float)
+                _df_fe_e  = leer_facturas_emitidas(_uid_evol)
+                if not _df_fe_e.empty and "inmueble" in _df_fe_e.columns:
+                    try:
+                        _fc = "fecha" if "fecha" in _df_fe_e.columns else "fecha_emision"
+                        _df_fe_e[_fc] = pd.to_datetime(_df_fe_e[_fc], errors="coerce")
+                        _fe_fil = _df_fe_e[
+                            (_df_fe_e["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
+                            (_df_fe_e["estado"] == "cobrada") &
+                            (_df_fe_e[_fc].dt.year == _anio_evol)
+                        ].copy()
+                        if not _fe_fil.empty:
+                            _fe_fil["_mes"] = _fe_fil[_fc].dt.strftime("%Y-%m")
+                            _ing_fe_s = _fe_fil.groupby("_mes")["total"].sum()
+                    except Exception:
+                        pass
+                # ── Forecast: gastos recurrentes + programados ────────────
+                _gas_fijos_mes = 0.0
                 try:
-                    from supabase_db import leer_cashflow_programado as _leer_cfp_ia
-                    _uid_ia   = st.session_state.get("user_id", "")
-                    _df_gr_ia = leer_gastos_recurrentes(_uid_ia)
-                    _gas_fijos_ia = 0.0
-                    if not _df_gr_ia.empty and "inmueble" in _df_gr_ia.columns:
-                        _gr_ia_inm = _df_gr_ia[
-                            _df_gr_ia["inmueble"].str.lower().str.strip() == sel.lower().strip()]
-                        _gas_fijos_ia = float(_gr_ia_inm["importe"].sum())
-                    _cf_base_ia = renta_act - _gas_fijos_ia
-                    _df_cfp_ia  = _leer_cfp_ia(_uid_ia, inmueble=sel)
-                    _anio_ia    = datetime.now().year
-                    _mes_ia     = datetime.now().month
-                    _meses_ia   = ["","Ene","Feb","Mar","Abr","May","Jun",
-                                    "Jul","Ago","Sep","Oct","Nov","Dic"]
-                    _cf_meses_ia = []
-                    for _mi in range(1, 13):
-                        if _mi > _mes_ia:
-                            _cpg, _cpi = 0.0, 0.0
-                            if not _df_cfp_ia.empty:
-                                for _, _ev in _df_cfp_ia.iterrows():
-                                    if int(_ev.get("mes", 0)) == _mi:
-                                        _amt = float(_ev.get("importe", 0))
-                                        if _ev.get("tipo") == "gasto":
-                                            _cpg += _amt
-                                        else:
-                                            _cpi += _amt
-                            _net_mi = _cf_base_ia + _cpi - _cpg
-                            _extra  = f" (var. {_cpg:,.0f}€)" if _cpg > 0 else ""
-                            _cf_meses_ia.append(f"  {_meses_ia[_mi]}: {_net_mi:+,.0f}€{_extra}")
-                    _resumen_meses_ia = "\n".join(_cf_meses_ia) or "Sin forecast disponible"
-                    _eventos_ia = []
-                    if not _df_cfp_ia.empty:
-                        for _, _ev in _df_cfp_ia.iterrows():
-                            _mn = int(_ev.get("mes", 0))
-                            _tip = "GASTO" if _ev.get("tipo") == "gasto" else "INGRESO"
-                            _eventos_ia.append(
-                                f"  {_tip} {_meses_ia[_mn] if 1<=_mn<=12 else _mn}: "
-                                f"{_ev.get('descripcion','')} {float(_ev.get('importe',0)):,.0f}€")
-                    _eventos_texto_ia = "\n".join(_eventos_ia) or "  Ninguno registrado"
-                    _prompt_ia = (
-                        f"Eres un asesor patrimonial inmobiliario en España. Analiza este activo.\n\n"
-                        f"ACTIVO: {sel}\n"
-                        f"Renta mensual: {renta_act:,.0f}€ | Gastos fijos/mes: {_gas_fijos_ia:,.0f}€ | "
-                        f"Cashflow base: {_cf_base_ia:+,.0f}€/mes\n\n"
-                        f"PREVISIÓN MESES PENDIENTES {_anio_ia}:\n{_resumen_meses_ia}\n\n"
-                        f"EVENTOS PROGRAMADOS:\n{_eventos_texto_ia}\n\n"
-                        f"Responde en máximo 3 frases. Sé directo, menciona meses y cifras concretas. "
-                        f"Indica: (1) si hay tensión de liquidez y cuándo, "
-                        f"(2) si es buen momento para reformas, "
-                        f"(3) una acción concreta. Responde en español."
-                    )
-                    _resp_ia = anthropic.Anthropic(
-                        api_key=st.secrets.get("ANTHROPIC_API_KEY", "")
-                    ).messages.create(
-                        model="claude-sonnet-4-6",
-                        max_tokens=300,
-                        messages=[{"role": "user", "content": _prompt_ia}]
-                    )
-                    st.session_state[_key_ia_fic] = _resp_ia.content[0].text.strip()
-                except Exception as _e_ia:
-                    st.session_state[_key_ia_fic] = f"Error: {str(_e_ia)[:200]}"
+                    _df_gr = leer_gastos_recurrentes(_uid_evol)
+                    if not _df_gr.empty and "inmueble" in _df_gr.columns:
+                        _gr_inm = _df_gr[_df_gr["inmueble"].str.lower().str.strip() == sel.lower().strip()]
+                        _gas_fijos_mes = float(_gr_inm["importe"].sum())
+                except Exception:
+                    pass
+                _cfp_gas_mes = {}
+                _cfp_ing_mes = {}
+                try:
+                    _df_cfp = leer_cashflow_programado(_uid_evol, inmueble=sel)
+                    if not _df_cfp.empty:
+                        for _, _ev in _df_cfp.iterrows():
+                            _em = f"{_anio_evol}-{str(int(_ev.get('mes',0))).zfill(2)}"
+                            _ei = float(_ev.get("importe", 0))
+                            if _ev.get("tipo") == "gasto":
+                                _cfp_gas_mes[_em] = _cfp_gas_mes.get(_em, 0) + _ei
+                            else:
+                                _cfp_ing_mes[_em] = _cfp_ing_mes.get(_em, 0) + _ei
+                except Exception:
+                    pass
+                # ── Arrays por mes ────────────────────────────────────────
+                _ir_arr = []  # ingresos reales
+                _gr_arr = []  # gastos reales
+                _ie_arr = []  # ingresos estimados
+                _ge_arr = []  # gastos estimados
+                for _m in _meses_anio:
+                    _pasado = _m <= _mes_act_str
+                    _ir_arr.append(float(_ing_fe_s.get(_m, 0) + _ing_mov_s.get(_m, 0)) if _pasado else 0)
+                    _gr_arr.append(float(_gas_real_s.get(_m, 0)) if _pasado else 0)
+                    if not _pasado:
+                        _ie_arr.append(renta_act + _cfp_ing_mes.get(_m, 0))
+                        _ge_arr.append(_gas_fijos_mes + _cfp_gas_mes.get(_m, 0))
+                    else:
+                        _ie_arr.append(0)
+                        _ge_arr.append(0)
+                # ── Gráfico ───────────────────────────────────────────────
+                _fig_e = go.Figure()
+                _fig_e.add_trace(go.Bar(
+                    name="Ingresos cobrados", x=_meses_anio, y=_ir_arr,
+                    marker_color=ACCENT,
+                    text=[f"{v:,.0f}€" if v > 0 else "" for v in _ir_arr],
+                    textposition="outside"))
+                _fig_e.add_trace(go.Bar(
+                    name="Gastos reales", x=_meses_anio, y=_gr_arr,
+                    marker_color=RED,
+                    text=[f"{v:,.0f}€" if v > 0 else "" for v in _gr_arr],
+                    textposition="outside"))
+                _fig_e.add_trace(go.Bar(
+                    name="Ingresos est.", x=_meses_anio, y=_ie_arr,
+                    marker_color="rgba(24,95,165,0.18)",
+                    marker_line_color=ACCENT, marker_line_width=1.5,
+                    text=[f"{v:,.0f}€" if v > 0 else "" for v in _ie_arr],
+                    textposition="outside"))
+                _fig_e.add_trace(go.Bar(
+                    name="Gastos est.", x=_meses_anio, y=_ge_arr,
+                    marker_color="rgba(192,57,43,0.18)",
+                    marker_line_color=RED, marker_line_width=1.5,
+                    text=[f"{v:,.0f}€" if v > 0 else "" for v in _ge_arr],
+                    textposition="outside"))
+                _fig_e.update_layout(
+                    barmode="group",
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(l=10, r=10, t=30, b=10), height=290,
+                    yaxis=dict(showgrid=False, visible=False),
+                    xaxis=dict(showgrid=False, tickangle=-30, type="category"),
+                    font=dict(family="DM Sans", size=12),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                st.plotly_chart(_fig_e, use_container_width=True)
+                st.caption("Barras sólidas: datos reales · Barras con borde: estimación (renta fija + gastos recurrentes + programados)")
+            except Exception:
+                st.caption("Sin datos suficientes para el gráfico.")
 
-        if not _btn_ia and _key_ia_fic not in st.session_state:
-            st.caption("Pulsa '🤖 Analizar con IA' para obtener un consejo personalizado sobre este activo.")
+            # ── IA ASESORAMIENTO — CONSEJO PATRIMONIAL ───────────────────
+            st.markdown('<div class="nc-section-title">🤖 Consejo patrimonial IA</div>', unsafe_allow_html=True)
+            _key_ia_fic = f"ia_consejo_{sel}"
+            _col_ia_txt, _col_ia_btn = st.columns([5, 1])
+            with _col_ia_btn:
+                _btn_ia = st.button("🤖 Analizar con IA", key=f"btn_ia_{sel}", use_container_width=True)
+            if _btn_ia and _key_ia_fic in st.session_state:
+                del st.session_state[_key_ia_fic]
 
-        _consejo_txt = st.session_state.get(_key_ia_fic, "")
-        if _consejo_txt:
-            st.markdown(
-                f'''<div style="background:linear-gradient(135deg,#EBF3FC 0%,#F4F7FB 100%);
-                            border-left:4px solid #185FA5;border-radius:0 10px 10px 0;
-                            padding:16px 20px;margin:8px 0;">
-                  <div style="font-size:12px;color:#185FA5;font-weight:600;
-                              text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
-                    Asesor patrimonial IA · {sel}
-                  </div>
-                  <div style="font-size:14px;color:#1E293B;line-height:1.6;">{_consejo_txt}</div>
-                </div>''', unsafe_allow_html=True)
+            if _btn_ia and _key_ia_fic not in st.session_state:
+                with st.spinner("Analizando el activo..."):
+                    try:
+                        from supabase_db import leer_cashflow_programado as _leer_cfp_ia
+                        _uid_ia   = st.session_state.get("user_id", "")
+                        _df_gr_ia = leer_gastos_recurrentes(_uid_ia)
+                        _gas_fijos_ia = 0.0
+                        if not _df_gr_ia.empty and "inmueble" in _df_gr_ia.columns:
+                            _gr_ia_inm = _df_gr_ia[
+                                _df_gr_ia["inmueble"].str.lower().str.strip() == sel.lower().strip()]
+                            _gas_fijos_ia = float(_gr_ia_inm["importe"].sum())
+                        _cf_base_ia = renta_act - _gas_fijos_ia
+                        _df_cfp_ia  = _leer_cfp_ia(_uid_ia, inmueble=sel)
+                        _anio_ia    = datetime.now().year
+                        _mes_ia     = datetime.now().month
+                        _meses_ia   = ["","Ene","Feb","Mar","Abr","May","Jun",
+                                        "Jul","Ago","Sep","Oct","Nov","Dic"]
+                        _cf_meses_ia = []
+                        for _mi in range(1, 13):
+                            if _mi > _mes_ia:
+                                _cpg, _cpi = 0.0, 0.0
+                                if not _df_cfp_ia.empty:
+                                    for _, _ev in _df_cfp_ia.iterrows():
+                                        if int(_ev.get("mes", 0)) == _mi:
+                                            _amt = float(_ev.get("importe", 0))
+                                            if _ev.get("tipo") == "gasto":
+                                                _cpg += _amt
+                                            else:
+                                                _cpi += _amt
+                                _net_mi = _cf_base_ia + _cpi - _cpg
+                                _extra  = f" (var. {_cpg:,.0f}€)" if _cpg > 0 else ""
+                                _cf_meses_ia.append(f"  {_meses_ia[_mi]}: {_net_mi:+,.0f}€{_extra}")
+                        _resumen_meses_ia = "\n".join(_cf_meses_ia) or "Sin forecast disponible"
+                        _eventos_ia = []
+                        if not _df_cfp_ia.empty:
+                            for _, _ev in _df_cfp_ia.iterrows():
+                                _mn = int(_ev.get("mes", 0))
+                                _tip = "GASTO" if _ev.get("tipo") == "gasto" else "INGRESO"
+                                _eventos_ia.append(
+                                    f"  {_tip} {_meses_ia[_mn] if 1<=_mn<=12 else _mn}: "
+                                    f"{_ev.get('descripcion','')} {float(_ev.get('importe',0)):,.0f}€")
+                        _eventos_texto_ia = "\n".join(_eventos_ia) or "  Ninguno registrado"
+                        _prompt_ia = (
+                            f"Eres un asesor patrimonial inmobiliario en España. Analiza este activo.\n\n"
+                            f"ACTIVO: {sel}\n"
+                            f"Renta mensual: {renta_act:,.0f}€ | Gastos fijos/mes: {_gas_fijos_ia:,.0f}€ | "
+                            f"Cashflow base: {_cf_base_ia:+,.0f}€/mes\n\n"
+                            f"PREVISIÓN MESES PENDIENTES {_anio_ia}:\n{_resumen_meses_ia}\n\n"
+                            f"EVENTOS PROGRAMADOS:\n{_eventos_texto_ia}\n\n"
+                            f"Responde en máximo 3 frases. Sé directo, menciona meses y cifras concretas. "
+                            f"Indica: (1) si hay tensión de liquidez y cuándo, "
+                            f"(2) si es buen momento para reformas, "
+                            f"(3) una acción concreta. Responde en español."
+                        )
+                        _resp_ia = anthropic.Anthropic(
+                            api_key=st.secrets.get("ANTHROPIC_API_KEY", "")
+                        ).messages.create(
+                            model="claude-sonnet-4-6",
+                            max_tokens=300,
+                            messages=[{"role": "user", "content": _prompt_ia}]
+                        )
+                        st.session_state[_key_ia_fic] = _resp_ia.content[0].text.strip()
+                    except Exception as _e_ia:
+                        st.session_state[_key_ia_fic] = f"Error: {str(_e_ia)[:200]}"
 
-        # ── TABLA DUAL INGRESOS / GASTOS ─────────────────────────────
-            c1,c2=st.columns(2)
-            with c1:
-                st.markdown('<div class="nc-section-title">Renta Actual vs Tasada</div>',unsafe_allow_html=True)
-                fig_bar=go.Figure(go.Bar(x=["Renta Actual","Renta Tasada"],y=[renta_act,renta_mer],marker_color=[ACCENT,"#D0DFF0"],text=[f"{renta_act:,.0f} €",f"{renta_mer:,.0f} €"],textposition="outside",width=0.4))
-                fig_bar.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=240,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=13),showlegend=False)
-                st.plotly_chart(fig_bar,use_container_width=True)
-            with c2:
-                st.markdown('<div class="nc-section-title">Estatus de Mercado</div>',unsafe_allow_html=True)
-                if desv<-15:   clase,msg,icon="status-red","Rentabilidad Crítica","🔴"
-                elif desv<-5:  clase,msg,icon="status-yellow","Margen de Mejora","🟡"
-                else:          clase,msg,icon="status-green","Activo en Mercado","🟢"
-                lucro_html=""
-                if perdida_a>0: lucro_html=f'<div style="margin-top:12px;padding-top:12px;border-top:1px dashed rgba(0,0,0,0.15);"><span style="font-size:0.88rem;"><b>💸 Lucro Cesante:</b><br>Pérdida mensual: <b>{perdida_m:,.2f} €</b><br>Pérdida anualizada: <b style="color:{RED};font-size:1.15rem;">{perdida_a:,.2f} €/año</b></span></div>'
-                st.markdown(f'<div class="{clase}"><b style="font-size:1.1rem;">{icon} {msg}</b><br>Desviación: <b>{desv:.1f}%</b>{lucro_html}</div>',unsafe_allow_html=True)
+            if not _btn_ia and _key_ia_fic not in st.session_state:
+                st.caption("Pulsa '🤖 Analizar con IA' para obtener un consejo personalizado sobre este activo.")
 
-            if _es_soc_fic:
-                # ── Análisis Fiscal IS — Sociedad Patrimonial ─────────────
-                st.markdown('<div class="nc-section-title">🏛️ Análisis Fiscal IS — Sociedad Patrimonial</div>', unsafe_allow_html=True)
-                st.caption("Impuesto de Sociedades 25% · Sin reducción arrendamiento · Doble imposición si distribuyes dividendos")
+            _consejo_txt = st.session_state.get(_key_ia_fic, "")
+            if _consejo_txt:
+                st.markdown(
+                    f'''<div style="background:linear-gradient(135deg,#EBF3FC 0%,#F4F7FB 100%);
+                                border-left:4px solid #185FA5;border-radius:0 10px 10px 0;
+                                padding:16px 20px;margin:8px 0;">
+                      <div style="font-size:12px;color:#185FA5;font-weight:600;
+                                  text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
+                        Asesor patrimonial IA · {sel}
+                      </div>
+                      <div style="font-size:14px;color:#1E293B;line-height:1.6;">{_consejo_txt}</div>
+                    </div>''', unsafe_allow_html=True)
 
-                _rto_sin = _renta_anual_fic                          # sin deducir gastos
-                _rto_con = _renta_anual_fic - _gas_tot_fic           # con todos los gastos
-                _is_sin  = round(max(_rto_sin * 0.25, 0), 2)
-                _is_con  = round(max(_rto_con * 0.25, 0), 2)
-                _neto_sin = round(_rto_sin - _is_sin, 2)
-                _neto_con = round(_rto_con - _is_con, 2)
-                _div_sin  = round(max(_neto_sin * 0.19, 0), 2)       # retención dividendos 19%
-                _div_con  = round(max(_neto_con * 0.19, 0), 2)
-                _final_sin = round(_neto_sin - _div_sin, 2)
-                _final_con = round(_neto_con - _div_con, 2)
-                _ahorro_is = round(_is_sin - _is_con, 2)
+            # ── TABLA DUAL INGRESOS / GASTOS ─────────────────────────────
+                c1,c2=st.columns(2)
+                with c1:
+                    st.markdown('<div class="nc-section-title">Renta Actual vs Tasada</div>',unsafe_allow_html=True)
+                    fig_bar=go.Figure(go.Bar(x=["Renta Actual","Renta Tasada"],y=[renta_act,renta_mer],marker_color=[ACCENT,"#D0DFF0"],text=[f"{renta_act:,.0f} €",f"{renta_mer:,.0f} €"],textposition="outside",width=0.4))
+                    fig_bar.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=240,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=13),showlegend=False)
+                    st.plotly_chart(fig_bar,use_container_width=True)
+                with c2:
+                    st.markdown('<div class="nc-section-title">Estatus de Mercado</div>',unsafe_allow_html=True)
+                    if desv<-15:   clase,msg,icon="status-red","Rentabilidad Crítica","🔴"
+                    elif desv<-5:  clase,msg,icon="status-yellow","Margen de Mejora","🟡"
+                    else:          clase,msg,icon="status-green","Activo en Mercado","🟢"
+                    lucro_html=""
+                    if perdida_a>0: lucro_html=f'<div style="margin-top:12px;padding-top:12px;border-top:1px dashed rgba(0,0,0,0.15);"><span style="font-size:0.88rem;"><b>💸 Lucro Cesante:</b><br>Pérdida mensual: <b>{perdida_m:,.2f} €</b><br>Pérdida anualizada: <b style="color:{RED};font-size:1.15rem;">{perdida_a:,.2f} €/año</b></span></div>'
+                    st.markdown(f'<div class="{clase}"><b style="font-size:1.1rem;">{icon} {msg}</b><br>Desviación: <b>{desv:.1f}%</b>{lucro_html}</div>',unsafe_allow_html=True)
 
-                cf1, cf2, cf3 = st.columns(3)
-                for _col, _titulo, _rto, _is_v, _neto, _div, _final, _es_actual in [
-                    (cf1, "Sin gastos deducidos", _rto_sin, _is_sin, _neto_sin, _div_sin, _final_sin, False),
-                    (cf2, "Con gastos deducidos", _rto_con, _is_con, _neto_con, _div_con, _final_con, True),
-                ]:
-                    _borde = f"border:2px solid {ACCENT};" if _es_actual else f"border:1px solid #E5E7EB;"
-                    _col.markdown(f"""
-                    <div style="background:#FAFAFA;{_borde}border-radius:10px;padding:1rem;text-align:center;">
-                      <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;
-                                  letter-spacing:0.06em;margin-bottom:10px;">{_titulo}</div>
-                      <div style="font-size:0.75rem;color:#6B7280;margin-bottom:2px;">[399] Resultado neto</div>
-                      <div style="font-size:1.5rem;font-weight:800;color:{ACCENT};">{_rto:,.0f} €</div>
-                      <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
-                      <div style="font-size:0.75rem;color:#6B7280;">[562] IS 25%</div>
-                      <div style="font-size:1.2rem;font-weight:700;color:{RED};">−{_is_v:,.0f} €</div>
-                      <div style="font-size:0.75rem;color:#6B7280;margin-top:8px;">Neto tras IS</div>
-                      <div style="font-size:1.1rem;font-weight:700;color:#059669;">{_neto:,.0f} €</div>
-                      <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
-                      <div style="font-size:0.72rem;color:#6B7280;">Si distribuyes dividendos (19%)</div>
-                      <div style="font-size:0.95rem;font-weight:600;color:{RED};">−{_div:,.0f} €</div>
-                      <div style="font-size:0.75rem;color:#6B7280;margin-top:6px;">Neto final al socio</div>
-                      <div style="font-size:1.3rem;font-weight:800;color:#059669;">{_final:,.0f} €</div>
+                if _es_soc_fic:
+                    # ── Análisis Fiscal IS — Sociedad Patrimonial ─────────────
+                    st.markdown('<div class="nc-section-title">🏛️ Análisis Fiscal IS — Sociedad Patrimonial</div>', unsafe_allow_html=True)
+                    st.caption("Impuesto de Sociedades 25% · Sin reducción arrendamiento · Doble imposición si distribuyes dividendos")
+
+                    _rto_sin = _renta_anual_fic                          # sin deducir gastos
+                    _rto_con = _renta_anual_fic - _gas_tot_fic           # con todos los gastos
+                    _is_sin  = round(max(_rto_sin * 0.25, 0), 2)
+                    _is_con  = round(max(_rto_con * 0.25, 0), 2)
+                    _neto_sin = round(_rto_sin - _is_sin, 2)
+                    _neto_con = round(_rto_con - _is_con, 2)
+                    _div_sin  = round(max(_neto_sin * 0.19, 0), 2)       # retención dividendos 19%
+                    _div_con  = round(max(_neto_con * 0.19, 0), 2)
+                    _final_sin = round(_neto_sin - _div_sin, 2)
+                    _final_con = round(_neto_con - _div_con, 2)
+                    _ahorro_is = round(_is_sin - _is_con, 2)
+
+                    cf1, cf2, cf3 = st.columns(3)
+                    for _col, _titulo, _rto, _is_v, _neto, _div, _final, _es_actual in [
+                        (cf1, "Sin gastos deducidos", _rto_sin, _is_sin, _neto_sin, _div_sin, _final_sin, False),
+                        (cf2, "Con gastos deducidos", _rto_con, _is_con, _neto_con, _div_con, _final_con, True),
+                    ]:
+                        _borde = f"border:2px solid {ACCENT};" if _es_actual else f"border:1px solid #E5E7EB;"
+                        _col.markdown(f"""
+                        <div style="background:#FAFAFA;{_borde}border-radius:10px;padding:1rem;text-align:center;">
+                          <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;
+                                      letter-spacing:0.06em;margin-bottom:10px;">{_titulo}</div>
+                          <div style="font-size:0.75rem;color:#6B7280;margin-bottom:2px;">[399] Resultado neto</div>
+                          <div style="font-size:1.5rem;font-weight:800;color:{ACCENT};">{_rto:,.0f} €</div>
+                          <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
+                          <div style="font-size:0.75rem;color:#6B7280;">[562] IS 25%</div>
+                          <div style="font-size:1.2rem;font-weight:700;color:{RED};">−{_is_v:,.0f} €</div>
+                          <div style="font-size:0.75rem;color:#6B7280;margin-top:8px;">Neto tras IS</div>
+                          <div style="font-size:1.1rem;font-weight:700;color:#059669;">{_neto:,.0f} €</div>
+                          <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
+                          <div style="font-size:0.72rem;color:#6B7280;">Si distribuyes dividendos (19%)</div>
+                          <div style="font-size:0.95rem;font-weight:600;color:{RED};">−{_div:,.0f} €</div>
+                          <div style="font-size:0.75rem;color:#6B7280;margin-top:6px;">Neto final al socio</div>
+                          <div style="font-size:1.3rem;font-weight:800;color:#059669;">{_final:,.0f} €</div>
+                        </div>""", unsafe_allow_html=True)
+
+                    cf3.markdown(f"""
+                    <div style="background:#0d1a0d;border:1px solid #059669;border-radius:10px;
+                                padding:1rem;text-align:center;">
+                      <div style="font-size:0.72rem;font-weight:700;color:#059669;text-transform:uppercase;
+                                  letter-spacing:0.06em;margin-bottom:10px;">💡 Ahorro fiscal</div>
+                      <div style="font-size:0.75rem;color:#6B7280;">Deduciendo gastos ahorras en IS</div>
+                      <div style="font-size:1.8rem;font-weight:900;color:#059669;">{_ahorro_is:,.0f} €</div>
+                      <div style="height:1px;background:#1a3a1a;margin:10px 0;"></div>
+                      <div style="font-size:0.72rem;color:#6B7280;">Tipo efectivo IS</div>
+                      <div style="font-size:1.2rem;font-weight:700;color:#059669;">
+                        {round(_is_con/_rto_con*100,1) if _rto_con>0 else 0:.1f}%
+                      </div>
+                      <div style="font-size:0.72rem;color:#6B7280;margin-top:8px;">
+                        ⚠️ Sin reducción 60% arrendamiento<br>
+                        (Art. 23.2 LIRPF no aplica a sociedades)
+                      </div>
                     </div>""", unsafe_allow_html=True)
 
-                cf3.markdown(f"""
-                <div style="background:#0d1a0d;border:1px solid #059669;border-radius:10px;
-                            padding:1rem;text-align:center;">
-                  <div style="font-size:0.72rem;font-weight:700;color:#059669;text-transform:uppercase;
-                              letter-spacing:0.06em;margin-bottom:10px;">💡 Ahorro fiscal</div>
-                  <div style="font-size:0.75rem;color:#6B7280;">Deduciendo gastos ahorras en IS</div>
-                  <div style="font-size:1.8rem;font-weight:900;color:#059669;">{_ahorro_is:,.0f} €</div>
-                  <div style="height:1px;background:#1a3a1a;margin:10px 0;"></div>
-                  <div style="font-size:0.72rem;color:#6B7280;">Tipo efectivo IS</div>
-                  <div style="font-size:1.2rem;font-weight:700;color:#059669;">
-                    {round(_is_con/_rto_con*100,1) if _rto_con>0 else 0:.1f}%
-                  </div>
-                  <div style="font-size:0.72rem;color:#6B7280;margin-top:8px;">
-                    ⚠️ Sin reducción 60% arrendamiento<br>
-                    (Art. 23.2 LIRPF no aplica a sociedades)
-                  </div>
-                </div>""", unsafe_allow_html=True)
+                    st.markdown(f"""
+                    <div style="background:#FFF9E6;border:1px solid #D97706;border-radius:8px;
+                                padding:10px 16px;margin-top:12px;font-size:0.82rem;color:#854F0B;">
+                      <b>⚠️ Doble imposición:</b> El beneficio tributa al 25% en IS y si lo distribuyes como dividendo
+                      tributa de nuevo al 19% (tipo general ahorro IRPF). Tipo efectivo total:
+                      <b>{round((1-(1-0.25)*(1-0.19))*100,1)}%</b>.
+                      Valora si compensa reinvertir en la sociedad vs distribuir.
+                    </div>""", unsafe_allow_html=True)
 
-                st.markdown(f"""
-                <div style="background:#FFF9E6;border:1px solid #D97706;border-radius:8px;
-                            padding:10px 16px;margin-top:12px;font-size:0.82rem;color:#854F0B;">
-                  <b>⚠️ Doble imposición:</b> El beneficio tributa al 25% en IS y si lo distribuyes como dividendo
-                  tributa de nuevo al 19% (tipo general ahorro IRPF). Tipo efectivo total:
-                  <b>{round((1-(1-0.25)*(1-0.19))*100,1)}%</b>.
-                  Valora si compensa reinvertir en la sociedad vs distribuir.
-                </div>""", unsafe_allow_html=True)
-
-            else:
-                st.markdown('<div class="nc-section-title">⚖️ Comparativa Fiscal por Modalidad</div>',unsafe_allow_html=True)
-                st.caption("Rentabilidad neta real tras aplicar reducción IRPF según tipo de arrendamiento")
-                rto_neto=(renta_act-gastos_u)*12; tipo_irpf=0.45
-                modalidades={"Larga Duración":{"reduccion":0.60,"iva":False},"Temporada":{"reduccion":0.00,"iva":False},"Vacacional":{"reduccion":0.00,"iva":True}}
-                cf1,cf2,cf3=st.columns(3); cols_fiscal=[cf1,cf2,cf3]; mejor_mod,mejor_rn=None,-99999
-                for idx,(mod,params) in enumerate(modalidades.items()):
-                    red=params["reduccion"]; impuesto=max(0,rto_neto*(1-red)*tipo_irpf)
-                    rn_real=(rto_neto-impuesto)/safe_float(f.get("Valor_Construccion",0))*100 if safe_float(f.get("Valor_Construccion",0))>0 else 0
-                    if rn_real>mejor_rn: mejor_rn=rn_real; mejor_mod=mod
-                    es_actual=(mod==tipo_arr); borde=f"border:2px solid {ACCENT};" if es_actual else f"border:1px solid {BORDER};"
-                    iva_txt="<br><span style='font-size:0.7rem;color:#854F0B;'>⚠️ Puede llevar IVA</span>" if params["iva"] else ""
-                    red_txt=f"Reducción IRPF: <b>{int(red*100)}%</b>" if red>0 else "Sin reducción fiscal"
-                    badge="<div style='margin-top:8px;font-size:0.7rem;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;'>✅ Modalidad actual</div>" if es_actual else ""
-                    cols_fiscal[idx].markdown(f"""<div style="background:{CARD_BG};{borde}border-radius:10px;padding:1.1rem;text-align:center;"><div style="font-size:0.72rem;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">{mod}</div><div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div><div style="font-size:0.7rem;color:{TEXT_SEC};margin-top:4px;">Rent. neta real/año</div><div style="font-size:0.75rem;color:{TEXT_PRI};margin-top:8px;">{red_txt}{iva_txt}</div><div style="font-size:0.7rem;color:{RED};margin-top:4px;">Impuesto est.: {impuesto:,.0f} €/año</div>{badge}</div>""",unsafe_allow_html=True)
-                if mejor_mod: st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%).</div>',unsafe_allow_html=True)
-
-            with st.expander("📐 Simulador de subida de renta", expanded=False):
-                if zona_tens:
-                    max_renta=int(renta_act*1.03); st.warning(f"🔒 Zona tensionada: subida máxima al IPC (3%). Renta máxima: {max_renta:,.0f} €/mes")
-                    nueva_renta=st.slider("Ajusta la renta (€)",min_value=int(renta_act*0.9),max_value=max_renta,value=int(renta_act),step=10)
                 else:
-                    _sl_min = max(100, int(renta_act * 0.8))
-                    _sl_max = max(_sl_min + 100, int(max(renta_mer, renta_act) * 1.2))
-                    _sl_val = max(_sl_min, min(int(renta_act), _sl_max))
-                    nueva_renta = st.slider("Ajusta la renta mensual (€)", min_value=_sl_min, max_value=_sl_max, value=_sl_val, step=25)
-                ganancia_m=nueva_renta-renta_act; ganancia_a=ganancia_m*12
-                nueva_neta=((nueva_renta-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
-                s1,s2,s3=st.columns(3)
-                s1.metric("Nueva Renta",f"{nueva_renta:,.0f} €/mes",delta=f"{ganancia_m:+.0f} €")
-                s2.metric("Impacto Anual",f"{ganancia_a:+,.0f} €/año")
-                s3.metric("Nueva Rent. Neta",f"{nueva_neta:.1f}%",delta=f"{nueva_neta-rent_neta:+.1f}%")
+                    st.markdown('<div class="nc-section-title">⚖️ Comparativa Fiscal por Modalidad</div>',unsafe_allow_html=True)
+                    st.caption("Rentabilidad neta real tras aplicar reducción IRPF según tipo de arrendamiento")
+                    rto_neto=(renta_act-gastos_u)*12; tipo_irpf=0.45
+                    modalidades={"Larga Duración":{"reduccion":0.60,"iva":False},"Temporada":{"reduccion":0.00,"iva":False},"Vacacional":{"reduccion":0.00,"iva":True}}
+                    cf1,cf2,cf3=st.columns(3); cols_fiscal=[cf1,cf2,cf3]; mejor_mod,mejor_rn=None,-99999
+                    for idx,(mod,params) in enumerate(modalidades.items()):
+                        red=params["reduccion"]; impuesto=max(0,rto_neto*(1-red)*tipo_irpf)
+                        rn_real=(rto_neto-impuesto)/safe_float(f.get("Valor_Construccion",0))*100 if safe_float(f.get("Valor_Construccion",0))>0 else 0
+                        if rn_real>mejor_rn: mejor_rn=rn_real; mejor_mod=mod
+                        es_actual=(mod==tipo_arr); borde=f"border:2px solid {ACCENT};" if es_actual else f"border:1px solid {BORDER};"
+                        iva_txt="<br><span style='font-size:0.7rem;color:#854F0B;'>⚠️ Puede llevar IVA</span>" if params["iva"] else ""
+                        red_txt=f"Reducción IRPF: <b>{int(red*100)}%</b>" if red>0 else "Sin reducción fiscal"
+                        badge="<div style='margin-top:8px;font-size:0.7rem;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;'>✅ Modalidad actual</div>" if es_actual else ""
+                        cols_fiscal[idx].markdown(f"""<div style="background:{CARD_BG};{borde}border-radius:10px;padding:1.1rem;text-align:center;"><div style="font-size:0.72rem;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">{mod}</div><div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div><div style="font-size:0.7rem;color:{TEXT_SEC};margin-top:4px;">Rent. neta real/año</div><div style="font-size:0.75rem;color:{TEXT_PRI};margin-top:8px;">{red_txt}{iva_txt}</div><div style="font-size:0.7rem;color:{RED};margin-top:4px;">Impuesto est.: {impuesto:,.0f} €/año</div>{badge}</div>""",unsafe_allow_html=True)
+                    if mejor_mod: st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%).</div>',unsafe_allow_html=True)
+
+                with st.expander("📐 Simulador de subida de renta", expanded=False):
+                    if zona_tens:
+                        max_renta=int(renta_act*1.03); st.warning(f"🔒 Zona tensionada: subida máxima al IPC (3%). Renta máxima: {max_renta:,.0f} €/mes")
+                        nueva_renta=st.slider("Ajusta la renta (€)",min_value=int(renta_act*0.9),max_value=max_renta,value=int(renta_act),step=10)
+                    else:
+                        _sl_min = max(100, int(renta_act * 0.8))
+                        _sl_max = max(_sl_min + 100, int(max(renta_mer, renta_act) * 1.2))
+                        _sl_val = max(_sl_min, min(int(renta_act), _sl_max))
+                        nueva_renta = st.slider("Ajusta la renta mensual (€)", min_value=_sl_min, max_value=_sl_max, value=_sl_val, step=25)
+                    ganancia_m=nueva_renta-renta_act; ganancia_a=ganancia_m*12
+                    nueva_neta=((nueva_renta-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
+                    s1,s2,s3=st.columns(3)
+                    s1.metric("Nueva Renta",f"{nueva_renta:,.0f} €/mes",delta=f"{ganancia_m:+.0f} €")
+                    s2.metric("Impacto Anual",f"{ganancia_a:+,.0f} €/año")
+                    s3.metric("Nueva Rent. Neta",f"{nueva_neta:.1f}%",delta=f"{nueva_neta-rent_neta:+.1f}%")
 
 
     with _ft2:
