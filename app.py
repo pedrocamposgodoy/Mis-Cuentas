@@ -2319,9 +2319,9 @@ elif menu == "Fichas (Benchmark)":
 
 
 
+
     with _ft2:
-        from supabase_db import (leer_facturas_recibidas, crear_factura_recibida,
-                                  actualizar_factura_recibida, eliminar_factura_recibida)
+        # Solo lectura — la numeración de facturas es correlativa y se gestiona en Ingresos·Rentas
         _uid_i2   = st.session_state.get("user_id","")
         _ic1,_ic2 = st.columns([2,1])
         with _ic1:
@@ -2330,100 +2330,50 @@ elif menu == "Fichas (Benchmark)":
             _mn_i2=["Todos","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
             _mes_i2=st.selectbox("Mes",list(range(0,13)),format_func=lambda x:_mn_i2[x],key=f"mi2_{sel}")
 
-        # ── Fuente 1: facturas emitidas cobradas ──────────────────
-        _rows_fe = []
+        # Facturas emitidas cobradas para este inmueble
+        _rows_i2 = []
         try:
             _df_fe_i2 = leer_facturas_emitidas(_uid_i2)
             if not _df_fe_i2.empty and "inmueble" in _df_fe_i2.columns:
                 _fc_i2 = "fecha" if "fecha" in _df_fe_i2.columns else "fecha_emision"
                 _df_fe_i2[_fc_i2] = pd.to_datetime(_df_fe_i2[_fc_i2], errors="coerce")
-                _fe_i2_fil = _df_fe_i2[
+                _fe_fil = _df_fe_i2[
                     (_df_fe_i2["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
                     (_df_fe_i2["estado"] == "cobrada") &
                     (_df_fe_i2[_fc_i2].dt.year == _anio_i2)
                 ].copy()
                 if _mes_i2 > 0:
-                    _fe_i2_fil = _fe_i2_fil[_fe_i2_fil[_fc_i2].dt.month == _mes_i2]
-                for _, _r in _fe_i2_fil.iterrows():
-                    _rows_fe.append({
-                        "id": str(_r.get("id","")), "fuente": "emitida",
-                        "fecha": str(_r[_fc_i2])[:10],
-                        "proveedor": _r.get("inquilino",""),
-                        "concepto": _r.get("concepto",""),
-                        "categoria": "alquiler",
-                        "importe_total": float(_r.get("total") or 0),
-                    })
-        except Exception:
-            pass
-
-        # ── Fuente 2: facturas recibidas tipo ingreso ──────────────
-        _rows_fr = []
-        try:
-            _df_fr_i2 = leer_facturas_recibidas(_uid_i2, inmueble=sel, ejercicio=_anio_i2, tipo="ingreso")
-            if _mes_i2 > 0 and not _df_fr_i2.empty:
-                _df_fr_i2 = _df_fr_i2[pd.to_datetime(_df_fr_i2["fecha"],errors="coerce").dt.month==_mes_i2]
-            if not _df_fr_i2.empty:
-                for _, _r in _df_fr_i2.iterrows():
-                    _rows_fr.append({
-                        "id": str(_r.get("id","")), "fuente": "recibida",
-                        "fecha": str(_r.get("fecha",""))[:10],
-                        "proveedor": str(_r.get("proveedor","")),
+                    _fe_fil = _fe_fil[_fe_fil[_fc_i2].dt.month == _mes_i2]
+                for _, _r in _fe_fil.iterrows():
+                    _rows_i2.append({
+                        "fecha":    str(_r[_fc_i2])[:10],
+                        "numero":   str(_r.get("numero","")),
+                        "inquilino":str(_r.get("inquilino","")),
                         "concepto": str(_r.get("concepto","")),
-                        "categoria": str(_r.get("categoria","")),
-                        "importe_total": float(_r.get("importe_total") or 0),
+                        "total":    float(_r.get("total") or 0),
                     })
         except Exception:
             pass
 
-        _all_ing = sorted(_rows_fe + _rows_fr, key=lambda x: x["fecha"], reverse=True)
-        _tot_i2  = sum(r["importe_total"] for r in _all_ing)
-        st.metric("Total ingresos período", f"{_tot_i2:,.0f} €")
+        _tot_i2 = sum(r["total"] for r in _rows_i2)
+        st.metric("Total cobrado período", f"{_tot_i2:,.0f} €")
         st.divider()
 
-        _edit_i2 = st.session_state.get(f"edit_i2_{sel}")
-        if _all_ing:
-            # Cabecera
-            _ih = st.columns([2,2,4,2,1,1])
-            for _htxt,_hc in zip(["Fecha","Categoría","Concepto / pagador","Importe","",""],_ih):
-                _hc.markdown(f"<span style='font-size:11px;color:var(--color-text-secondary);font-weight:500;'>{_htxt}</span>",unsafe_allow_html=True)
-            st.markdown("<hr style='margin:4px 0 6px;border-color:var(--color-border-tertiary);'>",unsafe_allow_html=True)
-            for _ri in _all_ing:
-                _ri_id = _ri["id"]
-                _label_i = (f"{_ri['proveedor']} · {_ri['concepto']}" if _ri["proveedor"] and _ri["concepto"]
-                            else _ri["proveedor"] or _ri["concepto"] or "—")
-                _rc = st.columns([2,2,4,2,1,1])
-                _rc[0].markdown(f"<span style='font-size:12px;'>{_ri['fecha']}</span>",unsafe_allow_html=True)
-                _rc[1].markdown(f"<span style='font-size:12px;'>{_ri['categoria']}</span>",unsafe_allow_html=True)
-                _rc[2].markdown(f"<span style='font-size:12px;'>{_label_i[:40]}</span>",unsafe_allow_html=True)
-                _rc[3].markdown(f"<span style='font-size:12px;font-weight:500;color:#1a7a40;'>{_ri['importe_total']:,.2f} €</span>",unsafe_allow_html=True)
-                if _ri["fuente"] == "recibida":
-                    with _rc[4]:
-                        if st.button("✏️",key=f"edit_i2_btn_{_ri_id}",help="Editar",use_container_width=True):
-                            st.session_state[f"edit_i2_{sel}"] = None if _edit_i2==_ri_id else _ri_id
-                            st.rerun()
-                    with _rc[5]:
-                        if st.button("🗑",key=f"del_i2_{_ri_id}",help="Eliminar",use_container_width=True):
-                            eliminar_factura_recibida(_ri_id,_uid_i2)
-                            st.success("Eliminado ✓"); st.rerun()
-                else:
-                    _rc[4].markdown("<span style='font-size:10px;color:var(--color-text-secondary);'>F.emitida</span>",unsafe_allow_html=True)
-                if _edit_i2 == _ri_id:
-                    with st.form(f"form_edit_i2_{_ri_id}",clear_on_submit=False):
-                        _e1,_e2 = st.columns(2)
-                        with _e1:
-                            _ep=st.text_input("Pagador",value=_ri["proveedor"],key=f"ep_{_ri_id}")
-                            _ec=st.text_input("Concepto",value=_ri["concepto"],key=f"ec_{_ri_id}")
-                        with _e2:
-                            _eim=st.number_input("Importe (€)",value=_ri["importe_total"],min_value=0.0,key=f"eim_{_ri_id}")
-                        if st.form_submit_button("💾 Guardar",use_container_width=True):
-                            actualizar_factura_recibida(_ri_id,_uid_i2,{"proveedor":_ep,"concepto":_ec,"importe":_eim,"importe_total":_eim})
-                            st.session_state[f"edit_i2_{sel}"]=None
-                            st.success("Actualizado ✓"); st.rerun()
+        if _rows_i2:
+            _ih = st.columns([2, 2, 3, 3, 2])
+            for _htxt, _hc in zip(["Fecha","Nº Factura","Inquilino","Concepto","Importe"], _ih):
+                _hc.markdown(f"<span style='font-size:11px;color:var(--color-text-secondary);font-weight:500;'>{_htxt}</span>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin:4px 0 6px;border-color:var(--color-border-tertiary);'>", unsafe_allow_html=True)
+            for _ri in _rows_i2:
+                _rc = st.columns([2, 2, 3, 3, 2])
+                _rc[0].markdown(f"<span style='font-size:12px;'>{_ri['fecha']}</span>", unsafe_allow_html=True)
+                _rc[1].markdown(f"<span style='font-size:12px;color:#185FA5;font-weight:500;'>{_ri['numero']}</span>", unsafe_allow_html=True)
+                _rc[2].markdown(f"<span style='font-size:12px;'>{_ri['inquilino'][:25]}</span>", unsafe_allow_html=True)
+                _rc[3].markdown(f"<span style='font-size:12px;'>{_ri['concepto'][:30]}</span>", unsafe_allow_html=True)
+                _rc[4].markdown(f"<span style='font-size:12px;font-weight:500;color:#1a7a40;'>{_ri['total']:,.2f} €</span>", unsafe_allow_html=True)
         else:
-            st.caption("Sin ingresos en este período.")
-
-        st.divider()
-        st.caption("Las facturas de alquiler se generan desde Ingresos · Rentas. Aquí se muestran las cobradas.")
+            st.caption(f"Sin facturas cobradas en {_anio_i2} para este inmueble.")
+        st.caption("Solo lectura · Gestiona las facturas desde Ingresos · Rentas")
 
     with _ft3:
         _uid_t3 = st.session_state.get("user_id","")
@@ -2469,21 +2419,14 @@ elif menu == "Fichas (Benchmark)":
                                       eliminar_factura_recibida, subir_archivo_factura_recibida,
                                       actualizar_factura_recibida)
             _uid_fr = st.session_state.get("user_id", "")
-            _fr_fc1, _fr_fc2 = st.columns([2,1])
-            with _fr_fc1:
-                _ej_fr  = st.selectbox("Ejercicio fiscal", [2026,2025,2024,2023], key=f"ej_fr_{sel}")
-            with _fr_fc2:
-                _tip_fr = st.radio("Tipo", ["Todos","gasto","ingreso"], horizontal=True, key=f"tip_fr_{sel}")
-            _df_fr = leer_facturas_recibidas(_uid_fr, inmueble=sel, ejercicio=_ej_fr,
-                                              tipo=None if _tip_fr=="Todos" else _tip_fr)
+            _ej_fr  = st.selectbox("Ejercicio fiscal", [2026,2025,2024,2023], key=f"ej_fr_{sel}")
+            _df_fr  = leer_facturas_recibidas(_uid_fr, inmueble=sel, ejercicio=_ej_fr, tipo="gasto")
 
             if not _df_fr.empty:
-                _total_gas_fr = _df_fr[_df_fr["tipo"]=="gasto"]["importe_total"].fillna(0).sum()
-                _total_ing_fr = _df_fr[_df_fr["tipo"]=="ingreso"]["importe_total"].fillna(0).sum()
-                _kf1,_kf2,_kf3 = st.columns(3)
-                _kf1.metric("Facturas", len(_df_fr))
+                _total_gas_fr = float(_df_fr["importe_total"].fillna(0).sum())
+                _kf1,_kf2 = st.columns(2)
+                _kf1.metric("Facturas de gasto", len(_df_fr))
                 _kf2.metric("Total gastos", f"{_total_gas_fr:,.0f} €")
-                _kf3.metric("Total ingresos", f"{_total_ing_fr:,.0f} €")
                 st.divider()
                 # Cabecera de tabla
                 _hc = st.columns([2, 3, 3, 2, 1, 1])
@@ -2536,7 +2479,7 @@ elif menu == "Fichas (Benchmark)":
             with st.expander("➕ Registrar nueva factura"):
                 _fr_c1, _fr_c2 = st.columns(2)
                 with _fr_c1:
-                    _fr_tipo = st.selectbox("Tipo", ["gasto","ingreso"], key=f"fr_tipo_{sel}")
+                    _fr_tipo = "gasto"  # Tab Facturas = solo gastos
                     _fr_cat_opts = (["comunidad","mantenimiento","seguro","ibi","suministros","honorarios","otro"]
                                     if _fr_tipo == "gasto" else ["alquiler","fianza","otro"])
                     _fr_cat  = st.selectbox("Categoría", _fr_cat_opts, key=f"fr_cat_{sel}")
