@@ -2454,15 +2454,25 @@ elif menu == "Fichas (Benchmark)":
                     _tc_fr    = "#C0392B" if _es_g_fr else "#1a7a40"
                     _ai_fr    = " 🤖" if _fr_row.get("interpretado_ia") else ""
                     _trim_fr  = f"T{_fr_row.get('trimestre','')}" if _fr_row.get("trimestre") else ""
-                    st.markdown(f"""
-                    <div style="background:{_color_fr};border-radius:8px;padding:9px 14px;margin-bottom:5px;">
-                      <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-size:12px;font-weight:700;color:{_tc_fr};">{_fr_row.get('proveedor','—')}{_ai_fr}</span>
-                        <span style="font-size:13px;font-weight:700;color:{_tc_fr};">{float(_fr_row.get('importe_total') or 0):,.2f} €</span>
-                      </div>
-                      <span style="font-size:11px;color:#6B7280;">{str(_fr_row.get('fecha',''))[:10]} · {_trim_fr} · {_fr_row.get('categoria','')}</span>
-                      <br><span style="font-size:11px;color:#374151;">{_fr_row.get('concepto','')}</span>
-                    </div>""", unsafe_allow_html=True)
+                    _fr_col1, _fr_col2 = st.columns([9, 1])
+                    with _fr_col1:
+                        st.markdown(f"""
+                        <div style="background:{_color_fr};border-radius:8px;padding:9px 14px;margin-bottom:5px;">
+                          <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <span style="font-size:12px;font-weight:700;color:{_tc_fr};">{_fr_row.get('proveedor','—')}{_ai_fr}</span>
+                            <span style="font-size:13px;font-weight:700;color:{_tc_fr};">{float(_fr_row.get('importe_total') or 0):,.2f} €</span>
+                          </div>
+                          <span style="font-size:11px;color:#6B7280;">{str(_fr_row.get('fecha',''))[:10]} · {_trim_fr} · {_fr_row.get('categoria','')}</span>
+                          <br><span style="font-size:11px;color:#374151;">{_fr_row.get('concepto','')}</span>
+                        </div>""", unsafe_allow_html=True)
+                    with _fr_col2:
+                        if st.button("🗑", key=f"del_fr_{_fr_row['id']}", help="Eliminar factura"):
+                            eliminar_factura_recibida(
+                                str(_fr_row["id"]), _uid_fr,
+                                _fr_row.get("archivo_ruta")
+                            )
+                            st.success("Factura eliminada ✓")
+                            st.rerun()
             else:
                 st.caption(f"Sin facturas registradas en {_ej_fr} para este inmueble.")
 
