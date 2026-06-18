@@ -2273,7 +2273,6 @@ elif menu == "Fichas (Benchmark)":
                 s2.metric("Impacto Anual",f"{ganancia_a:+,.0f} €/año")
                 s3.metric("Nueva Rent. Neta",f"{nueva_neta:.1f}%",delta=f"{nueva_neta-rent_neta:+.1f}%")
 
-        _tab_gp, _tab_fr = st.tabs(["📅 Gastos programados", "🧾 Facturas recibidas"])
 
     with _ft2:
         st.markdown('<div class="nc-section-title">📋 Ingresos y gastos — detalle por período</div>', unsafe_allow_html=True)
