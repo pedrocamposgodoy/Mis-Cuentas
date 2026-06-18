@@ -2423,36 +2423,12 @@ elif menu == "Fichas (Benchmark)":
             st.caption("Sin ingresos en este período.")
 
         st.divider()
-        with st.expander("➕ Registrar nuevo ingreso"):
-            with st.form(f"form_new_i2_{sel}",clear_on_submit=True):
-                _n1,_n2=st.columns(2)
-                with _n1:
-                    _ncat=st.selectbox("Categoría",["alquiler","fianza","otro"],key=f"ncat_i2_{sel}")
-                    _nfec=st.date_input("Fecha cobro",key=f"nfec_i2_{sel}")
-                    _npag=st.text_input("Pagador/inquilino",key=f"npag_i2_{sel}")
-                with _n2:
-                    _ncon=st.text_input("Concepto",key=f"ncon_i2_{sel}")
-                    _nimp=st.number_input("Importe (€)",min_value=0.0,step=1.0,key=f"nimp_i2_{sel}")
-                if st.form_submit_button("💾 Guardar ingreso",use_container_width=True):
-                    if _nimp>0:
-                        _rni=crear_factura_recibida(_uid_i2,{
-                            "tipo":"ingreso","categoria":_ncat,
-                            "fecha":str(_nfec),"ejercicio":_nfec.year,
-                            "inmueble":sel,"proveedor":_npag,
-                            "concepto":_ncon,"importe":_nimp,"iva":0,"importe_total":_nimp,
-                        })
-                        if _rni.get("ok"):
-                            agregar_movimientos([{
-                                "Fecha":str(_nfec),"Apartamento":sel,
-                                "Concepto":f"{_npag} — {_ncon}".strip(" —") or _ncat,
-                                "Categoría":"Ingresos","Tipo":"Ingreso",
-                                "Importe":_nimp,"Deducible":"N",
-                            }],_uid_i2)
-                            st.success("Ingreso registrado ✓"); st.rerun()
-                        else:
-                            st.error(f"Error: {_rni.get('error')}")
-                    else:
-                        st.warning("Importe no puede ser 0.")
+        if st.button("📄 Generar factura de alquiler para este inmueble",
+                     key=f"btn_gen_fac_{sel}", use_container_width=True, type="primary"):
+            st.session_state["menu"] = "Ingresos · Rentas"
+            st.session_state["ficha_goto_ingresos_inm"] = sel
+            st.rerun()
+        st.caption("Te lleva a Ingresos · Rentas con este inmueble pre-seleccionado.")
 
     with _ft3:
         _uid_t3 = st.session_state.get("user_id","")
@@ -4955,10 +4931,13 @@ elif menu == "Ingresos · Rentas":
         if df_plantillas.empty:
             st.info("📋 Aún no tienes plantillas configuradas. Ve a **⚙️ Plantillas** para crearlas.")
         else:
-            # Selector de inmueble
+            # Selector de inmueble — pre-seleccionar si viene desde la ficha
             inmuebles_con_plantilla = df_plantillas["inmueble"].tolist()
+            _goto_inm = st.session_state.pop("ficha_goto_ingresos_inm", None)
+            _default_ing = (inmuebles_con_plantilla.index(_goto_inm)
+                            if _goto_inm and _goto_inm in inmuebles_con_plantilla else 0)
             inm_sel = st.selectbox("Selecciona inmueble", inmuebles_con_plantilla,
-                                    key="ing_inm_sel")
+                                    index=_default_ing, key="ing_inm_sel")
             plantilla = df_plantillas[df_plantillas["inmueble"] == inm_sel].iloc[0]
 
             # Key única por inmueble — fuerza re-render al cambiar inmueble
