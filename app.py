@@ -2528,7 +2528,8 @@ elif menu == "Fichas (Benchmark)":
                             }
                             _mov_tipo = "Gasto" if _fr_tipo=="gasto" else "Ingreso"
                             _concepto_m = (f"{_fr_prov} — {_fr_conc}".strip(" —") if (_fr_prov or _fr_conc) else _fr_cat)
-                            _ok_mov = agregar_movimientos([{
+                            from supabase_db import agregar_un_movimiento
+                            _res_mov = agregar_un_movimiento({
                                 "Fecha":       str(_fr_fecha),
                                 "Apartamento": sel,
                                 "Concepto":    _concepto_m,
@@ -2536,8 +2537,11 @@ elif menu == "Fichas (Benchmark)":
                                 "Tipo":        _mov_tipo,
                                 "Importe":     _fr_imp + _fr_iva,
                                 "Deducible":   "S" if _fr_tipo=="gasto" else "N",
-                            }], _uid_fr)
-                            if _ok_mov:
+                            }, _uid_fr)
+                            if _res_mov.get("ok"):
+                                # Enlazar movimiento_id en la factura_recibida
+                                actualizar_factura_recibida(_res_fr["id"], _uid_fr,
+                                    {"movimiento_id": _res_mov["id"]})
                                 st.success("Factura registrada y movimiento creado ✓")
                             else:
                                 st.warning("Factura guardada pero movimiento no creado. Revisa el diario.")
@@ -2806,6 +2810,24 @@ elif menu == "Gastos":
             df_f = df_f[df_f["Concepto"].str.contains(f_buscar.strip(),case=False,na=False)]
         df_f = df_f.sort_values("Fecha", ascending=False).reset_index(drop=True)
 
+        # ── JOIN con facturas_recibidas para obtener URL de PDF ─────────
+        try:
+            from supabase_db import leer_facturas_recibidas as _leer_fr_join
+            _df_fr_join = _leer_fr_join(uid_dc)
+            if not _df_fr_join.empty and "movimiento_id" in _df_fr_join.columns and "id" in df_f.columns:
+                _fr_map = _df_fr_join[_df_fr_join["movimiento_id"].notna()][
+                    ["movimiento_id","archivo_ruta","archivo_nombre"]
+                ].copy()
+                _fr_map["movimiento_id"] = _fr_map["movimiento_id"].astype(str)
+                df_f["id"] = df_f["id"].astype(str)
+                df_f = df_f.merge(_fr_map, left_on="id", right_on="movimiento_id", how="left")
+            else:
+                df_f["archivo_ruta"] = None
+                df_f["archivo_nombre"] = None
+        except Exception:
+            df_f["archivo_ruta"] = None
+            df_f["archivo_nombre"] = None
+
         # ── RESUMEN 3 CARDS ────────────────────────────────────────────
         t_ing = df_f[df_f["Tipo"]=="Ingreso"]["Importe"].sum()
         t_gas = df_f[df_f["Tipo"]=="Gasto"]["Importe"].sum()
@@ -2863,15 +2885,20 @@ elif menu == "Gastos":
             _imp_col = "#A32D2D" if _tipo_g=="Gasto" else "#3B6D11"
             _imp_sgn = f'−{_imp:,.0f} €' if _tipo_g=="Gasto" else f'+{_imp:,.0f} €'
             _fecha_g = str(_gr.get("Fecha",""))[:10] if _gr.get("Fecha") else "—"
-            _arch_g  = str(_gr.get("factura_url","") or "")
+            _arch_g  = str(_gr.get("archivo_ruta","") or "")
             _gc[0].markdown(f"<span style='font-size:13px;color:var(--color-text-secondary);'>{_fecha_g}</span>", unsafe_allow_html=True)
             _gc[1].markdown(f"<span style='font-size:13px;'>{str(_gr.get('Apartamento',''))[:20]}</span>", unsafe_allow_html=True)
             _gc[2].markdown(f"<span style='font-size:13px;'>{str(_gr.get('Concepto',''))[:35]}</span>", unsafe_allow_html=True)
             _gc[3].markdown(f"<span style='font-size:12px;background:#F0F5FF;color:#0C447C;padding:2px 8px;border-radius:20px;'>{str(_gr.get('Categoría',''))}</span>", unsafe_allow_html=True)
             _gc[4].markdown(f"<span style='font-size:13px;font-weight:500;color:{_imp_col};'>{_imp_sgn}</span>", unsafe_allow_html=True)
             with _gc[5]:
-                if _arch_g and _arch_g != "nan":
-                    st.link_button("📄", url=_arch_g, help="Ver factura", use_container_width=True)
+                if _arch_g and _arch_g not in ("nan","None",""):
+                    from supabase_db import obtener_url_factura_recibida as _get_pdf
+                    _pdf_url = _get_pdf(uid_dc, _arch_g)
+                    if _pdf_url:
+                        st.link_button("📄", url=_pdf_url, help="Ver PDF", use_container_width=True)
+                    else:
+                        st.markdown("<span style='color:#A32D2D;'>⚠️</span>", unsafe_allow_html=True)
                 else:
                     st.markdown("<span style='font-size:13px;color:var(--color-text-secondary);'>—</span>", unsafe_allow_html=True)
             st.markdown("<hr style='margin:1px 0;border-color:var(--color-border-tertiary);'>", unsafe_allow_html=True)
