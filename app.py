@@ -3589,6 +3589,19 @@ elif menu == "Cash Flow":
         f"{_html_gas}</div></div>",
         unsafe_allow_html=True
     )
+
+    # ── Tira beneficio neto ──────────────────────────────────────────
+    st.markdown(
+        f"<div style='background:#0F2744;border-radius:0 0 12px 12px;padding:14px 22px;"
+        f"display:flex;justify-content:space-between;align-items:center;"
+        f"margin-top:-1px;'>"
+        f"<span style='font-size:13px;font-weight:500;color:#85B7EB;"
+        f"text-transform:uppercase;letter-spacing:.07em;'>Beneficio neto del mes</span>"
+        f"<span style='font-size:32px;font-weight:500;color:{_net_col};'>"
+        f"{('+' if _n>=0 else '')}{_n:,.0f} €</span>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
     # ── Añadir gasto programado ─────────────────────────────────────
