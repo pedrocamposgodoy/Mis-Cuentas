@@ -2414,144 +2414,174 @@ elif menu == "Fichas (Benchmark)":
         else:
             st.caption("Sin gastos registrados en este período.")
 
-    with _ft4:
-            from supabase_db import (leer_facturas_recibidas, crear_factura_recibida,
-                                      eliminar_factura_recibida, subir_archivo_factura_recibida,
-                                      actualizar_factura_recibida)
-            _uid_fr = st.session_state.get("user_id", "")
-            _ej_fr  = st.selectbox("Ejercicio fiscal", [2026,2025,2024,2023], key=f"ej_fr_{sel}")
-            _df_fr  = leer_facturas_recibidas(_uid_fr, inmueble=sel, ejercicio=_ej_fr, tipo="gasto")
 
-            if not _df_fr.empty:
-                _total_gas_fr = float(_df_fr["importe_total"].fillna(0).sum())
-                _kf1,_kf2 = st.columns(2)
-                _kf1.metric("Facturas de gasto", len(_df_fr))
-                _kf2.metric("Total gastos", f"{_total_gas_fr:,.0f} €")
-                st.divider()
-                # Cabecera de tabla
-                _hc = st.columns([2, 3, 3, 2, 1, 1, 1])
-                for _htxt, _hcol in zip(["Fecha","Categoría","Concepto / proveedor","Importe","PDF","",""], _hc):
-                    _hcol.markdown(f"<span style='font-size:11px;color:var(--color-text-secondary);font-weight:500;'>{_htxt}</span>", unsafe_allow_html=True)
-                st.markdown("<hr style='margin:4px 0 6px;border-color:var(--color-border-tertiary);'>", unsafe_allow_html=True)
-                _edit_fr = st.session_state.get(f"edit_fr_{sel}")
-                for _, _fr_row in _df_fr.iterrows():
-                    _es_g_fr = _fr_row.get("tipo") == "gasto"
-                    _tc_fr   = "#C0392B" if _es_g_fr else "#1a7a40"
-                    _ai_fr   = " 🤖" if _fr_row.get("interpretado_ia") else ""
-                    _fr_id   = str(_fr_row["id"])
-                    _concepto_fr = _fr_row.get("concepto","") or _fr_row.get("proveedor","—")
-                    _proveedor_fr = _fr_row.get("proveedor","")
-                    _label_fr = f"{_proveedor_fr} · {_concepto_fr}" if _proveedor_fr and _concepto_fr and _proveedor_fr != _concepto_fr else (_proveedor_fr or _concepto_fr or "—")
-                    _arch_ruta = _fr_row.get("archivo_ruta") or ""
-                    _rc = st.columns([2, 3, 3, 2, 1, 1, 1])
-                    _rc[0].markdown(f"<span style='font-size:12px;'>{str(_fr_row.get('fecha',''))[:10]}</span>", unsafe_allow_html=True)
-                    _rc[1].markdown(f"<span style='font-size:12px;'>{_fr_row.get('categoria','')}{_ai_fr}</span>", unsafe_allow_html=True)
-                    _rc[2].markdown(f"<span style='font-size:12px;'>{_label_fr[:40]}</span>", unsafe_allow_html=True)
-                    _rc[3].markdown(f"<span style='font-size:12px;font-weight:500;color:{_tc_fr};'>{float(_fr_row.get('importe_total') or 0):,.2f} €</span>", unsafe_allow_html=True)
-                    with _rc[4]:
-                        if _arch_ruta:
-                            from supabase_db import obtener_url_factura_recibida as _get_pdf_url
-                            _pdf_url = _get_pdf_url(_uid_fr, _arch_ruta)
-                            if _pdf_url:
-                                st.link_button("📄", url=_pdf_url, help="Ver PDF", use_container_width=True)
-                            else:
-                                st.markdown("<span title='PDF no disponible' style='font-size:16px;color:#A32D2D;'>⚠️</span>", unsafe_allow_html=True)
+    with _ft4:
+        from supabase_db import (leer_facturas_recibidas, crear_factura_recibida,
+                                  actualizar_factura_recibida, eliminar_factura_recibida,
+                                  subir_archivo_factura_recibida, obtener_url_factura_recibida)
+        _uid_fr = st.session_state.get("user_id","")
+        _ej_fr  = st.selectbox("Ejercicio fiscal",[2026,2025,2024,2023],key=f"ej_fr_{sel}")
+
+        # ── Movimientos de gasto del inmueble (fuente principal) ────────
+        _df_mov_ft4 = df_mov[
+            (df_mov["Apartamento"]==sel) & (df_mov["Tipo"]=="Gasto")
+        ].copy()
+        try:
+            _df_mov_ft4["_fe"] = pd.to_datetime(_df_mov_ft4["Fecha"],errors="coerce")
+            _df_mov_ft4 = _df_mov_ft4[_df_mov_ft4["_fe"].dt.year==_ej_fr].sort_values("_fe",ascending=False).reset_index(drop=True)
+        except Exception:
+            _df_mov_ft4 = pd.DataFrame()
+
+        # ── JOIN con facturas_recibidas para obtener PDF por movimiento_id ─
+        _df_fr_map = pd.DataFrame()
+        try:
+            _df_fr_all = leer_facturas_recibidas(_uid_fr, inmueble=sel, ejercicio=_ej_fr, tipo="gasto")
+            if not _df_fr_all.empty and "movimiento_id" in _df_fr_all.columns:
+                _df_fr_map = _df_fr_all[["id","movimiento_id","archivo_ruta","archivo_nombre"]].copy()
+                _df_fr_map["movimiento_id"] = _df_fr_map["movimiento_id"].astype(str)
+        except Exception:
+            pass
+
+        def _get_fr_for_mov(mov_id):
+            if _df_fr_map.empty: return None
+            _m = _df_fr_map[_df_fr_map["movimiento_id"]==str(mov_id)]
+            return _m.iloc[0] if not _m.empty else None
+
+        # ── KPIs ────────────────────────────────────────────────────────
+        _tot_ft4 = float(_df_mov_ft4["Importe"].sum()) if not _df_mov_ft4.empty else 0.0
+        _n_con_pdf = sum(1 for _, _r in _df_mov_ft4.iterrows() if _get_fr_for_mov(str(_r.get("id",""))) is not None) if not _df_mov_ft4.empty else 0
+        _kft1,_kft2 = st.columns(2)
+        _kft1.metric("Gastos del ejercicio", f"{_tot_ft4:,.0f} €")
+        _kft2.metric("Con justificante PDF", f"{_n_con_pdf} / {len(_df_mov_ft4)}")
+        st.divider()
+
+        # ── Cabecera tabla ───────────────────────────────────────────────
+        if not _df_mov_ft4.empty:
+            _hft = st.columns([2,4,2,2,1,1,1])
+            for _ht,_hc in zip(["Fecha","Concepto","Categoría","Importe","PDF","✏️","🗑"],_hft):
+                _hc.markdown(f"<span style='font-size:11px;font-weight:500;color:var(--color-text-secondary);'>{_ht}</span>",unsafe_allow_html=True)
+            st.markdown("<hr style='margin:3px 0 6px;border-color:var(--color-border-secondary);'>",unsafe_allow_html=True)
+
+            _edit_fr = st.session_state.get(f"edit_fr_{sel}")
+            for _, _mr in _df_mov_ft4.iterrows():
+                _mov_id  = str(_mr.get("id",""))
+                _fr_row  = _get_fr_for_mov(_mov_id)
+                _arch    = str(_fr_row["archivo_ruta"]) if _fr_row is not None and _fr_row.get("archivo_ruta") else ""
+                _fr_id   = str(_fr_row["id"]) if _fr_row is not None else None
+                _rc = st.columns([2,4,2,2,1,1,1])
+                _rc[0].markdown(f"<span style='font-size:13px;color:var(--color-text-secondary);'>{str(_mr.get('Fecha',''))[:10]}</span>",unsafe_allow_html=True)
+                _rc[1].markdown(f"<span style='font-size:13px;'>{str(_mr.get('Concepto',''))[:40]}</span>",unsafe_allow_html=True)
+                _rc[2].markdown(f"<span style='font-size:12px;background:#F0F5FF;color:#0C447C;padding:2px 7px;border-radius:20px;'>{str(_mr.get('Categoría',''))}</span>",unsafe_allow_html=True)
+                _rc[3].markdown(f"<span style='font-size:13px;font-weight:500;color:#A32D2D;'>−{float(_mr.get('Importe',0) or 0):,.0f} €</span>",unsafe_allow_html=True)
+                with _rc[4]:
+                    if _arch and _arch not in ("nan","None",""):
+                        _pdf_url = obtener_url_factura_recibida(_uid_fr, _arch)
+                        if _pdf_url:
+                            st.link_button("📄", url=_pdf_url, help="Ver PDF", use_container_width=True)
                         else:
-                            st.markdown("<span style='font-size:14px;color:var(--color-text-secondary);'>—</span>", unsafe_allow_html=True)
-                    with _rc[5]:
-                        if st.button("✏️", key=f"edit_fr_btn_{_fr_id}", help="Editar", use_container_width=True):
+                            st.markdown("⚠️", unsafe_allow_html=True)
+                    else:
+                        # Sin PDF — botón para subir
+                        if st.button("📎", key=f"subir_pdf_{_mov_id}", help="Adjuntar PDF", use_container_width=True):
+                            st.session_state[f"upload_pdf_{_mov_id}"] = True
+                with _rc[5]:
+                    if _fr_id:
+                        if st.button("✏️", key=f"edit_fr_{_mov_id}", help="Editar", use_container_width=True):
                             st.session_state[f"edit_fr_{sel}"] = None if _edit_fr==_fr_id else _fr_id
                             st.rerun()
-                    with _rc[6]:
-                        if st.button("🗑", key=f"del_fr_{_fr_id}", help="Eliminar", use_container_width=True):
-                            eliminar_factura_recibida(_fr_id, _uid_fr, _fr_row.get("archivo_ruta"))
-                            st.success("Eliminada ✓"); st.rerun()
-                    if _edit_fr == _fr_id:
-                        with st.form(f"form_edit_fr_{_fr_id}", clear_on_submit=False):
-                            _fe1,_fe2 = st.columns(2)
-                            with _fe1:
-                                _fe_prov = st.text_input("Proveedor/inquilino", value=str(_fr_row.get("proveedor","")), key=f"fep_{_fr_id}")
-                                _fe_conc = st.text_input("Concepto", value=str(_fr_row.get("concepto","")), key=f"fec_{_fr_id}")
-                            with _fe2:
-                                _fe_imp = st.number_input("Importe (€)", value=float(_fr_row.get("importe") or 0), min_value=0.0, key=f"feim_{_fr_id}")
-                                _fe_iva = st.number_input("IVA (€)", value=float(_fr_row.get("iva") or 0), min_value=0.0, key=f"feiv_{_fr_id}")
-                            if st.form_submit_button("💾 Guardar cambios", use_container_width=True):
-                                actualizar_factura_recibida(_fr_id, _uid_fr, {
-                                    "proveedor": _fe_prov, "concepto": _fe_conc,
-                                    "importe": _fe_imp, "iva": _fe_iva,
-                                    "importe_total": _fe_imp + _fe_iva
-                                })
-                                st.session_state[f"edit_fr_{sel}"] = None
-                                st.success("Actualizado ✓"); st.rerun()
-            else:
-                st.caption(f"Sin facturas registradas en {_ej_fr} para este inmueble.")
-
-            st.divider()
-            with st.expander("➕ Registrar nueva factura"):
-                _fr_c1, _fr_c2 = st.columns(2)
-                with _fr_c1:
-                    _fr_tipo = "gasto"  # Tab Facturas = solo gastos
-                    _fr_cat_opts = (["comunidad","mantenimiento","seguro","ibi","suministros","honorarios","otro"]
-                                    if _fr_tipo == "gasto" else ["alquiler","fianza","otro"])
-                    _fr_cat  = st.selectbox("Categoría", _fr_cat_opts, key=f"fr_cat_{sel}")
-                    _fr_fecha = st.date_input("Fecha factura", key=f"fr_fecha_{sel}")
-                    _fr_prov  = st.text_input("Proveedor / inquilino", key=f"fr_prov_{sel}")
-                with _fr_c2:
-                    _fr_conc  = st.text_input("Concepto", key=f"fr_conc_{sel}")
-                    _fr_imp   = st.number_input("Importe sin IVA (€)", min_value=0.0, step=1.0, key=f"fr_imp_{sel}")
-                    _fr_iva   = st.number_input("IVA (€)", min_value=0.0, step=1.0, key=f"fr_iva_{sel}")
-                    _fr_arch  = st.file_uploader("Adjuntar PDF / imagen", type=["pdf","png","jpg","jpeg"], key=f"fr_arch_{sel}")
-                if st.button("💾 Guardar factura", key=f"btn_fr_{sel}", use_container_width=True):
-                    if _fr_imp > 0:
-                        _fr_datos = {
-                            "tipo": _fr_tipo, "categoria": _fr_cat,
-                            "fecha": str(_fr_fecha), "ejercicio": _fr_fecha.year,
-                            "inmueble": sel, "proveedor": _fr_prov,
-                            "concepto": _fr_conc, "importe": _fr_imp,
-                            "iva": _fr_iva, "importe_total": _fr_imp + _fr_iva,
-                        }
-                        _res_fr = crear_factura_recibida(_uid_fr, _fr_datos)
-                        if _res_fr.get("ok") and _fr_arch:
-                            _ext_fr = _fr_arch.name.split(".")[-1].lower()
-                            _up_fr  = subir_archivo_factura_recibida(_uid_fr, _res_fr["id"], _fr_arch.read(), _ext_fr)
-                            if _up_fr.get("ok"):
-                                actualizar_factura_recibida(_res_fr["id"], _uid_fr,
-                                                            {"archivo_ruta": _up_fr["ruta"],
-                                                             "archivo_nombre": _fr_arch.name})
-                        if _res_fr.get("ok"):
-                            # Crear movimiento automático en el diario contable
-                            _cat_map = {
-                                "comunidad":"Comunidad","mantenimiento":"Mantenimiento",
-                                "seguro":"Seguros","ibi":"Tributario",
-                                "suministros":"Suministros","honorarios":"Otros",
-                                "alquiler":"Ingresos","fianza":"Ingresos","otro":"Otros",
-                            }
-                            _mov_tipo = "Gasto" if _fr_tipo=="gasto" else "Ingreso"
-                            _concepto_m = (f"{_fr_prov} — {_fr_conc}".strip(" —") if (_fr_prov or _fr_conc) else _fr_cat)
-                            from supabase_db import agregar_un_movimiento
-                            _res_mov = agregar_un_movimiento({
-                                "Fecha":       str(_fr_fecha),
-                                "Apartamento": sel,
-                                "Concepto":    _concepto_m,
-                                "Categoría":   _cat_map.get(_fr_cat,"Otros"),
-                                "Tipo":        _mov_tipo,
-                                "Importe":     _fr_imp + _fr_iva,
-                                "Deducible":   "S" if _fr_tipo=="gasto" else "N",
-                            }, _uid_fr)
-                            if _res_mov.get("ok"):
-                                # Enlazar movimiento_id en la factura_recibida
-                                actualizar_factura_recibida(_res_fr["id"], _uid_fr,
-                                    {"movimiento_id": _res_mov["id"]})
-                                st.success("Factura registrada y movimiento creado ✓")
-                            else:
-                                st.warning("Factura guardada pero movimiento no creado. Revisa el diario.")
-                            st.rerun()
-                        else:
-                            st.error(f"Error: {_res_fr.get('error')}")
                     else:
-                        st.warning("El importe no puede ser 0.")
+                        st.markdown("<span style='color:var(--color-text-secondary);font-size:11px;'>—</span>",unsafe_allow_html=True)
+                with _rc[6]:
+                    if _fr_id:
+                        if st.button("🗑", key=f"del_fr_{_fr_id}", help="Eliminar factura", use_container_width=True):
+                            eliminar_factura_recibida(_fr_id, _uid_fr, _arch if _arch else None)
+                            st.success("Factura eliminada ✓"); st.rerun()
+                    else:
+                        st.markdown("<span style='color:var(--color-text-secondary);font-size:11px;'>—</span>",unsafe_allow_html=True)
 
-        # ── SABIO PATRIMONIAL — Fichas ──────────────────────────────
+                # Upload PDF inline
+                if st.session_state.get(f"upload_pdf_{_mov_id}"):
+                    _up_file = st.file_uploader("Selecciona PDF o imagen", type=["pdf","jpg","jpeg","png"],
+                                                  key=f"upfile_{_mov_id}", label_visibility="collapsed")
+                    if _up_file:
+                        from supabase_db import agregar_un_movimiento
+                        _ext = _up_file.name.split(".")[-1].lower()
+                        _nueva_fr = crear_factura_recibida(_uid_fr, {
+                            "tipo":"gasto","categoria":str(_mr.get("Categoría","otro")).lower(),
+                            "fecha":str(_mr.get("Fecha",""))[:10],"ejercicio":_ej_fr,
+                            "inmueble":sel,"concepto":str(_mr.get("Concepto",""))[:60],
+                            "importe":float(_mr.get("Importe",0) or 0),"iva":0,
+                            "importe_total":float(_mr.get("Importe",0) or 0),
+                            "movimiento_id": _mov_id
+                        })
+                        if _nueva_fr.get("ok"):
+                            _up_res = subir_archivo_factura_recibida(_uid_fr, _nueva_fr["id"], _up_file.read(), _ext)
+                            if _up_res.get("ok"):
+                                actualizar_factura_recibida(_nueva_fr["id"], _uid_fr,
+                                    {"archivo_ruta": _up_res["ruta"], "archivo_nombre": _up_file.name})
+                            st.session_state.pop(f"upload_pdf_{_mov_id}", None)
+                            st.success("PDF adjuntado ✓"); st.rerun()
+
+                # Formulario edición
+                if _edit_fr == _fr_id and _fr_id:
+                    with st.form(f"form_edit_fr_{_fr_id}", clear_on_submit=False):
+                        _fe1,_fe2 = st.columns(2)
+                        with _fe1:
+                            _fe_prov = st.text_input("Proveedor", value=str(_fr_row.get("proveedor","") if _fr_row is not None else ""), key=f"fep_{_fr_id}")
+                        with _fe2:
+                            _fe_imp  = st.number_input("Importe (€)", value=float(_fr_row.get("importe",0) if _fr_row is not None else 0), min_value=0.0, key=f"feim_{_fr_id}")
+                        if st.form_submit_button("💾 Guardar", use_container_width=True):
+                            actualizar_factura_recibida(_fr_id, _uid_fr, {"proveedor":_fe_prov,"importe":_fe_imp,"importe_total":_fe_imp})
+                            st.session_state[f"edit_fr_{sel}"] = None
+                            st.success("Actualizado ✓"); st.rerun()
+
+                st.markdown("<hr style='margin:2px 0;border-color:var(--color-border-tertiary);'>",unsafe_allow_html=True)
+
+        else:
+            st.caption(f"Sin gastos registrados en {_ej_fr} para este inmueble.")
+
+        st.divider()
+        with st.expander("➕ Registrar nuevo gasto con factura"):
+            with st.form(f"form_new_fr_{sel}", clear_on_submit=True):
+                _n1,_n2 = st.columns(2)
+                with _n1:
+                    _ncat = st.selectbox("Categoría",["comunidad","mantenimiento","seguro","ibi","suministros","honorarios","otro"],key=f"ncat_fr_{sel}")
+                    _nfec = st.date_input("Fecha",key=f"nfec_fr_{sel}")
+                    _nprov= st.text_input("Proveedor",key=f"nprov_fr_{sel}")
+                with _n2:
+                    _ncon = st.text_input("Concepto",key=f"ncon_fr_{sel}")
+                    _nimp = st.number_input("Importe (€)",min_value=0.0,step=1.0,key=f"nimp_fr_{sel}")
+                    _narch= st.file_uploader("PDF (opcional)",type=["pdf","jpg","jpeg","png"],key=f"narch_fr_{sel}")
+                if st.form_submit_button("💾 Guardar gasto", use_container_width=True):
+                    if _nimp > 0:
+                        from supabase_db import agregar_un_movimiento
+                        _cat_map2 = {"comunidad":"Comunidad","mantenimiento":"Mantenimiento","seguro":"Seguros",
+                                     "ibi":"Tributario","suministros":"Suministros","honorarios":"Otros","otro":"Otros"}
+                        _res_mov2 = agregar_un_movimiento({
+                            "Fecha":str(_nfec),"Apartamento":sel,
+                            "Concepto":f"{_nprov} — {_ncon}".strip(" —") or _ncat,
+                            "Categoría":_cat_map2.get(_ncat,"Otros"),"Tipo":"Gasto",
+                            "Importe":_nimp,"Deducible":"S"
+                        }, _uid_fr)
+                        if _res_mov2.get("ok"):
+                            _res_fr2 = crear_factura_recibida(_uid_fr,{
+                                "tipo":"gasto","categoria":_ncat,
+                                "fecha":str(_nfec),"ejercicio":_nfec.year,
+                                "inmueble":sel,"proveedor":_nprov,"concepto":_ncon,
+                                "importe":_nimp,"iva":0,"importe_total":_nimp,
+                                "movimiento_id":_res_mov2["id"]
+                            })
+                            if _res_fr2.get("ok") and _narch:
+                                _ext2 = _narch.name.split(".")[-1].lower()
+                                _up2 = subir_archivo_factura_recibida(_uid_fr,_res_fr2["id"],_narch.read(),_ext2)
+                                if _up2.get("ok"):
+                                    actualizar_factura_recibida(_res_fr2["id"],_uid_fr,
+                                        {"archivo_ruta":_up2["ruta"],"archivo_nombre":_narch.name})
+                            st.success("Gasto registrado ✓"); st.rerun()
+                        else:
+                            st.error(f"Error: {_res_mov2.get('error')}")
+                    else:
+                        st.warning("Importe no puede ser 0.")
 
     with _ft5:
             from supabase_db import (leer_cashflow_programado, crear_cashflow_programado,
