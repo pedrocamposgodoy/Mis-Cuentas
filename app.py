@@ -3478,15 +3478,9 @@ elif menu == "Cash Flow":
         _, _pt = _prog_mes(m)
         return _ing_est - _rec_total - _pt - _punt_mes(m)
 
-    # ── Selector de mes ─────────────────────────────────────────────
-    _mes_sel = st.select_slider(
-        "Selecciona mes", options=_MN,
-        value=_MN[st.session_state.get("cf_mes_sel", _mes_act_cf)],
-        key="cf_slider"
-    )
-    _m = _MN.index(_mes_sel)
-    st.session_state["cf_mes_sel"] = _m
-
+    if "cf_mes_sel" not in st.session_state:
+        st.session_state["cf_mes_sel"] = _mes_act_cf
+    _m = st.session_state["cf_mes_sel"]
     _n = _neto(_m)
     _net_col = "#3B6D11" if _n >= 0 else "#A32D2D"
     _net_bg  = "#EAF3DE" if _n >= 0 else "#FCEBEB"
@@ -3495,46 +3489,61 @@ elif menu == "Cash Flow":
     _punt_total = _punt_mes(_m)
     _gas_total  = _rec_total + _prog_total + _punt_total
 
-    # ── Barra semáforos ─────────────────────────────────────────────
-    _sem_items = ""
-    for _mi, _mn in enumerate(_MN):
-        _ni = _neto(_mi)
-        _bg = "#EAF3DE" if _ni>300 else "#FAEEDA" if _ni>=0 else "#FCEBEB"
-        _tc = "#3B6D11" if _ni>300 else "#854F0B" if _ni>=0 else "#A32D2D"
-        _brd = "2px solid #185FA5" if _mi==_m else f"1px solid {_bg}"
-        _sem_items += (
-            f"<div style='flex:1;background:{_bg};border:{_brd};border-radius:8px;"
-            f"padding:6px 2px;text-align:center;cursor:pointer;'>"
-            f"<div style='font-size:11px;font-weight:500;color:{_tc};'>{_mn}</div>"
-            f"<div style='font-size:12px;font-weight:500;color:{_tc};'>{_ni/1000:+.1f}k</div>"
-            f"</div>"
-        )
-    st.markdown(
-        f"<div style='display:flex;gap:4px;margin:8px 0 16px;'>{_sem_items}</div>",
-        unsafe_allow_html=True
-    )
-
-    # ── Header navy con neto grande ─────────────────────────────────
+    # ── Header navy ─────────────────────────────────────────────────
     st.markdown(
         f"<div style='padding:20px 28px;background:#0F2744;border-radius:12px;"
-        f"display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;'>"
+        f"display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;'>"
         f"<div>"
-        f"<div style='font-size:22px;font-weight:500;color:#E6F1FB;'>{_mes_sel} {_anio_cf}"
+        f"<div style='font-size:22px;font-weight:500;color:#E6F1FB;margin-bottom:14px;'>"
+        f"{_MN[_m]} {_anio_cf}"
         f"<span style='font-size:13px;color:#85B7EB;margin-left:10px;'>{_etiq}</span></div>"
-        f"<div style='margin-top:12px;display:flex;gap:32px;'>"
-        f"<div><div style='font-size:11px;color:#85B7EB;text-transform:uppercase;letter-spacing:.06em;'>Ingresos</div>"
-        f"<div style='font-size:24px;font-weight:500;color:#C0DD97;'>+{_ing_est:,.0f} €</div></div>"
-        f"<div><div style='font-size:11px;color:#85B7EB;text-transform:uppercase;letter-spacing:.06em;'>Gastos</div>"
-        f"<div style='font-size:24px;font-weight:500;color:#F09595;'>−{_gas_total:,.0f} €</div></div>"
+        f"<div style='display:flex;gap:40px;'>"
+        f"<div><div style='font-size:11px;color:#85B7EB;text-transform:uppercase;"
+        f"letter-spacing:.07em;margin-bottom:4px;'>Ingresos</div>"
+        f"<div style='font-size:26px;font-weight:500;color:#E6F1FB;'>+{_ing_est:,.0f} €</div></div>"
+        f"<div><div style='font-size:11px;color:#85B7EB;text-transform:uppercase;"
+        f"letter-spacing:.07em;margin-bottom:4px;'>Gastos</div>"
+        f"<div style='font-size:26px;font-weight:500;color:#E6F1FB;'>−{_gas_total:,.0f} €</div></div>"
         f"</div></div>"
         f"<div style='background:{_net_bg};border-radius:12px;padding:16px 28px;text-align:center;'>"
-        f"<div style='font-size:11px;font-weight:500;color:{_net_col};text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;'>Neto del mes</div>"
-        f"<div style='font-size:40px;font-weight:500;color:{_net_col};line-height:1;'>{('+' if _n>=0 else '')}{_n:,.0f} €</div>"
+        f"<div style='font-size:11px;font-weight:500;color:{_net_col};text-transform:uppercase;"
+        f"letter-spacing:.07em;margin-bottom:6px;'>Neto del mes</div>"
+        f"<div style='font-size:40px;font-weight:500;color:{_net_col};line-height:1;'>"
+        f"{('+' if _n>=0 else '')}{_n:,.0f} €</div>"
         f"</div></div>",
         unsafe_allow_html=True
     )
 
-    # ── Panel detalle ───────────────────────────────────────────────
+    # ── Carrusel semáforo ────────────────────────────────────────────
+    _sem = ""
+    for _mi, _mn in enumerate(_MN):
+        _ni = _neto(_mi)
+        _bg  = "#EAF3DE" if _ni>300 else "#FAEEDA" if _ni>=0 else "#FCEBEB"
+        _tc  = "#3B6D11" if _ni>300 else "#854F0B" if _ni>=0 else "#A32D2D"
+        _brd = f"2px solid #185FA5" if _mi==_m else f"1px solid {_bg}"
+        _fw  = "600" if _mi==_m else "400"
+        _sem += (
+            f"<div onclick=\"\" style='flex:1;background:{_bg};border:{_brd};"
+            f"border-radius:8px;padding:7px 2px;text-align:center;'>"
+            f"<div style='font-size:12px;font-weight:{_fw};color:{_tc};'>{_mn}</div>"
+            f"<div style='font-size:12px;font-weight:500;color:{_tc};'>{_ni/1000:+.1f}k</div>"
+            f"</div>"
+        )
+    st.markdown(
+        f"<div style='display:flex;gap:4px;margin-bottom:20px;'>{_sem}</div>",
+        unsafe_allow_html=True
+    )
+    # Selector funcional debajo (oculto visualmente con label_visibility)
+    _cols_cf = st.columns(12)
+    for _mi, _col in enumerate(_cols_cf):
+        with _col:
+            if st.button(_MN[_mi], key=f"cf_mes_{_mi}", use_container_width=True,
+                         type="primary" if _mi==_m else "secondary"):
+                st.session_state["cf_mes_sel"] = _mi; st.rerun()
+
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    # ── Panel detalle ────────────────────────────────────────────────
     def _fila(label, imp, color):
         return (
             f"<div style='display:flex;justify-content:space-between;align-items:center;"
@@ -3543,10 +3552,7 @@ elif menu == "Cash Flow":
             f"<span style='font-size:15px;font-weight:500;color:{color};'>{imp}</span></div>"
         )
     def _sublabel(txt):
-        return (
-            f"<div style='font-size:12px;color:var(--color-text-secondary);"
-            f"margin:12px 0 5px;'>{txt}</div>"
-        )
+        return f"<div style='font-size:12px;color:var(--color-text-secondary);margin:12px 0 5px;'>{txt}</div>"
     def _total_fila(label, imp, color):
         return (
             f"<div style='display:flex;justify-content:space-between;align-items:center;"
@@ -3588,7 +3594,7 @@ elif menu == "Cash Flow":
         _gf1, _gf2 = st.columns(2)
         with _gf1:
             _gp_inm  = st.selectbox("Inmueble", ["(General)"] + df_inm["Nombre"].tolist(), key="gp_inm_cf")
-            _gp_desc = st.text_input("Descripción (ej: IBI Abarqueros)", key="gp_desc_cf")
+            _gp_desc = st.text_input("Descripción", key="gp_desc_cf")
             _gp_cat  = st.selectbox("Categoría", ["ibi","mantenimiento","seguro","comunidad","suministros","otro"], key="gp_cat_cf")
         with _gf2:
             _gp_modo = st.radio("Modo", ["Pago único", "Periodificar en meses"], horizontal=True, key="gp_modo_cf")
@@ -3614,17 +3620,15 @@ elif menu == "Cash Flow":
             else:
                 st.warning("Completa descripción, importe y mes(es).")
 
-    # ── Programados del mes ─────────────────────────────────────────
     if not _df_cfp.empty and "mes" in _df_cfp.columns:
         _pa = _df_cfp[_df_cfp["mes"]==(_m+1)]
         if not _pa.empty:
-            st.markdown(f"**Programados — {_mes_sel} {_anio_cf}**")
+            st.markdown(f"**Programados — {_MN[_m]} {_anio_cf}**")
             for _, _pg in _pa.iterrows():
                 _pc1,_pc2 = st.columns([9,1])
                 _lbl = str(_pg.get("descripcion",_pg.get("concepto","")))
                 _pc1.markdown(
-                    f"<span style='font-size:14px;'>{_lbl} &nbsp;"
-                    f"<strong>{safe_float(_pg.get('importe',0)):,.0f} €</strong></span>",
+                    f"<span style='font-size:14px;'>{_lbl} · <strong>{safe_float(_pg.get('importe',0)):,.0f} €</strong></span>",
                     unsafe_allow_html=True
                 )
                 with _pc2:
@@ -3632,10 +3636,6 @@ elif menu == "Cash Flow":
                         eliminar_cashflow_programado(str(_pg["id"]), _uid_cf)
                         st.success("Eliminado ✓"); st.rerun()
 
-# PANTALLA: FISCALIDAD (MODELO 100 IRPF)
-# Delegado a fiscal_export.py
-# Deps: df_inm, df_mov, safe_float(), calcular_modelo_100()
-# ================================================================
 elif menu == "Fiscalidad":
     if _sin_inmuebles:
         st.info("📭 Sin inmuebles registrados. Ve a **Datos de Cartera** para añadir el primero."); st.stop()
