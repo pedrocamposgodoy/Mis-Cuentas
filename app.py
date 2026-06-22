@@ -3432,215 +3432,192 @@ elif menu == "Gastos":
 # ================================================================
 elif menu == "Cash Flow":
     from supabase_db import (leer_cashflow_programado, crear_cashflow_programado,
-                              eliminar_cashflow_programado, leer_gastos_recurrentes,
-                              leer_facturas_emitidas)
+                              eliminar_cashflow_programado, leer_gastos_recurrentes)
 
-    _uid_cf     = st.session_state.get("user_id", "")
+    _uid_cf     = st.session_state.get("user_id","")
     _anio_cf    = datetime.now().year
-    _mes_act_cf = datetime.now().month - 1  # 0-indexed
-    _meses_s    = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+    _mes_act_cf = datetime.now().month - 1
+    _MN         = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
 
-    # ── CSS carrusel ──────────────────────────────────────────────
-    st.markdown("""<style>
-    div[data-testid="stHorizontalBlock"] button[kind="secondary"] {
-        border-radius: 8px; font-size: 11px; padding: 4px 2px;
-    }
-    </style>""", unsafe_allow_html=True)
+    _df_gr = leer_gastos_recurrentes(_uid_cf)
+    _recurrentes = []
+    _rec_total = 0.0
+    if not _df_gr.empty:
+        for _, _r in _df_gr.iterrows():
+            _imp = float(_r.get("importe",0) or 0)
+            _recurrentes.append({
+                "label": (str(_r.get("inmueble",""))[:14] + " · " + str(_r.get("concepto",""))[:16]).strip(" · "),
+                "importe": _imp
+            })
+            _rec_total += _imp
 
-    # ── Cargar datos ──────────────────────────────────────────────
-    _df_gr_cf  = leer_gastos_recurrentes(_uid_cf)
-    _rec_total = float(_df_gr_cf["importe"].sum()) if not _df_gr_cf.empty else 0.0
+    _df_cfp = leer_cashflow_programado(_uid_cf)
 
-    _df_cfp    = leer_cashflow_programado(_uid_cf)
+    _ingresos_inm = []
+    _ing_est = 0.0
+    if not df_inm.empty:
+        for _, _inm in df_inm.iterrows():
+            _r = safe_float(_inm.get("Renta",0))
+            _ingresos_inm.append({"label": str(_inm.get("Nombre",""))[:22], "importe": _r})
+            _ing_est += _r
 
-    # Ingresos estimados (renta fija de cada inmueble)
-    _ing_est   = float(df_inm["Renta"].apply(safe_float).sum()) if not df_inm.empty else 0.0
+    def _prog_mes(m):
+        if _df_cfp.empty or "mes" not in _df_cfp.columns: return [], 0.0
+        _f = _df_cfp[(_df_cfp["mes"]==(m+1)) & (_df_cfp["tipo"]=="gasto")]
+        items = [{"label": str(r.get("descripcion",r.get("concepto","")))[:28],
+                  "importe": float(r.get("importe",0) or 0)} for _, r in _f.iterrows()]
+        return items, sum(i["importe"] for i in items)
 
-    # Ingresos reales por mes (facturas cobradas)
-    _ing_real  = {}
-    try:
-        _df_fe_cf = leer_facturas_emitidas(_uid_cf)
-        if not _df_fe_cf.empty:
-            _fc_cf = "fecha" if "fecha" in _df_fe_cf.columns else "fecha_emision"
-            _df_fe_cf[_fc_cf] = pd.to_datetime(_df_fe_cf[_fc_cf], errors="coerce")
-            _df_cob = _df_fe_cf[_df_fe_cf["estado"] == "cobrada"]
-            for _m in range(12):
-                _tot = _df_cob[_df_cob[_fc_cf].dt.month == _m+1]["total"].sum()
-                _ing_real[_m] = float(_tot)
-    except Exception:
-        pass
-
-    def get_ing(m):
-        return _ing_real.get(m, _ing_est)
-
-    def get_prog(m):
-        if _df_cfp.empty: return 0.0
-        _f = _df_cfp[_df_cfp["mes"]==(m+1)] if "mes" in _df_cfp.columns else pd.DataFrame()
-        return float(_f[_f["tipo"]=="gasto"]["importe"].sum()) if not _f.empty else 0.0
-
-    def get_punt(m):
+    def _punt_mes(m):
         if m >= _mes_act_cf: return 0.0
-        _f = df_mov[(df_mov["Tipo"]=="Gasto")]
         try:
+            _f = df_mov[df_mov["Tipo"]=="Gasto"]
             _f = _f[pd.to_datetime(_f["Fecha"],errors="coerce").dt.month == m+1]
             return float(_f["Importe"].sum())
-        except Exception:
-            return 0.0
+        except Exception: return 0.0
 
-    def neto_mes(m):
-        return get_ing(m) - _rec_total - get_prog(m) - get_punt(m)
+    def _neto(m):
+        _, _pt = _prog_mes(m)
+        return _ing_est - _rec_total - _pt - _punt_mes(m)
 
-    # ── Selector de mes (carrusel) ─────────────────────────────
     if "cf_mes_sel" not in st.session_state:
         st.session_state["cf_mes_sel"] = _mes_act_cf
-
     _m = st.session_state["cf_mes_sel"]
+    _n = _neto(_m)
+    _net_col = "#3B6D11" if _n >= 0 else "#A32D2D"
+    _net_bg  = "#EAF3DE" if _n >= 0 else "#FCEBEB"
+    _etiq    = "mes actual" if _m==_mes_act_cf else "estimado" if _m>_mes_act_cf else "real"
+    _prog_items, _prog_total = _prog_mes(_m)
+    _punt_total = _punt_mes(_m)
+    _gas_total  = _rec_total + _prog_total + _punt_total
 
-    # Header
-    st.markdown(f'''<div style="margin:4px 0 12px;padding:14px 20px;background:#0F2744;border-radius:12px;
-                    display:flex;justify-content:space-between;align-items:center;">
-      <div>
-        <div style="font-size:18px;font-weight:500;color:#E6F1FB;">{_meses_s[_m]} {_anio_cf}
-          <span style="font-size:12px;color:#85B7EB;margin-left:8px;">
-            {"mes actual" if _m==_mes_act_cf else "estimado" if _m>_mes_act_cf else "real"}
-          </span>
-        </div>
-        <div style="font-size:13px;color:#B5D4F4;margin-top:2px;">
-          Ingresos {get_ing(_m):,.0f}€ · Gastos {(_rec_total+get_prog(_m)+get_punt(_m)):,.0f}€
-        </div>
-      </div>
-      <div style="background:{"#EAF3DE" if neto_mes(_m)>=0 else "#FCEBEB"};border-radius:10px;padding:10px 20px;text-align:center;">
-        <div style="font-size:11px;font-weight:500;color:{"#3B6D11" if neto_mes(_m)>=0 else "#A32D2D"};text-transform:uppercase;letter-spacing:.05em;">Neto del mes</div>
-        <div style="font-size:28px;font-weight:500;color:{"#3B6D11" if neto_mes(_m)>=0 else "#A32D2D"};">
-          {("+" if neto_mes(_m)>=0 else "")}{neto_mes(_m):,.0f} €
-        </div>
-      </div>
-    </div>''', unsafe_allow_html=True)
+    # Header navy
+    _header_html = (
+        '<div style="margin:4px 0 12px;padding:14px 20px;background:#0F2744;'
+        'border-radius:12px;display:flex;justify-content:space-between;align-items:center;">'
+        '<div>'
+        f'<div style="font-size:18px;font-weight:500;color:#E6F1FB;">{_MN[_m]} {_anio_cf}'
+        f'<span style="font-size:12px;color:#85B7EB;margin-left:8px;">{_etiq}</span></div>'
+        f'<div style="font-size:13px;color:#B5D4F4;margin-top:3px;">'
+        f'Ingresos {_ing_est:,.0f}€ · Gastos {_gas_total:,.0f}€</div>'
+        '</div>'
+        f'<div style="background:{_net_bg};border-radius:10px;padding:10px 20px;text-align:center;min-width:140px;">'
+        f'<div style="font-size:10px;font-weight:500;color:{_net_col};text-transform:uppercase;'
+        f'letter-spacing:.06em;margin-bottom:2px;">Neto del mes</div>'
+        f'<div style="font-size:28px;font-weight:500;color:{_net_col};">'
+        f'{("+" if _n>=0 else "")}{_n:,.0f} €</div>'
+        '</div></div>'
+    )
+    st.markdown(_header_html, unsafe_allow_html=True)
 
-    # Carrusel 12 meses
-    _cols = st.columns(12)
-    for _mi, (_col, _mn) in enumerate(zip(_cols, _meses_s)):
-        _n = neto_mes(_mi)
-        _dot = "🟢" if _n > 1000 else "🟡" if _n >= 0 else "🔴"
-        _activo = _mi == _m
+    # Carrusel
+    _cc = st.columns(12)
+    for _mi, _col in enumerate(_cc):
+        _ni = _neto(_mi)
+        _dot = "🟢" if _ni > 500 else "🟡" if _ni >= 0 else "🔴"
         with _col:
             if st.button(
-                f"{_dot}\n**{_mn}**\n{_n/1000:+.1f}k" if _activo else f"{_dot}\n{_mn}\n{_n/1000:+.1f}k",
-                key=f"cf_mes_{_mi}",
-                use_container_width=True,
-                type="primary" if _activo else "secondary"
+                f"{_dot} {_MN[_mi]}\n{_ni/1000:+.1f}k",
+                key=f"cf_mes_{_mi}", use_container_width=True,
+                type="primary" if _mi==_m else "secondary"
             ):
-                st.session_state["cf_mes_sel"] = _mi
-                st.rerun()
+                st.session_state["cf_mes_sel"] = _mi; st.rerun()
 
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-    # ── Panel detalle ──────────────────────────────────────────
-    _ci, _cg = st.columns(2)
+    # Panel detalle HTML
+    def _fila(label, imp, color):
+        return (
+            "<div style='display:flex;justify-content:space-between;padding:5px 0;"
+            "border-bottom:0.5px solid var(--color-border-tertiary);font-size:13px;'>"
+            f"<span style='color:var(--color-text-secondary);'>{label}</span>"
+            f"<span style='font-weight:500;color:{color};'>{imp}</span></div>"
+        )
+    def _sublabel(txt):
+        return (
+            "<div style='font-size:11px;color:var(--color-text-secondary);"
+            f"margin:8px 0 4px;'>{txt}</div>"
+        )
+    def _total_fila(label, imp, color):
+        return (
+            "<div style='display:flex;justify-content:space-between;padding:7px 0;"
+            "border-top:1px solid var(--color-border-secondary);font-size:13px;font-weight:500;'>"
+            f"<span>{label}</span><span style='color:{color};'>{imp}</span></div>"
+        )
 
-    with _ci:
-        st.markdown('''<div style="font-size:11px;color:var(--color-text-secondary);font-weight:500;
-                    text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
-                    Ingresos</div>''', unsafe_allow_html=True)
-        if not df_inm.empty:
-            for _, _inm in df_inm.iterrows():
-                _renta = safe_float(_inm.get("Renta", 0))
-                _nc = st.columns([3,2])
-                _nc[0].markdown(f"<span style='font-size:13px;'>{str(_inm.get('Nombre',''))[:22]}</span>", unsafe_allow_html=True)
-                _nc[1].markdown(f"<span style='font-size:13px;font-weight:500;color:#3B6D11;'>+{_renta:,.0f}€</span>", unsafe_allow_html=True)
-        st.markdown(f"<div style='margin-top:8px;padding-top:8px;border-top:0.5px solid var(--color-border-secondary);display:flex;justify-content:space-between;font-size:13px;font-weight:500;'><span>Total</span><span style='color:#3B6D11;'>+{get_ing(_m):,.0f}€</span></div>", unsafe_allow_html=True)
+    _html_ing = "".join(_fila(i["label"], f'+{i["importe"]:,.0f}€', "#3B6D11") for i in _ingresos_inm)
+    _html_ing += _total_fila("Total", f'+{_ing_est:,.0f}€', "#3B6D11")
 
-    with _cg:
-        st.markdown('''<div style="font-size:11px;color:var(--color-text-secondary);font-weight:500;
-                    text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
-                    Gastos</div>''', unsafe_allow_html=True)
-        # Recurrentes
-        st.markdown("<span style='font-size:11px;color:var(--color-text-secondary);'>🔄 Recurrentes</span>", unsafe_allow_html=True)
-        if not _df_gr_cf.empty:
-            for _, _gr in _df_gr_cf.iterrows():
-                _gc = st.columns([3,2])
-                _gc[0].markdown(f"<span style='font-size:12px;color:var(--color-text-secondary);'>{str(_gr.get('descripcion',''))[:22]}</span>", unsafe_allow_html=True)
-                _gc[1].markdown(f"<span style='font-size:12px;color:#A32D2D;'>−{safe_float(_gr.get('importe',0)):,.0f}€</span>", unsafe_allow_html=True)
-        # Programados
-        if not _df_cfp.empty:
-            _prog_m = _df_cfp[(_df_cfp["mes"]==(_m+1)) & (_df_cfp["tipo"]=="gasto")] if "mes" in _df_cfp.columns else pd.DataFrame()
-            if not _prog_m.empty:
-                st.markdown("<span style='font-size:11px;color:var(--color-text-secondary);margin-top:6px;display:block;'>📅 Programados</span>", unsafe_allow_html=True)
-                for _, _pg in _prog_m.iterrows():
-                    _gc = st.columns([3,2])
-                    _gc[0].markdown(f"<span style='font-size:12px;color:var(--color-text-secondary);'>{str(_pg.get('descripcion',''))[:22]}</span>", unsafe_allow_html=True)
-                    _gc[1].markdown(f"<span style='font-size:12px;color:#A32D2D;'>−{safe_float(_pg.get('importe',0)):,.0f}€</span>", unsafe_allow_html=True)
-        # Puntuales
-        if _m < _mes_act_cf:
-            _punt = get_punt(_m)
-            if _punt > 0:
-                st.markdown(f"<span style='font-size:11px;color:var(--color-text-secondary);margin-top:6px;display:block;'>⚡ Puntuales (real)</span>", unsafe_allow_html=True)
-                st.markdown(f"<div style='font-size:12px;color:#A32D2D;'>−{_punt:,.0f}€</div>", unsafe_allow_html=True)
-        # Total
-        _gas_tot = _rec_total + get_prog(_m) + get_punt(_m)
-        st.markdown(f"<div style='margin-top:8px;padding-top:8px;border-top:0.5px solid var(--color-border-secondary);display:flex;justify-content:space-between;font-size:13px;font-weight:500;'><span>Total</span><span style='color:#A32D2D;'>−{_gas_tot:,.0f}€</span></div>", unsafe_allow_html=True)
+    _html_gas = _sublabel("🔄 Recurrentes")
+    _html_gas += "".join(_fila(g["label"], f'-{g["importe"]:,.0f}€', "#A32D2D") for g in _recurrentes)
+    if _prog_items:
+        _html_gas += _sublabel("📅 Programados")
+        _html_gas += "".join(_fila(p["label"], f'-{p["importe"]:,.0f}€', "#A32D2D") for p in _prog_items)
+    if _punt_total > 0:
+        _html_gas += _sublabel("⚡ Puntuales")
+        _html_gas += _fila("Gastos registrados este mes", f'-{_punt_total:,.0f}€', "#A32D2D")
+    _html_gas += _total_fila("Total", f'-{_gas_total:,.0f}€', "#A32D2D")
 
-    st.divider()
+    _panel_html = (
+        "<div style='display:grid;grid-template-columns:1fr 1fr;gap:0;"
+        "border:0.5px solid var(--color-border-tertiary);border-radius:12px;overflow:hidden;'>"
+        "<div style='padding:14px 18px;border-right:0.5px solid var(--color-border-tertiary);'>"
+        "<div style='font-size:11px;color:var(--color-text-secondary);font-weight:500;"
+        "text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;'>Ingresos</div>"
+        f"{_html_ing}</div>"
+        "<div style='padding:14px 18px;'>"
+        "<div style='font-size:11px;color:var(--color-text-secondary);font-weight:500;"
+        "text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;'>Gastos</div>"
+        f"{_html_gas}</div></div>"
+    )
+    st.markdown(_panel_html, unsafe_allow_html=True)
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
-    # ── Añadir gasto programado ────────────────────────────────
-    with st.expander("➕ Añadir gasto programado"):
+    # Añadir gasto programado
+    with st.expander("➕ Añadir gasto programado / periodificado"):
         _gf1, _gf2 = st.columns(2)
         with _gf1:
             _gp_inm  = st.selectbox("Inmueble", ["(General)"] + df_inm["Nombre"].tolist(), key="gp_inm_cf")
             _gp_desc = st.text_input("Descripción (ej: IBI Abarqueros)", key="gp_desc_cf")
             _gp_cat  = st.selectbox("Categoría", ["ibi","mantenimiento","seguro","comunidad","suministros","otro"], key="gp_cat_cf")
         with _gf2:
-            _gp_tipo_f = st.radio("Modo", ["Pago único", "Periodificar en meses"], key="gp_tipof_cf", horizontal=True)
+            _gp_modo = st.radio("Modo", ["Pago único", "Periodificar en meses"], horizontal=True, key="gp_modo_cf")
             _gp_imp  = st.number_input("Importe total (€)", min_value=0.0, step=10.0, key="gp_imp_cf")
-            if _gp_tipo_f == "Pago único":
-                _gp_mes_u = st.selectbox("Mes", list(range(1,13)),
-                                          format_func=lambda x: _meses_s[x-1], key="gp_mes_u_cf")
-                _gp_meses_sel = [_gp_mes_u]
-                _gp_cuota = _gp_imp
+            if _gp_modo == "Pago único":
+                _gp_mes_u = st.selectbox("Mes", list(range(1,13)), format_func=lambda x: _MN[x-1], key="gp_mes_u_cf")
+                _gp_meses_sel = [_gp_mes_u]; _gp_cuota = _gp_imp
             else:
-                _gp_meses_multi = st.multiselect("Meses", list(range(1,13)),
-                                                   format_func=lambda x: _meses_s[x-1], key="gp_meses_multi_cf")
-                _gp_meses_sel = _gp_meses_multi
-                _n_meses = len(_gp_meses_sel) if _gp_meses_sel else 1
-                _gp_cuota = _gp_imp / _n_meses if _n_meses > 0 else 0
-                if _gp_meses_sel:
-                    st.caption(f"Cuota por mes: {_gp_cuota:,.2f}€ ({_gp_imp:,.0f}€ ÷ {_n_meses} meses)")
-
+                _gp_mm = st.multiselect("Meses donde aplica", list(range(1,13)), format_func=lambda x: _MN[x-1], key="gp_mm_cf")
+                _gp_meses_sel = _gp_mm
+                _gp_cuota = _gp_imp/len(_gp_mm) if _gp_mm else 0
+                if _gp_mm:
+                    st.caption(f"Cuota: {_gp_cuota:,.2f}€ × {len(_gp_mm)} meses = {_gp_imp:,.0f}€")
         if st.button("💾 Guardar", key="btn_gp_cf", use_container_width=True, type="primary"):
             if _gp_imp > 0 and _gp_desc and _gp_meses_sel:
-                _inm_gp = _gp_inm if _gp_inm != "(General)" else ""
-                _ok_gp = 0
-                for _mes_g in _gp_meses_sel:
-                    _res_gp = crear_cashflow_programado(_uid_cf, {
-                        "inmueble": _inm_gp, "tipo": "gasto",
-                        "categoria": _gp_cat, "descripcion": _gp_desc,
-                        "importe": _gp_cuota, "mes": _mes_g,
-                        "anio": _anio_cf, "recurrencia": "una_vez", "estado": "pendiente"
-                    })
-                    if _res_gp.get("ok"): _ok_gp += 1
-                if _ok_gp:
-                    st.success(f"✓ {_ok_gp} entrada(s) guardadas. Cuota: {_gp_cuota:,.2f}€/mes")
-                    st.rerun()
+                _inm_gp = "" if _gp_inm=="(General)" else _gp_inm
+                _ok = sum(1 for _mg in _gp_meses_sel if crear_cashflow_programado(_uid_cf, {
+                    "inmueble": _inm_gp, "tipo": "gasto", "categoria": _gp_cat,
+                    "descripcion": _gp_desc, "importe": _gp_cuota,
+                    "mes": _mg, "anio": _anio_cf, "recurrencia": "una_vez", "estado": "pendiente"
+                }).get("ok"))
+                if _ok: st.success(f"✓ {_ok} entrada(s) · {_gp_cuota:,.2f}€/mes"); st.rerun()
             else:
-                st.warning("Completa descripción, importe y al menos un mes.")
+                st.warning("Completa descripción, importe y mes(es).")
 
-    # ── Gestionar programados del mes ──────────────────────────
+    # Programados del mes activo
     if not _df_cfp.empty and "mes" in _df_cfp.columns:
-        _prog_act = _df_cfp[_df_cfp["mes"] == (_m+1)]
-        if not _prog_act.empty:
-            st.markdown(f"**Gastos programados — {_meses_s[_m]}**")
-            for _, _pg in _prog_act.iterrows():
-                _pc1, _pc2 = st.columns([8,1])
-                _pc1.markdown(f"<span style='font-size:13px;'>{_pg.get('descripcion','')} · {safe_float(_pg.get('importe',0)):,.0f}€</span>", unsafe_allow_html=True)
+        _pa = _df_cfp[_df_cfp["mes"]==(_m+1)]
+        if not _pa.empty:
+            st.markdown(f"**Programados — {_MN[_m]} {_anio_cf}**")
+            for _, _pg in _pa.iterrows():
+                _pc1,_pc2 = st.columns([8,1])
+                _lbl = str(_pg.get("descripcion",_pg.get("concepto","")))
+                _pc1.markdown(f"<span style='font-size:13px;'>{_lbl} · {safe_float(_pg.get('importe',0)):,.0f}€</span>", unsafe_allow_html=True)
                 with _pc2:
                     if st.button("🗑", key=f"del_gp_{_pg['id']}", help="Eliminar"):
                         eliminar_cashflow_programado(str(_pg["id"]), _uid_cf)
                         st.success("Eliminado ✓"); st.rerun()
 
-# PANTALLA: SUMINISTROS
-# Auditoría de potencia eléctrica, comparador de tarifas
-# Deps: df_inm, safe_float()
-# ================================================================
 elif menu == "Suministros":
     st.markdown('<div class="nc-brand-header">Optimización de Suministros</div>',unsafe_allow_html=True)
     st.markdown('<div class="nc-brand-sub">Auditoría de potencia eléctrica · Comparador tarifario</div>',unsafe_allow_html=True)
