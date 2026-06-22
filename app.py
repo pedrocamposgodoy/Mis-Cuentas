@@ -3529,50 +3529,35 @@ elif menu == "Cash Flow":
             f"<div style='font-size:12px;font-weight:500;color:{_tc};'>{_ni/1000:+.1f}k</div>"
             f"</div>"
         )
-    # CSS para compactar botones y unirlos visualmente a la barra semáforo
-    st.markdown("""<style>
-    div[data-testid="stHorizontalBlock"] button {
-        border-radius: 0 0 8px 8px !important;
-        font-size: 11px !important;
-        padding: 5px 2px !important;
-        min-height: 0px !important;
-        line-height: 1.2 !important;
-    }
-    div[data-testid="stHorizontalBlock"] {
-        gap: 4px !important;
-        margin-top: -6px;
-    }
-    div[data-testid="stHorizontalBlock"] > div {
-        padding: 0 !important;
-    }
-    </style>""", unsafe_allow_html=True)
-
-    # Barra semáforo (parte superior de la tarjeta)
-    _sem_top = ""
-    for _mi, _mn in enumerate(_MN):
-        _ni = _neto(_mi)
-        _bg  = "#EAF3DE" if _ni>300 else "#FAEEDA" if _ni>=0 else "#FCEBEB"
-        _tc  = "#3B6D11" if _ni>300 else "#854F0B" if _ni>=0 else "#A32D2D"
-        _brd = "1.5px solid #185FA5" if _mi==_m else f"1px solid {_bg}"
-        _sem_top += (
-            f"<div style='flex:1;background:{_bg};border-top:{_brd};"
-            f"border-left:{_brd};border-right:{_brd};border-bottom:none;"
-            f"border-radius:8px 8px 0 0;padding:7px 2px 5px;text-align:center;'>"
-            f"<div style='font-size:11px;font-weight:500;color:{_tc};'>{_mn}</div>"
-            f"<div style='font-size:12px;font-weight:500;color:{_tc};'>{_ni/1000:+.1f}k</div>"
-            f"</div>"
-        )
+    # ── Header navy compacto ────────────────────────────────────────
     st.markdown(
-        f"<div style='display:flex;gap:4px;margin-bottom:0;'>{_sem_top}</div>",
+        f"<div style='padding:16px 22px;background:#0F2744;border-radius:12px;"
+        f"display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;'>"
+        f"<div>"
+        f"<div style='font-size:20px;font-weight:500;color:#E6F1FB;margin-bottom:6px;'>"
+        f"{_MN[_m]} {_anio_cf}"
+        f"<span style='font-size:13px;color:#85B7EB;margin-left:10px;'>{_etiq}</span></div>"
+        f"<div style='font-size:14px;color:#B5D4F4;'>"
+        f"Ingresos {_ing_est:,.0f}€ · Gastos {_gas_total:,.0f}€</div>"
+        f"</div>"
+        f"<div style='background:{_net_bg};border-radius:10px;padding:12px 22px;text-align:center;'>"
+        f"<div style='font-size:10px;font-weight:500;color:{_net_col};text-transform:uppercase;"
+        f"letter-spacing:.07em;margin-bottom:4px;'>Neto del mes</div>"
+        f"<div style='font-size:36px;font-weight:500;color:{_net_col};line-height:1;'>"
+        f"{('+' if _n>=0 else '')}{_n:,.0f} €</div>"
+        f"</div></div>",
         unsafe_allow_html=True
     )
 
-    # Botones funcionales (parte inferior)
+    # ── Carrusel — botones azules con semáforo ──────────────────────
     _cols_cf = st.columns(12)
     for _mi, _col in enumerate(_cols_cf):
+        _ni  = _neto(_mi)
+        _dot = "🟢" if _ni>300 else "🟡" if _ni>=0 else "🔴"
+        _val = f"{_ni/1000:+.1f}k"
         with _col:
             if st.button(
-                "●" if _mi==_m else " ",
+                f"{_dot}\n{_MN[_mi]}\n{_val}",
                 key=f"cf_mes_{_mi}",
                 use_container_width=True,
                 type="primary" if _mi==_m else "secondary"
