@@ -3591,13 +3591,14 @@ elif menu == "Cash Flow":
     )
 
     # ── Tira beneficio neto ──────────────────────────────────────────
+    _strip_col = "#C0DD97" if _n >= 0 else "#F09595"
     st.markdown(
         f"<div style='background:#0F2744;border-radius:0 0 12px 12px;padding:14px 22px;"
         f"display:flex;justify-content:space-between;align-items:center;"
         f"margin-top:-1px;'>"
         f"<span style='font-size:13px;font-weight:500;color:#85B7EB;"
         f"text-transform:uppercase;letter-spacing:.07em;'>Beneficio neto del mes</span>"
-        f"<span style='font-size:32px;font-weight:500;color:{_net_col};'>"
+        f"<span style='font-size:32px;font-weight:500;color:{_strip_col};'>"
         f"{('+' if _n>=0 else '')}{_n:,.0f} €</span>"
         f"</div>",
         unsafe_allow_html=True
