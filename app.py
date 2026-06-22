@@ -3529,13 +3529,55 @@ elif menu == "Cash Flow":
             f"<div style='font-size:12px;font-weight:500;color:{_tc};'>{_ni/1000:+.1f}k</div>"
             f"</div>"
         )
+    # CSS para compactar botones y unirlos visualmente a la barra semáforo
+    st.markdown("""<style>
+    div[data-testid="stHorizontalBlock"] button {
+        border-radius: 0 0 8px 8px !important;
+        font-size: 11px !important;
+        padding: 5px 2px !important;
+        min-height: 0px !important;
+        line-height: 1.2 !important;
+    }
+    div[data-testid="stHorizontalBlock"] {
+        gap: 4px !important;
+        margin-top: -6px;
+    }
+    div[data-testid="stHorizontalBlock"] > div {
+        padding: 0 !important;
+    }
+    </style>""", unsafe_allow_html=True)
+
+    # Barra semáforo (parte superior de la tarjeta)
+    _sem_top = ""
+    for _mi, _mn in enumerate(_MN):
+        _ni = _neto(_mi)
+        _bg  = "#EAF3DE" if _ni>300 else "#FAEEDA" if _ni>=0 else "#FCEBEB"
+        _tc  = "#3B6D11" if _ni>300 else "#854F0B" if _ni>=0 else "#A32D2D"
+        _brd = "1.5px solid #185FA5" if _mi==_m else f"1px solid {_bg}"
+        _sem_top += (
+            f"<div style='flex:1;background:{_bg};border-top:{_brd};"
+            f"border-left:{_brd};border-right:{_brd};border-bottom:none;"
+            f"border-radius:8px 8px 0 0;padding:7px 2px 5px;text-align:center;'>"
+            f"<div style='font-size:11px;font-weight:500;color:{_tc};'>{_mn}</div>"
+            f"<div style='font-size:12px;font-weight:500;color:{_tc};'>{_ni/1000:+.1f}k</div>"
+            f"</div>"
+        )
     st.markdown(
-        f"<div style='display:flex;gap:4px;margin-bottom:8px;'>{_sem}</div>",
+        f"<div style='display:flex;gap:4px;margin-bottom:0;'>{_sem_top}</div>",
         unsafe_allow_html=True
     )
-    _mes_radio = st.radio("", _MN, horizontal=True, index=_m, key="cf_radio", label_visibility="collapsed")
-    if _MN.index(_mes_radio) != _m:
-        st.session_state["cf_mes_sel"] = _MN.index(_mes_radio); st.rerun()
+
+    # Botones funcionales (parte inferior)
+    _cols_cf = st.columns(12)
+    for _mi, _col in enumerate(_cols_cf):
+        with _col:
+            if st.button(
+                "●" if _mi==_m else " ",
+                key=f"cf_mes_{_mi}",
+                use_container_width=True,
+                type="primary" if _mi==_m else "secondary"
+            ):
+                st.session_state["cf_mes_sel"] = _mi; st.rerun()
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
