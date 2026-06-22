@@ -3529,27 +3529,6 @@ elif menu == "Cash Flow":
             f"<div style='font-size:12px;font-weight:500;color:{_tc};'>{_ni/1000:+.1f}k</div>"
             f"</div>"
         )
-    # ── Header navy compacto ────────────────────────────────────────
-    st.markdown(
-        f"<div style='padding:16px 22px;background:#0F2744;border-radius:12px;"
-        f"display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;'>"
-        f"<div>"
-        f"<div style='font-size:20px;font-weight:500;color:#E6F1FB;margin-bottom:6px;'>"
-        f"{_MN[_m]} {_anio_cf}"
-        f"<span style='font-size:13px;color:#85B7EB;margin-left:10px;'>{_etiq}</span></div>"
-        f"<div style='font-size:14px;color:#B5D4F4;'>"
-        f"Ingresos {_ing_est:,.0f}€ · Gastos {_gas_total:,.0f}€</div>"
-        f"</div>"
-        f"<div style='background:{_net_bg};border-radius:10px;padding:12px 22px;text-align:center;'>"
-        f"<div style='font-size:10px;font-weight:500;color:{_net_col};text-transform:uppercase;"
-        f"letter-spacing:.07em;margin-bottom:4px;'>Neto del mes</div>"
-        f"<div style='font-size:36px;font-weight:500;color:{_net_col};line-height:1;'>"
-        f"{('+' if _n>=0 else '')}{_n:,.0f} €</div>"
-        f"</div></div>",
-        unsafe_allow_html=True
-    )
-
-    # ── Carrusel — botones azules con semáforo ──────────────────────
     _cols_cf = st.columns(12)
     for _mi, _col in enumerate(_cols_cf):
         _ni  = _neto(_mi)
