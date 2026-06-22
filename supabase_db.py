@@ -322,7 +322,6 @@ def agregar_movimientos(nuevos, user_id):
                 db_key = RENAME_MOV_TO_DB.get(k, k.lower())
                 record[db_key] = v
             record['user_id'] = user_id
-            # Eliminar campos que no existen en la tabla
             record.pop('estado', None)
             records.append(record)
 
@@ -338,6 +337,38 @@ def agregar_movimientos(nuevos, user_id):
     except Exception as e:
         st.error(f"Error agregando movimientos: {e}")
         return False
+
+
+def agregar_un_movimiento(mov: dict, user_id: str) -> dict:
+    """Inserta un solo movimiento y devuelve su ID.
+    Retorna: {"ok": True, "id": "uuid"} o {"ok": False, "error": "..."}
+    """
+    if not _validar_user_id(user_id, "agregar_un_movimiento"):
+        return {"ok": False, "error": "user_id inválido"}
+    try:
+        record = {}
+        for k, v in mov.items():
+            db_key = RENAME_MOV_TO_DB.get(k, k.lower())
+            record[db_key] = v
+        record["user_id"] = user_id
+        record.pop("estado", None)
+
+        h = {**_headers(), "Prefer": "return=representation"}
+        r = requests.post(
+            f"{SUPABASE_URL}/rest/v1/movimientos",
+            headers=h,
+            json=record,
+            timeout=15
+        )
+        if r.status_code in (200, 201):
+            data = r.json()
+            mov_id = data[0]["id"] if isinstance(data, list) and data else None
+            if mov_id:
+                return {"ok": True, "id": str(mov_id)}
+            return {"ok": False, "error": "ID no devuelto"}
+        return {"ok": False, "error": f"{r.status_code}: {r.text[:200]}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 def eliminar_inmueble(nombre, user_id):
