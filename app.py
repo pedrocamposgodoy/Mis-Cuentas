@@ -3439,22 +3439,20 @@ elif menu == "Cash Flow":
     _mes_act_cf = datetime.now().month - 1
     _MN         = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
 
+    # ── Datos ──────────────────────────────────────────────────────
     _df_gr = leer_gastos_recurrentes(_uid_cf)
-    _recurrentes = []
-    _rec_total = 0.0
+    _recurrentes, _rec_total = [], 0.0
     if not _df_gr.empty:
         for _, _r in _df_gr.iterrows():
             _imp = float(_r.get("importe",0) or 0)
             _recurrentes.append({
-                "label": (str(_r.get("inmueble",""))[:14] + " · " + str(_r.get("concepto",""))[:16]).strip(" · "),
+                "label": f"{str(_r.get('inmueble',''))[:16]} · {str(_r.get('concepto',''))[:18]}",
                 "importe": _imp
             })
             _rec_total += _imp
 
     _df_cfp = leer_cashflow_programado(_uid_cf)
-
-    _ingresos_inm = []
-    _ing_est = 0.0
+    _ingresos_inm, _ing_est = [], 0.0
     if not df_inm.empty:
         for _, _inm in df_inm.iterrows():
             _r = safe_float(_inm.get("Renta",0))
@@ -3464,7 +3462,7 @@ elif menu == "Cash Flow":
     def _prog_mes(m):
         if _df_cfp.empty or "mes" not in _df_cfp.columns: return [], 0.0
         _f = _df_cfp[(_df_cfp["mes"]==(m+1)) & (_df_cfp["tipo"]=="gasto")]
-        items = [{"label": str(r.get("descripcion",r.get("concepto","")))[:28],
+        items = [{"label": str(r.get("descripcion",r.get("concepto","")))[:30],
                   "importe": float(r.get("importe",0) or 0)} for _, r in _f.iterrows()]
         return items, sum(i["importe"] for i in items)
 
@@ -3480,9 +3478,15 @@ elif menu == "Cash Flow":
         _, _pt = _prog_mes(m)
         return _ing_est - _rec_total - _pt - _punt_mes(m)
 
-    if "cf_mes_sel" not in st.session_state:
-        st.session_state["cf_mes_sel"] = _mes_act_cf
-    _m = st.session_state["cf_mes_sel"]
+    # ── Selector de mes ─────────────────────────────────────────────
+    _mes_sel = st.select_slider(
+        "Selecciona mes", options=_MN,
+        value=_MN[st.session_state.get("cf_mes_sel", _mes_act_cf)],
+        key="cf_slider"
+    )
+    _m = _MN.index(_mes_sel)
+    st.session_state["cf_mes_sel"] = _m
+
     _n = _neto(_m)
     _net_col = "#3B6D11" if _n >= 0 else "#A32D2D"
     _net_bg  = "#EAF3DE" if _n >= 0 else "#FCEBEB"
@@ -3491,89 +3495,95 @@ elif menu == "Cash Flow":
     _punt_total = _punt_mes(_m)
     _gas_total  = _rec_total + _prog_total + _punt_total
 
-    # Header navy
-    _header_html = (
-        '<div style="margin:4px 0 12px;padding:14px 20px;background:#0F2744;'
-        'border-radius:12px;display:flex;justify-content:space-between;align-items:center;">'
-        '<div>'
-        f'<div style="font-size:18px;font-weight:500;color:#E6F1FB;">{_MN[_m]} {_anio_cf}'
-        f'<span style="font-size:12px;color:#85B7EB;margin-left:8px;">{_etiq}</span></div>'
-        f'<div style="font-size:13px;color:#B5D4F4;margin-top:3px;">'
-        f'Ingresos {_ing_est:,.0f}€ · Gastos {_gas_total:,.0f}€</div>'
-        '</div>'
-        f'<div style="background:{_net_bg};border-radius:10px;padding:10px 20px;text-align:center;min-width:140px;">'
-        f'<div style="font-size:10px;font-weight:500;color:{_net_col};text-transform:uppercase;'
-        f'letter-spacing:.06em;margin-bottom:2px;">Neto del mes</div>'
-        f'<div style="font-size:28px;font-weight:500;color:{_net_col};">'
-        f'{("+" if _n>=0 else "")}{_n:,.0f} €</div>'
-        '</div></div>'
-    )
-    st.markdown(_header_html, unsafe_allow_html=True)
-
-    # Carrusel
-    _cc = st.columns(12)
-    for _mi, _col in enumerate(_cc):
+    # ── Barra semáforos ─────────────────────────────────────────────
+    _sem_items = ""
+    for _mi, _mn in enumerate(_MN):
         _ni = _neto(_mi)
-        _dot = "🟢" if _ni > 500 else "🟡" if _ni >= 0 else "🔴"
-        with _col:
-            if st.button(
-                f"{_dot} {_MN[_mi]}\n{_ni/1000:+.1f}k",
-                key=f"cf_mes_{_mi}", use_container_width=True,
-                type="primary" if _mi==_m else "secondary"
-            ):
-                st.session_state["cf_mes_sel"] = _mi; st.rerun()
+        _bg = "#EAF3DE" if _ni>300 else "#FAEEDA" if _ni>=0 else "#FCEBEB"
+        _tc = "#3B6D11" if _ni>300 else "#854F0B" if _ni>=0 else "#A32D2D"
+        _brd = "2px solid #185FA5" if _mi==_m else f"1px solid {_bg}"
+        _sem_items += (
+            f"<div style='flex:1;background:{_bg};border:{_brd};border-radius:8px;"
+            f"padding:6px 2px;text-align:center;cursor:pointer;'>"
+            f"<div style='font-size:11px;font-weight:500;color:{_tc};'>{_mn}</div>"
+            f"<div style='font-size:12px;font-weight:500;color:{_tc};'>{_ni/1000:+.1f}k</div>"
+            f"</div>"
+        )
+    st.markdown(
+        f"<div style='display:flex;gap:4px;margin:8px 0 16px;'>{_sem_items}</div>",
+        unsafe_allow_html=True
+    )
 
-    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    # ── Header navy con neto grande ─────────────────────────────────
+    st.markdown(
+        f"<div style='padding:20px 28px;background:#0F2744;border-radius:12px;"
+        f"display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;'>"
+        f"<div>"
+        f"<div style='font-size:22px;font-weight:500;color:#E6F1FB;'>{_mes_sel} {_anio_cf}"
+        f"<span style='font-size:13px;color:#85B7EB;margin-left:10px;'>{_etiq}</span></div>"
+        f"<div style='margin-top:12px;display:flex;gap:32px;'>"
+        f"<div><div style='font-size:11px;color:#85B7EB;text-transform:uppercase;letter-spacing:.06em;'>Ingresos</div>"
+        f"<div style='font-size:24px;font-weight:500;color:#C0DD97;'>+{_ing_est:,.0f} €</div></div>"
+        f"<div><div style='font-size:11px;color:#85B7EB;text-transform:uppercase;letter-spacing:.06em;'>Gastos</div>"
+        f"<div style='font-size:24px;font-weight:500;color:#F09595;'>−{_gas_total:,.0f} €</div></div>"
+        f"</div></div>"
+        f"<div style='background:{_net_bg};border-radius:12px;padding:16px 28px;text-align:center;'>"
+        f"<div style='font-size:11px;font-weight:500;color:{_net_col};text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;'>Neto del mes</div>"
+        f"<div style='font-size:40px;font-weight:500;color:{_net_col};line-height:1;'>{('+' if _n>=0 else '')}{_n:,.0f} €</div>"
+        f"</div></div>",
+        unsafe_allow_html=True
+    )
 
-    # Panel detalle HTML
+    # ── Panel detalle ───────────────────────────────────────────────
     def _fila(label, imp, color):
         return (
-            "<div style='display:flex;justify-content:space-between;padding:5px 0;"
-            "border-bottom:0.5px solid var(--color-border-tertiary);font-size:13px;'>"
-            f"<span style='color:var(--color-text-secondary);'>{label}</span>"
-            f"<span style='font-weight:500;color:{color};'>{imp}</span></div>"
+            f"<div style='display:flex;justify-content:space-between;align-items:center;"
+            f"padding:8px 0;border-bottom:0.5px solid var(--color-border-tertiary);'>"
+            f"<span style='font-size:14px;color:var(--color-text-secondary);'>{label}</span>"
+            f"<span style='font-size:15px;font-weight:500;color:{color};'>{imp}</span></div>"
         )
     def _sublabel(txt):
         return (
-            "<div style='font-size:11px;color:var(--color-text-secondary);"
-            f"margin:8px 0 4px;'>{txt}</div>"
+            f"<div style='font-size:12px;color:var(--color-text-secondary);"
+            f"margin:12px 0 5px;'>{txt}</div>"
         )
     def _total_fila(label, imp, color):
         return (
-            "<div style='display:flex;justify-content:space-between;padding:7px 0;"
-            "border-top:1px solid var(--color-border-secondary);font-size:13px;font-weight:500;'>"
-            f"<span>{label}</span><span style='color:{color};'>{imp}</span></div>"
+            f"<div style='display:flex;justify-content:space-between;align-items:center;"
+            f"padding:10px 0 4px;border-top:1.5px solid var(--color-border-secondary);margin-top:6px;'>"
+            f"<span style='font-size:15px;font-weight:500;'>{label}</span>"
+            f"<span style='font-size:20px;font-weight:500;color:{color};'>{imp}</span></div>"
         )
 
-    _html_ing = "".join(_fila(i["label"], f'+{i["importe"]:,.0f}€', "#3B6D11") for i in _ingresos_inm)
-    _html_ing += _total_fila("Total", f'+{_ing_est:,.0f}€', "#3B6D11")
+    _html_ing  = "".join(_fila(i["label"], f'+{i["importe"]:,.0f} €', "#3B6D11") for i in _ingresos_inm)
+    _html_ing += _total_fila("Total", f'+{_ing_est:,.0f} €', "#3B6D11")
 
-    _html_gas = _sublabel("🔄 Recurrentes")
-    _html_gas += "".join(_fila(g["label"], f'-{g["importe"]:,.0f}€', "#A32D2D") for g in _recurrentes)
+    _html_gas  = _sublabel("🔄 Recurrentes")
+    _html_gas += "".join(_fila(g["label"], f'−{g["importe"]:,.0f} €', "#A32D2D") for g in _recurrentes)
     if _prog_items:
         _html_gas += _sublabel("📅 Programados")
-        _html_gas += "".join(_fila(p["label"], f'-{p["importe"]:,.0f}€', "#A32D2D") for p in _prog_items)
+        _html_gas += "".join(_fila(p["label"], f'−{p["importe"]:,.0f} €', "#A32D2D") for p in _prog_items)
     if _punt_total > 0:
         _html_gas += _sublabel("⚡ Puntuales")
-        _html_gas += _fila("Gastos registrados este mes", f'-{_punt_total:,.0f}€', "#A32D2D")
-    _html_gas += _total_fila("Total", f'-{_gas_total:,.0f}€', "#A32D2D")
+        _html_gas += _fila("Gastos reales del mes", f'−{_punt_total:,.0f} €', "#A32D2D")
+    _html_gas += _total_fila("Total", f'−{_gas_total:,.0f} €', "#A32D2D")
 
-    _panel_html = (
-        "<div style='display:grid;grid-template-columns:1fr 1fr;gap:0;"
-        "border:0.5px solid var(--color-border-tertiary);border-radius:12px;overflow:hidden;'>"
-        "<div style='padding:14px 18px;border-right:0.5px solid var(--color-border-tertiary);'>"
-        "<div style='font-size:11px;color:var(--color-text-secondary);font-weight:500;"
-        "text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;'>Ingresos</div>"
+    st.markdown(
+        f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:0;"
+        f"border:0.5px solid var(--color-border-tertiary);border-radius:12px;overflow:hidden;'>"
+        f"<div style='padding:18px 22px;border-right:0.5px solid var(--color-border-tertiary);'>"
+        f"<div style='font-size:11px;color:var(--color-text-secondary);font-weight:500;"
+        f"text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;'>Ingresos</div>"
         f"{_html_ing}</div>"
-        "<div style='padding:14px 18px;'>"
-        "<div style='font-size:11px;color:var(--color-text-secondary);font-weight:500;"
-        "text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;'>Gastos</div>"
-        f"{_html_gas}</div></div>"
+        f"<div style='padding:18px 22px;'>"
+        f"<div style='font-size:11px;color:var(--color-text-secondary);font-weight:500;"
+        f"text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;'>Gastos</div>"
+        f"{_html_gas}</div></div>",
+        unsafe_allow_html=True
     )
-    st.markdown(_panel_html, unsafe_allow_html=True)
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
-    # Añadir gasto programado
+    # ── Añadir gasto programado ─────────────────────────────────────
     with st.expander("➕ Añadir gasto programado / periodificado"):
         _gf1, _gf2 = st.columns(2)
         with _gf1:
@@ -3584,14 +3594,14 @@ elif menu == "Cash Flow":
             _gp_modo = st.radio("Modo", ["Pago único", "Periodificar en meses"], horizontal=True, key="gp_modo_cf")
             _gp_imp  = st.number_input("Importe total (€)", min_value=0.0, step=10.0, key="gp_imp_cf")
             if _gp_modo == "Pago único":
-                _gp_mes_u = st.selectbox("Mes", list(range(1,13)), format_func=lambda x: _MN[x-1], key="gp_mes_u_cf")
+                _gp_mes_u     = st.selectbox("Mes", list(range(1,13)), format_func=lambda x: _MN[x-1], key="gp_mes_u_cf")
                 _gp_meses_sel = [_gp_mes_u]; _gp_cuota = _gp_imp
             else:
-                _gp_mm = st.multiselect("Meses donde aplica", list(range(1,13)), format_func=lambda x: _MN[x-1], key="gp_mm_cf")
+                _gp_mm        = st.multiselect("Meses donde aplica", list(range(1,13)), format_func=lambda x: _MN[x-1], key="gp_mm_cf")
                 _gp_meses_sel = _gp_mm
-                _gp_cuota = _gp_imp/len(_gp_mm) if _gp_mm else 0
+                _gp_cuota     = _gp_imp/len(_gp_mm) if _gp_mm else 0
                 if _gp_mm:
-                    st.caption(f"Cuota: {_gp_cuota:,.2f}€ × {len(_gp_mm)} meses = {_gp_imp:,.0f}€")
+                    st.caption(f"Cuota: {_gp_cuota:,.2f} € × {len(_gp_mm)} meses = {_gp_imp:,.0f} €")
         if st.button("💾 Guardar", key="btn_gp_cf", use_container_width=True, type="primary"):
             if _gp_imp > 0 and _gp_desc and _gp_meses_sel:
                 _inm_gp = "" if _gp_inm=="(General)" else _gp_inm
@@ -3600,73 +3610,28 @@ elif menu == "Cash Flow":
                     "descripcion": _gp_desc, "importe": _gp_cuota,
                     "mes": _mg, "anio": _anio_cf, "recurrencia": "una_vez", "estado": "pendiente"
                 }).get("ok"))
-                if _ok: st.success(f"✓ {_ok} entrada(s) · {_gp_cuota:,.2f}€/mes"); st.rerun()
+                if _ok: st.success(f"✓ {_ok} entrada(s) · {_gp_cuota:,.2f} €/mes"); st.rerun()
             else:
                 st.warning("Completa descripción, importe y mes(es).")
 
-    # Programados del mes activo
+    # ── Programados del mes ─────────────────────────────────────────
     if not _df_cfp.empty and "mes" in _df_cfp.columns:
         _pa = _df_cfp[_df_cfp["mes"]==(_m+1)]
         if not _pa.empty:
-            st.markdown(f"**Programados — {_MN[_m]} {_anio_cf}**")
+            st.markdown(f"**Programados — {_mes_sel} {_anio_cf}**")
             for _, _pg in _pa.iterrows():
-                _pc1,_pc2 = st.columns([8,1])
+                _pc1,_pc2 = st.columns([9,1])
                 _lbl = str(_pg.get("descripcion",_pg.get("concepto","")))
-                _pc1.markdown(f"<span style='font-size:13px;'>{_lbl} · {safe_float(_pg.get('importe',0)):,.0f}€</span>", unsafe_allow_html=True)
+                _pc1.markdown(
+                    f"<span style='font-size:14px;'>{_lbl} &nbsp;"
+                    f"<strong>{safe_float(_pg.get('importe',0)):,.0f} €</strong></span>",
+                    unsafe_allow_html=True
+                )
                 with _pc2:
                     if st.button("🗑", key=f"del_gp_{_pg['id']}", help="Eliminar"):
                         eliminar_cashflow_programado(str(_pg["id"]), _uid_cf)
                         st.success("Eliminado ✓"); st.rerun()
 
-elif menu == "Suministros":
-    st.markdown('<div class="nc-brand-header">Optimización de Suministros</div>',unsafe_allow_html=True)
-    st.markdown('<div class="nc-brand-sub">Auditoría de potencia eléctrica · Comparador tarifario</div>',unsafe_allow_html=True)
-    inmueble_sel=st.selectbox("Selecciona inmueble:",df_inm["Nombre"].tolist())
-    f=df_inm[df_inm["Nombre"]==inmueble_sel].iloc[0]; hab=int(f.get("Habitaciones",2))
-    st.markdown('<div class="nc-section-title">⚡ Auditoría de Potencia Contratada</div>',unsafe_allow_html=True)
-    col1,col2=st.columns(2)
-    with col1:
-        potencia_actual=st.number_input("Potencia contratada (kW)",min_value=1.0,max_value=30.0,value=4.4,step=0.1)
-        tiene_ac=st.checkbox("¿Aire acondicionado?",value=True); tiene_vitro=st.checkbox("¿Vitrocerámica/inducción?",value=True)
-        tiene_termo=st.checkbox("¿Termo eléctrico?",value=False); tiene_cargador=st.checkbox("¿Cargador vehículo eléctrico?",value=False)
-    base_kw={1:2.3,2:3.3,3:3.3,4:4.4,5:5.5}.get(min(hab,5),4.4); extra=0.0
-    if tiene_ac: extra+=2.0
-    if tiene_vitro: extra+=1.5
-    if tiene_termo: extra+=1.0
-    if tiene_cargador: extra+=3.7
-    POTENCIAS_REE=[1.15,2.3,3.45,4.6,5.75,6.9,8.05,9.2,10.35,11.5,14.49,17.25]
-    pot_rec=next((p for p in POTENCIAS_REE if p>=base_kw+extra),17.25)
-    coste_act=potencia_actual*42.0; coste_opt=pot_rec*42.0; ahorro=coste_act-coste_opt
-    with col2:
-        st.markdown(f"""<div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;padding:1.4rem;">
-            <div class="nc-kpi__label">Potencia recomendada</div>
-            <div style="font-family:'DM Serif Display',serif;font-size:2.2rem;color:{ACCENT};">{pot_rec} kW</div>
-            <div class="nc-kpi__sub">Basado en {hab} hab. + equipos</div>
-            <hr style="border:0;border-top:1px solid {BORDER};margin:0.8rem 0;">
-            <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span class="nc-kpi__label">Coste actual/año</span><span style="font-size:0.9rem;font-weight:600;color:{RED};">{coste_act:,.0f} €</span></div>
-            <div style="display:flex;justify-content:space-between;"><span class="nc-kpi__label">Coste óptimo/año</span><span style="font-size:0.9rem;font-weight:600;color:{GREEN};">{coste_opt:,.0f} €</span></div>
-        </div>""",unsafe_allow_html=True)
-        cls_a="status-green" if ahorro>5 else ("status-red" if ahorro<-5 else "status-green")
-        msg_a=f"✅ Ahorro potencial: {ahorro:,.0f} €/año · Bajar a {pot_rec} kW" if ahorro>5 else (f"⚠️ Potencia insuficiente · Subir a {pot_rec} kW" if ahorro<-5 else "✅ Potencia correctamente ajustada")
-        st.markdown(f'<div class="{cls_a}" style="margin-top:0.8rem;">{msg_a}</div>',unsafe_allow_html=True)
-
-    st.markdown('<div class="nc-section-title">📊 Comparador Tarifa Fija vs Indexada</div>',unsafe_allow_html=True)
-    tc1,tc2,tc3=st.columns(3)
-    with tc1: kwh=st.number_input("Consumo mensual (kWh)",min_value=50,max_value=2000,value=200,step=10)
-    with tc2: pfijo=st.number_input("Tarifa fija (€/kWh)",min_value=0.05,max_value=0.50,value=0.18,step=0.01,format="%.3f")
-    with tc3: ppool=st.number_input("Pool PVPC (€/kWh)",min_value=0.02,max_value=0.40,value=0.12,step=0.01,format="%.3f")
-    pind=ppool+0.04; cf_mes=kwh*pfijo; ci_mes=kwh*pind; dif_a=(cf_mes-ci_mes)*12
-    fig_tar=go.Figure(go.Bar(x=["Tarifa Fija","Tarifa Indexada"],y=[cf_mes,ci_mes],marker_color=[ACCENT,"#639922"],text=[f"{cf_mes:.2f} €/mes",f"{ci_mes:.2f} €/mes"],textposition="outside",width=0.35))
-    fig_tar.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=20,b=10),height=260,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=13),showlegend=False)
-    st.plotly_chart(fig_tar,use_container_width=True)
-    r1,r2,r3=st.columns(3)
-    r1.metric("Coste fijo/mes",f"{cf_mes:.2f} €"); r2.metric("Coste indexado/mes",f"{ci_mes:.2f} €",delta=f"{-(cf_mes-ci_mes):+.2f} €"); r3.metric("Ahorro anual",f"{dif_a:+.0f} €")
-    if dif_a>30: rec,cls_t=f"✅ Tarifa <b>indexada</b> más barata. Ahorro: <b>{dif_a:.0f} €/año</b>.","status-green"
-    elif dif_a<-30: rec,cls_t="⚠️ Tarifa <b>fija</b> más económica con pool actual.","status-yellow"
-    else: rec,cls_t="➡️ Diferencia marginal. Depende de tu tolerancia al riesgo.","status-yellow"
-    st.markdown(f'<div class="{cls_t}" style="margin-top:0.5rem;">{rec}</div>',unsafe_allow_html=True)
-
-# ================================================================
 # PANTALLA: FISCALIDAD (MODELO 100 IRPF)
 # Delegado a fiscal_export.py
 # Deps: df_inm, df_mov, safe_float(), calcular_modelo_100()
