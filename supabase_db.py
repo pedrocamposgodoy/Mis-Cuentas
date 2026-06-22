@@ -1,2024 +1,5276 @@
-"""
-supabase_db.py — Módulo de Base de Datos Supabase para Nolasco Capital
-VERSIÓN BLINDADA - Validación user_id en todas las operaciones de escritura.
-"""
-import requests
-import pandas as pd
+# ================================================================
+# SECCIÓN 0 — IMPORTS Y LIBRERÍAS
+# No tocar esto salvo que añadas una librería nueva
+# ================================================================
 import streamlit as st
+import anthropic
+import pandas as pd
+import os
+import io
+import base64
+import plotly.graph_objects as go
+from datetime import datetime, date
+from cashflow_module import render_cashflow
+from kpi_renderer import render_kpi_row
 
-# ─── CREDENCIALES ───────────────────────────────────────────────
-SUPABASE_URL = "https://odxixtgqcyddfqaapqgi.supabase.co"
-SUPABASE_KEY = "sb_publishable_Obgti7yMfXw8wCUL2FbTtA_EWeyHuM9"
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.colors import HexColor, white, black
+    from reportlab.pdfgen import canvas
+    from reportlab.platypus import Table, TableStyle
+    REPORTLAB_OK = True
+except ImportError:
+    REPORTLAB_OK = False
 
-# ─── TABLAS PERMITIDAS (solo estas se pueden tocar) ─────────────
-_TABLAS_ESCRITURA = frozenset({
-    "inmuebles", "movimientos", "gastos_recurrentes",
-    "consentimientos", "leads_inmobiliarias", "user_profiles",
-    "codigos_acceso_temporal",
-})
+# ================================================================
+# IMPORT MÓDULO B2B2C
+# ================================================================
+from asesoramiento_ia import render_asesor_ia, render_privacidad, render_diagnostico_inmueble
+from sabio_patrimonial import render_sabio, limpiar_insight_seccion
 
-# ─── GUARD: validar user_id antes de cualquier escritura ────────
-def _validar_user_id(user_id, operacion: str = "") -> bool:
-    """
-    Valida que user_id es un UUID válido no vacío.
-    Si falla, muestra error y devuelve False.
-    Llama esto al inicio de TODA función que escriba en Supabase.
-    """
-    if not user_id:
-        st.error(f"🔒 Operación bloqueada ({operacion}): user_id vacío. Cierra sesión y vuelve a entrar.")
-        return False
-    uid_str = str(user_id).strip()
-    if uid_str in ('', 'None', 'nan', 'null'):
-        st.error(f"🔒 Operación bloqueada ({operacion}): user_id inválido '{uid_str}'.")
-        return False
-    # Validación básica de formato UUID (8-4-4-4-12)
-    partes = uid_str.split('-')
-    if len(partes) != 5:
-        st.error(f"🔒 Operación bloqueada ({operacion}): user_id no es UUID válido.")
-        return False
-    return True
+# ================================================================
+# SECCIÓN 1 — CONFIGURACIÓN Y COLORES
+# ================================================================
+st.set_page_config(page_title="Nolasco Capital", layout="wide", page_icon="🏛️")
 
-# ─── HEALTH CHECK ───────────────────────────────────────────────
-def health_check() -> dict:
-    """
-    Verifica la conexión con Supabase.
-    Devuelve {'ok': True} o {'ok': False, 'error': '...'}.
-    Llamar al arrancar la app (una vez por sesión).
-    """
-    try:
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/inmuebles?select=id&limit=1",
-            headers=_headers(), timeout=8
-        )
-        if r.status_code in [200, 206]:
-            return {'ok': True}
-        return {'ok': False, 'error': f"HTTP {r.status_code}: {r.text[:200]}"}
-    except Exception as e:
-        return {'ok': False, 'error': str(e)}
+ACCENT     = "#185FA5"
+SIDEBAR_BG = "#0F2744"
+MAIN_BG    = "#F4F7FB"
+CARD_BG    = "#FFFFFF"
+BORDER     = "#D0DFF0"
+TEXT_PRI   = "#0D1B2A"
+TEXT_SEC   = "#5A7A9A"
+GREEN      = "#1a7a40"
+RED        = "#C0392B"
+AMBER      = "#854F0B"
+COLOR_TOPS = ["#185FA5","#0F6E56","#378ADD","#639922","#D85A30","#7F77DD"]
 
-# ─── COLUMNAS ESPERADAS ─────────────────────────────────────────
+# ================================================================
+# SECCIÓN 2 — ESTILOS CSS (Design System Nolasco Capital)
+# ================================================================
+from nolasco_styles import inject_global_css
+APP = "capital"
+inject_global_css(APP)
+
+# CSS adicional para botones de navegación del sidebar
+st.markdown("""
+<style>
+[data-testid="stSidebar"] button[kind="secondary"] {
+    background: transparent !important;
+    border: none !important;
+    color: rgba(255,255,255,0.82) !important;
+    font-size: 0.92rem !important;
+    font-weight: 500 !important;
+    text-align: left !important;
+    padding: 0.45rem 0.8rem !important;
+    border-radius: 6px !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"]:hover {
+    background: rgba(255,255,255,0.08) !important;
+    color: #ffffff !important;
+}
+[data-testid="stSidebar"] button[kind="secondary"] p {
+    color: rgba(255,255,255,0.82) !important;
+    font-size: 0.92rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ================================================================
+# SECCIÓN 3 — BASE DE DATOS SUPABASE
+# ================================================================
+from supabase_db import (
+    leer_inmuebles, leer_movimientos,
+    guardar_inmuebles, eliminar_inmueble, guardar_movimientos_completo,
+    agregar_movimientos, generar_csv_backup,
+    login_usuario, registrar_usuario,
+    leer_gastos_recurrentes, guardar_gasto_recurrente,
+    actualizar_gasto_recurrente, eliminar_gasto_recurrente,
+    generar_codigo_acceso, obtener_codigo_activo, revocar_codigo_acceso,
+    upsert_inmueble, guardar_logo_usuario, leer_logo_usuario, health_check,
+    subir_factura, obtener_url_factura, eliminar_factura,
+    actualizar_estado_fiscal_movimiento,
+    leer_perfil_usuario, guardar_perfil_usuario,
+    cambiar_contrasena, cambiar_email,
+    leer_plantillas_factura, guardar_plantilla_factura,
+    leer_facturas_emitidas, crear_factura_emitida,
+    actualizar_estado_factura, guardar_pdf_factura,
+    crear_factura_rectificativa
+)
+
 COLS_INM = [
-    "Nombre","Direccion","Inquilino","Renta","Renta_Mercado","Comunidad","Valor_Construccion",
+    "Nombre","Inquilino","Renta","Renta_Mercado","Comunidad","Valor_Construccion",
     "Año_Reforma","Año_Construccion","Mobiliario","Tipo","Ref_Catastral","Titular",
     "M2_Construidos","Habitaciones","CP","Planta","Parking","Estado",
     "Tipo_Arrendamiento","Cochera_Vinculada","Zona_Tensionada",
     "Fecha_Inicio_Contrato","Fecha_Vencimiento_Contrato",
     "NIF_Inquilino","Intereses_Hipoteca","IBI_Anual","Seguro_Anual",
     "Gastos_Juridicos","Retenciones_IRPF","Gastos_Formalizacion",
-    "Gastos_Pendientes_Años_Ant","Servicios_Suministros",
     "Fecha_Adquisicion","Precio_Compra","Impuestos_Compra","Gastos_Compra",
     "Valor_Catastral","Valor_Catastral_Piso","Pct_Suelo","Pct_Construccion",
     "Valor_Real_Construccion","Amortizacion_Fiscal","Seguro_Vida",
     "Gasto_Ascensor","Ref_Catastral_Cochera","IBI_Cocheras","Comunidad_Cocheras",
     "IVA_Aplicable","Tipo_IVA","Retencion_IRPF_Pct","Dias_Arrendados_Anio",
-    "Imputacion_Rentas"
+    "Gastos_Pendientes_Años_Ant","Servicios_Suministros"
 ]
-
-COLS_MOV = ["Fecha","Apartamento","Concepto","Categoría","Tipo","Importe","Deducible",
-            "factura_url","tiene_factura","estado_fiscal"]
 
 DEFAULTS_FISCAL = {
     "Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N",
     "Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01",
     "NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":0,"Seguro_Anual":0,
     "Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,
-    "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0,
     "Fecha_Adquisicion":None,"Precio_Compra":0,"Impuestos_Compra":0,"Gastos_Compra":0,
     "Valor_Catastral":0,"Valor_Catastral_Piso":0,"Pct_Suelo":0.25,"Pct_Construccion":0.75,
     "Valor_Real_Construccion":0,"Amortizacion_Fiscal":0,"Seguro_Vida":0,
     "Gasto_Ascensor":0,"Ref_Catastral_Cochera":"","IBI_Cocheras":0,"Comunidad_Cocheras":0,
     "IVA_Aplicable":False,"Tipo_IVA":21,"Retencion_IRPF_Pct":0,"Dias_Arrendados_Anio":365,
-    "Direccion":"","Imputacion_Rentas":0
+    "Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0
 }
 
-# ─── HELPER: CABECERAS CON TOKEN DE USUARIO ──────────────────────
-def _headers(access_token=None):
-    """
-    Devuelve cabeceras correctas.
-    - Si hay access_token del usuario → lo usa (pasa RLS correctamente)
-    - Si no → usa la anon key (solo lectura pública)
-    """
-    token = access_token or st.session_state.get("access_token") or SUPABASE_KEY
-    return {
-        'apikey': SUPABASE_KEY,
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json',
-        'Prefer': 'return=representation'
-    }
+# ================================================================
+# SECCIÓN 4 — AUTENTICACIÓN
+# ================================================================
+if "user_logged_in" not in st.session_state:
+    st.session_state.user_logged_in = False
+if "user_id" not in st.session_state:
+    st.session_state.user_id = None
+if "user_email" not in st.session_state:
+    st.session_state.user_email = None
+if "filtro_año" not in st.session_state:
+    st.session_state.filtro_año = "Todos"
+if "filtro_mes" not in st.session_state:
+    st.session_state.filtro_mes = "Todos"
 
-# ─── FUNCIONES DE AUTENTICACIÓN ──────────────────────────────────
-
-def login_usuario(email, password):
-    """Autentica usuario y guarda access_token en session_state."""
-    try:
-        r = requests.post(
-            f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
-            headers={'apikey': SUPABASE_KEY, 'Content-Type': 'application/json'},
-            json={'email': email, 'password': password}
-        )
-        if r.status_code == 200:
-            data = r.json()
-            access_token = data.get('access_token', '')
-            # Guardar el token en session_state para usarlo en todas las peticiones
-            st.session_state['access_token'] = access_token
-            return {
-                'success': True,
-                'user_id': data['user']['id'],
-                'email': data['user']['email'],
-                'access_token': access_token
-            }
-        else:
-            err = r.json()
-            msg = err.get('error_description') or err.get('msg') or 'Email o contraseña incorrectos'
-            return {'success': False, 'error': msg}
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
-
-def registrar_usuario(email, password):
-    """Registra nuevo usuario."""
-    try:
-        r = requests.post(
-            f"{SUPABASE_URL}/auth/v1/signup",
-            headers={'apikey': SUPABASE_KEY, 'Content-Type': 'application/json'},
-            json={'email': email, 'password': password}
-        )
-        data = r.json()
-        if r.status_code in [200, 201] and data.get('user'):
-            return {
-                'success': True,
-                'user_id': data['user']['id'],
-                'email': data['user']['email']
-            }
-        else:
-            msg = data.get('error_description') or data.get('msg') or 'Error al registrar usuario'
-            return {'success': False, 'error': msg}
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
-
-# ─── RENAME MAPS ─────────────────────────────────────────────────
-
-RENAME_INM_TO_APP = {
-    'nombre': 'Nombre', 'inquilino': 'Inquilino', 'renta': 'Renta',
-    'renta_mercado': 'Renta_Mercado', 'comunidad': 'Comunidad',
-    'valor_construccion': 'Valor_Construccion', 'ano_reforma': 'Año_Reforma',
-    'ano_construccion': 'Año_Construccion', 'mobiliario': 'Mobiliario',
-    'tipo': 'Tipo', 'ref_catastral': 'Ref_Catastral', 'titular': 'Titular',
-    'm2_construidos': 'M2_Construidos', 'habitaciones': 'Habitaciones',
-    'cp': 'CP', 'planta': 'Planta', 'parking': 'Parking', 'estado': 'Estado',
-    'tipo_arrendamiento': 'Tipo_Arrendamiento', 'cochera_vinculada': 'Cochera_Vinculada',
-    'zona_tensionada': 'Zona_Tensionada', 'fecha_inicio_contrato': 'Fecha_Inicio_Contrato',
-    'fecha_vencimiento_contrato': 'Fecha_Vencimiento_Contrato', 'nif_inquilino': 'NIF_Inquilino',
-    'intereses_hipoteca': 'Intereses_Hipoteca', 'ibi_anual': 'IBI_Anual',
-    'seguro_anual': 'Seguro_Anual', 'gastos_juridicos': 'Gastos_Juridicos',
-    'retenciones_irpf': 'Retenciones_IRPF', 'gastos_formalizacion': 'Gastos_Formalizacion',
-    'gastos_pendientes_anos_ant': 'Gastos_Pendientes_Años_Ant',
-    'servicios_suministros': 'Servicios_Suministros', 'direccion': 'Direccion',
-    'fecha_adquisicion': 'Fecha_Adquisicion', 'precio_compra': 'Precio_Compra',
-    'impuestos_compra': 'Impuestos_Compra', 'gastos_compra': 'Gastos_Compra',
-    'valor_catastral': 'Valor_Catastral', 'valor_catastral_piso': 'Valor_Catastral_Piso',
-    'pct_suelo': 'Pct_Suelo', 'pct_construccion': 'Pct_Construccion',
-    'valor_real_construccion': 'Valor_Real_Construccion',
-    'amortizacion_fiscal': 'Amortizacion_Fiscal', 'seguro_vida': 'Seguro_Vida',
-    'gasto_ascensor': 'Gasto_Ascensor', 'ref_catastral_cochera': 'Ref_Catastral_Cochera',
-    'ibi_cocheras': 'IBI_Cocheras', 'comunidad_cocheras': 'Comunidad_Cocheras',
-    'iva_aplicable': 'IVA_Aplicable', 'tipo_iva': 'Tipo_IVA',
-    'retencion_irpf_pct': 'Retencion_IRPF_Pct', 'dias_arrendados_anio': 'Dias_Arrendados_Anio',
-    'imputacion_rentas': 'Imputacion_Rentas'
+if not st.session_state.user_logged_in:
+    st.markdown("""
+<style>
+.stApp { background: #0F2744 !important; }
+.login-card {
+    background: white; border-radius: 16px; padding: 2.5rem 2.5rem 2rem;
+    max-width: 480px; margin: 4rem auto 0; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 }
+.login-title { font-family: 'DM Serif Display', Georgia, serif; font-size: 2rem; color: #0F2744; margin-bottom: 0.2rem; }
+.login-sub { font-size: 0.68rem; letter-spacing: 0.18em; text-transform: uppercase; color: #5A7A9A; border-bottom: 2px solid #185FA5; padding-bottom: 0.8rem; margin-bottom: 1.2rem; }
+.login-desc { font-size: 0.9rem; color: #3a5a7a; margin-bottom: 1.5rem; line-height: 1.5; }
+div[data-testid="stTextInput"] label { font-size: 0.65rem !important; letter-spacing: 0.12em !important; text-transform: uppercase !important; color: #5A7A9A !important; font-weight: 600 !important; }
+div[data-testid="stTextInput"] input { border: 1.5px solid #D0DFF0 !important; border-radius: 8px !important; padding: 0.6rem 0.8rem !important; font-size: 0.95rem !important; }
+div[data-testid="stTextInput"] input:focus { border-color: #185FA5 !important; box-shadow: 0 0 0 3px rgba(24,95,165,0.1) !important; }
+div.stButton > button { background: #185FA5 !important; color: white !important; border: none !important; border-radius: 8px !important; padding: 0.7rem !important; font-size: 1rem !important; font-weight: 600 !important; width: 100% !important; margin-top: 0.5rem !important; }
+div.stButton > button:hover { background: #0F4A8A !important; }
+</style>
+""", unsafe_allow_html=True)
 
-RENAME_INM_TO_DB = {v: k for k, v in RENAME_INM_TO_APP.items()}
+    st.markdown("""
+<div class="login-card">
+  <div class="login-title">Nolasco Capital</div>
+  <div class="login-sub">Granada · Tu Patrimonio Inmobiliario</div>
+  <div class="login-desc">Gestiona tu cartera, descubre cuánto pierdes frente al mercado y simula tus impuestos. <strong>Gratis siempre.</strong></div>
+</div>
+""", unsafe_allow_html=True)
 
-RENAME_MOV_TO_APP = {
-    'fecha': 'Fecha', 'apartamento': 'Apartamento', 'concepto': 'Concepto',
-    'categoria': 'Categoría', 'tipo': 'Tipo', 'importe': 'Importe', 'deducible': 'Deducible'
-}
-RENAME_MOV_TO_DB = {v: k for k, v in RENAME_MOV_TO_APP.items()}
+    _, col_center, _ = st.columns([1, 2, 1])
+    with col_center:
+        if "login_modo" not in st.session_state:
+            st.session_state.login_modo = "login"
 
-
-# ─── FUNCIONES DE LECTURA ────────────────────────────────────────
-
-def leer_inmuebles(user_id=None):
-    """Lee inmuebles del usuario desde Supabase. Requiere user_id."""
-    if not _validar_user_id(user_id, "leer_inmuebles"):
-        return pd.DataFrame(columns=COLS_INM)
-    try:
-        url = f"{SUPABASE_URL}/rest/v1/inmuebles?select=*&order=id.asc&user_id=eq.{user_id}"
-        r = requests.get(url, headers=_headers(), timeout=15)
-        if r.status_code == 200:
-            data = r.json()
-            if data:
-                df = pd.DataFrame(data)
-                df = df.rename(columns={k: v for k, v in RENAME_INM_TO_APP.items() if k in df.columns})
-                for col in COLS_INM:
-                    if col not in df.columns:
-                        df[col] = DEFAULTS_FISCAL.get(col, "")
-                _limpiar_numericos_inm(df)
-                return df
-            return pd.DataFrame(columns=COLS_INM)
-        st.warning(f"⚠️ Error leyendo inmuebles: HTTP {r.status_code}")
-        return pd.DataFrame(columns=COLS_INM)
-    except Exception as e:
-        st.error(f"Error leyendo inmuebles: {e}")
-        return pd.DataFrame(columns=COLS_INM)
-
-
-def leer_movimientos(user_id=None):
-    """Lee movimientos del usuario desde Supabase. Incluye columnas de facturas."""
-    if not _validar_user_id(user_id, "leer_movimientos"):
-        return pd.DataFrame(columns=COLS_MOV)
-    try:
-        url = f"{SUPABASE_URL}/rest/v1/movimientos?select=*&order=fecha.desc&user_id=eq.{user_id}"
-        r = requests.get(url, headers=_headers(), timeout=15)
-        if r.status_code == 200:
-            data = r.json()
-            if data:
-                df = pd.DataFrame(data)
-                df = df.rename(columns={k: v for k, v in RENAME_MOV_TO_APP.items() if k in df.columns})
-                # Columnas base
-                for col in ["Fecha","Apartamento","Concepto","Categoría","Tipo","Importe","Deducible"]:
-                    if col not in df.columns:
-                        df[col] = ""
-                # Columnas de facturas — defaults seguros
-                if "factura_url"   not in df.columns: df["factura_url"]   = None
-                if "tiene_factura" not in df.columns: df["tiene_factura"] = False
-                if "estado_fiscal" not in df.columns: df["estado_fiscal"] = "pendiente"
-                # id de Supabase — necesario para PATCH individual de movimiento
-                if "id" not in df.columns: df["id"] = None
-                if "Importe" in df.columns:
-                    df["Importe"] = pd.to_numeric(df["Importe"], errors='coerce').fillna(0)
-                df["tiene_factura"] = df["tiene_factura"].fillna(False).astype(bool)
-                df["estado_fiscal"] = df["estado_fiscal"].fillna("pendiente").astype(str)
-                return df
-            return pd.DataFrame(columns=COLS_MOV)
-        st.warning(f"⚠️ Error leyendo movimientos: HTTP {r.status_code}")
-        return pd.DataFrame(columns=COLS_MOV)
-    except Exception as e:
-        st.error(f"Error leyendo movimientos: {e}")
-        return pd.DataFrame(columns=COLS_MOV)
-
-
-# ─── FUNCIONES DE ESCRITURA ──────────────────────────────────────
-
-def guardar_movimientos_completo(df, user_id):
-    """
-    Borra todos los movimientos del usuario y los reinserta.
-    """
-    if not user_id:
-        st.error("❌ Error crítico: user_id vacío. No se guardan movimientos.")
-        return False
-    try:
-        h = _headers()
-
-        # 1. Borrar movimientos del usuario
-        del_r = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/movimientos?user_id=eq.{user_id}",
-            headers=h, timeout=15
-        )
-        if del_r.status_code not in [200, 204]:
-            st.warning(f"⚠️ Delete status: {del_r.status_code} — {del_r.text[:200]}")
-
-        if df is None or len(df) == 0:
-            return True
-
-        # 2. Preparar registros
-        records = _df_mov_to_records(df, user_id)
-        if not records:
-            return True
-
-        # 3. Insertar en lotes de 500 para evitar timeout
-        LOTE = 500
-        errores = []
-        for i in range(0, len(records), LOTE):
-            lote = records[i:i+LOTE]
-            ins_r = requests.post(
-                f"{SUPABASE_URL}/rest/v1/movimientos",
-                headers=h, json=lote, timeout=30
-            )
-            if ins_r.status_code not in [200, 201]:
-                errores.append(f"Lote {i//LOTE+1}: {ins_r.status_code} — {ins_r.text[:200]}")
-        if errores:
-            for e in errores:
-                st.error(f"❌ Error insertando movimientos: {e}")
-            return False
-        return True
-
-    except Exception as e:
-        st.error(f"Error guardando movimientos: {e}")
-        return False
-
-
-def agregar_movimientos(nuevos, user_id):
-    """Agrega nuevos movimientos sin borrar los existentes."""
-    try:
-        if not nuevos:
-            return True
-
-        records = []
-        for mov in nuevos:
-            record = {}
-            for k, v in mov.items():
-                db_key = RENAME_MOV_TO_DB.get(k, k.lower())
-                record[db_key] = v
-            record['user_id'] = user_id
-            # Eliminar campos que no existen en la tabla
-            record.pop('estado', None)
-            records.append(record)
-
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/movimientos",
-            headers=_headers(),
-            json=records
-        )
-        if r.status_code not in [200, 201]:
-            st.error(f"❌ Error agregando movimientos: {r.status_code} — {r.text[:300]}")
-            return False
-        return True
-    except Exception as e:
-        st.error(f"Error agregando movimientos: {e}")
-        return False
-
-
-def eliminar_inmueble(nombre, user_id):
-    """Elimina un inmueble por nombre y user_id."""
-    if not _validar_user_id(user_id, "eliminar_inmueble"):
-        return False
-    try:
-        from urllib.parse import quote
-        nombre_enc = quote(str(nombre), safe='')
-        r = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre_enc}&user_id=eq.{user_id}",
-            headers=_headers(),
-            timeout=15
-        )
-        if r.status_code in [200, 204]:
-            return True
-        st.error(f"❌ No se pudo eliminar '{nombre}': {r.status_code} — {r.text[:200]}")
-        return False
-    except Exception as e:
-        st.error(f"Error eliminando inmueble: {e}")
-        return False
-
-
-# ─── HELPERS INTERNOS ────────────────────────────────────────────
-
-def _df_mov_to_records(df, user_id):
-    """Convierte DataFrame de movimientos a lista de dicts para Supabase.
-    Preserva columnas de facturas si existen.
-    """
-    df2 = df.copy()
-    df2 = df2.rename(columns={k: v for k, v in RENAME_MOV_TO_DB.items() if k in df2.columns})
-    # Columnas válidas de la tabla — incluyendo las nuevas de facturas
-    cols_db = [
-        'fecha', 'apartamento', 'concepto', 'categoria', 'tipo', 'importe', 'deducible',
-        'factura_url', 'tiene_factura', 'estado_fiscal'
-    ]
-    cols_presentes = [c for c in cols_db if c in df2.columns]
-    df2 = df2[cols_presentes]
-    df2 = df2.where(pd.notna(df2), None)
-    # Convertir fechas a string
-    if 'fecha' in df2.columns:
-        df2['fecha'] = pd.to_datetime(df2['fecha'], errors='coerce').dt.strftime('%Y-%m-%d')
-    # Booleano tiene_factura: None → False
-    if 'tiene_factura' in df2.columns:
-        df2['tiene_factura'] = df2['tiene_factura'].fillna(False).astype(bool)
-    records = df2.to_dict(orient='records')
-    for r in records:
-        r['user_id'] = user_id
-    return records
-
-
-def _df_inm_to_records(df, user_id):
-    """Convierte DataFrame de inmuebles a lista de dicts para Supabase.
-    Acepta columnas tanto en formato app (Nombre, Renta...) como en formato DB (nombre, renta...).
-    Aplica defaults correctos por tipo para evitar errores NOT NULL.
-    """
-    df2 = df.copy()
-
-    MAP_APP_TO_DB = {
-        'Nombre': 'nombre', 'Inquilino': 'inquilino', 'Renta': 'renta',
-        'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
-        'Valor_Construccion': 'valor_construccion', 'Año_Reforma': 'ano_reforma',
-        'Año_Construccion': 'ano_construccion', 'Mobiliario': 'mobiliario',
-        'Tipo': 'tipo', 'Ref_Catastral': 'ref_catastral', 'Titular': 'titular',
-        'M2_Construidos': 'm2_construidos', 'Habitaciones': 'habitaciones',
-        'CP': 'cp', 'Planta': 'planta', 'Parking': 'parking', 'Estado': 'estado',
-        'Tipo_Arrendamiento': 'tipo_arrendamiento',
-        'Cochera_Vinculada': 'cochera_vinculada',
-        'Zona_Tensionada': 'zona_tensionada',
-        'Fecha_Inicio_Contrato': 'fecha_inicio_contrato',
-        'Fecha_Vencimiento_Contrato': 'fecha_vencimiento_contrato',
-        'NIF_Inquilino': 'nif_inquilino',
-        'Intereses_Hipoteca': 'intereses_hipoteca',
-        'IBI_Anual': 'ibi_anual', 'Seguro_Anual': 'seguro_anual',
-        'Gastos_Juridicos': 'gastos_juridicos',
-        'Retenciones_IRPF': 'retenciones_irpf',
-        'Gastos_Formalizacion': 'gastos_formalizacion',
-        'Gastos_Pendientes_Años_Ant': 'gastos_pendientes_anos_ant',
-        'Servicios_Suministros': 'servicios_suministros',
-        'Direccion': 'direccion',
-        'Fecha_Adquisicion': 'fecha_adquisicion',
-        'Precio_Compra': 'precio_compra',
-        'Impuestos_Compra': 'impuestos_compra',
-        'Gastos_Compra': 'gastos_compra',
-        'Valor_Catastral': 'valor_catastral',
-        'Valor_Catastral_Piso': 'valor_catastral_piso',
-        'Pct_Suelo': 'pct_suelo', 'Pct_Construccion': 'pct_construccion',
-        'Valor_Real_Construccion': 'valor_real_construccion',
-        'Amortizacion_Fiscal': 'amortizacion_fiscal',
-        'Seguro_Vida': 'seguro_vida', 'Gasto_Ascensor': 'gasto_ascensor',
-        'Ref_Catastral_Cochera': 'ref_catastral_cochera',
-        'IBI_Cocheras': 'ibi_cocheras', 'Comunidad_Cocheras': 'comunidad_cocheras',
-        'IVA_Aplicable': 'iva_aplicable', 'Tipo_IVA': 'tipo_iva',
-        'Retencion_IRPF_Pct': 'retencion_irpf_pct',
-        'Dias_Arrendados_Anio': 'dias_arrendados_anio',
-        'Imputacion_Rentas': 'imputacion_rentas',
-        'Cochera_Incluida_Arrendamiento': 'cochera_incluida_arrendamiento',
-        'Inmueble_No_Arrendado': 'inmueble_no_arrendado',
-    }
-
-    # Campos INTEGER en Supabase → mandar int, nunca float
-    CAMPOS_INTEGER = {
-        'ano_reforma', 'ano_construccion', 'm2_construidos', 'habitaciones',
-        'planta', 'dias_arrendados_anio',
-    }
-
-    # Campos NUMERIC/FLOAT en Supabase → mandar float
-    CAMPOS_FLOAT = {
-        'renta', 'renta_mercado', 'comunidad', 'valor_construccion',
-        'intereses_hipoteca', 'ibi_anual', 'seguro_anual',
-        'gastos_juridicos', 'retenciones_irpf', 'gastos_formalizacion',
-        'gastos_pendientes_anos_ant', 'servicios_suministros',
-        'precio_compra', 'impuestos_compra', 'gastos_compra',
-        'valor_catastral', 'valor_catastral_piso', 'pct_suelo', 'pct_construccion',
-        'valor_real_construccion', 'amortizacion_fiscal', 'seguro_vida',
-        'gasto_ascensor', 'ibi_cocheras', 'comunidad_cocheras',
-        'tipo_iva', 'retencion_irpf_pct', 'imputacion_rentas',
-    }
-
-    CAMPOS_NUMERICOS_DEFAULT_0 = CAMPOS_INTEGER | CAMPOS_FLOAT
-
-    # Campos texto con valor por defecto obligatorio (NOT NULL en Supabase)
-    CAMPOS_TEXTO_DEFAULT = {
-        'mobiliario': 'N',
-        'parking': 'N',
-        'estado': 'Bueno',
-        'tipo_arrendamiento': 'Larga Duración',
-        'cochera_vinculada': 'N',
-        'zona_tensionada': 'N',
-        'fecha_inicio_contrato': '2024-01-01',
-        'fecha_adquisicion': '2024-01-01',
-    }
-
-    # Campos booleanos → DEFAULT False
-    CAMPOS_BOOLEANOS_DEFAULT_FALSE = {
-        'iva_aplicable', 'cochera_incluida_arrendamiento', 'inmueble_no_arrendado',
-    }
-
-    # Campos de texto que SÍ pueden ser NULL (no forzar default)
-    # direccion, inquilino, ref_catastral, titular, cp, tipo, nif_inquilino,
-    # renta_mercado (puede ser 0 o null), fecha_vencimiento_contrato, ref_catastral_cochera
-
-    def _es_nulo(val):
-        if val is None:
-            return True
-        if isinstance(val, float) and pd.isna(val):
-            return True
-        if isinstance(val, str) and val.strip() in ('', 'None', 'nan', 'NaN'):
-            return True
-        return False
-
-    records = []
-    for _, row in df2.iterrows():
-        rec = {'user_id': user_id}
-
-        # Inicializar todas las columnas con sus defaults correctos
-        for col_db in set(MAP_APP_TO_DB.values()):
-            if col_db in CAMPOS_INTEGER:
-                rec[col_db] = 0          # int
-            elif col_db in CAMPOS_FLOAT:
-                rec[col_db] = 0.0        # float
-            elif col_db in CAMPOS_BOOLEANOS_DEFAULT_FALSE:
-                rec[col_db] = False
-            elif col_db in CAMPOS_TEXTO_DEFAULT:
-                rec[col_db] = CAMPOS_TEXTO_DEFAULT[col_db]
-            else:
-                rec[col_db] = None       # texto nullable
-
-        # Sobrescribir con el valor real si existe y no es nulo
-        for col_app, col_db in MAP_APP_TO_DB.items():
-            val = None
-            if col_app in row.index:
-                val = row[col_app]
-            elif col_db in row.index:
-                val = row[col_db]
-
-            if _es_nulo(val):
-                # Mantener el default ya asignado arriba
-                pass
-            else:
-                # Conversiones de tipo seguras
-                if col_db in CAMPOS_NUMERICOS_DEFAULT_0:
-                    try:
-                        if col_db in CAMPOS_INTEGER:
-                            rec[col_db] = int(float(val))   # INTEGER en Supabase
-                        else:
-                            rec[col_db] = float(val)         # NUMERIC/FLOAT en Supabase
-                    except (ValueError, TypeError):
-                        rec[col_db] = 0
-                elif col_db in CAMPOS_BOOLEANOS_DEFAULT_FALSE:
-                    if isinstance(val, bool):
-                        rec[col_db] = val
+        if st.session_state.login_modo == "login":
+            email_login    = st.text_input("Email", key="email_login", placeholder="tu@email.com")
+            password_login = st.text_input("Contraseña", type="password", key="password_login", placeholder="••••••••")
+            if st.button("🚀 Iniciar sesión", use_container_width=True):
+                if email_login and password_login:
+                    result = login_usuario(email_login, password_login)
+                    if result['success']:
+                        st.session_state.user_logged_in = True
+                        st.session_state.user_id = result['user_id']
+                        st.session_state.user_email = result['email']
+                        for k in ["df_inm_persistent","df_mov_persistent","sidebar_logo_bytes","supabase_ok","df_gastos_rec","datos_propietario","perfil_datos"]:
+                            if k in st.session_state: del st.session_state[k]
+                        st.success(f"✅ Bienvenido {result['email']}")
+                        st.rerun()
                     else:
-                        rec[col_db] = str(val).strip().lower() in ('true', '1', 's', 'si', 'sí', 'yes')
+                        st.error(f"❌ {result['error']}")
                 else:
-                    rec[col_db] = str(val).strip() if val is not None else None
+                    st.warning("⚠️ Completa todos los campos")
+            st.markdown("<div style='text-align:center;margin-top:1rem;font-size:0.85rem;color:#8ab4d4;'>¿Sin cuenta?</div>", unsafe_allow_html=True)
+            if st.button("Regístrate gratis →", use_container_width=False, key="ir_registro"):
+                st.session_state.login_modo = "registro"; st.rerun()
+        else:
+            st.markdown("<div style='font-size:1rem;font-weight:600;color:white;margin-bottom:1rem;'>Crear cuenta nueva</div>", unsafe_allow_html=True)
+            email_reg     = st.text_input("Email", key="email_reg", placeholder="tu@email.com")
+            password_reg  = st.text_input("Contraseña", type="password", key="password_reg", placeholder="••••••••")
+            password_reg2 = st.text_input("Repetir Contraseña", type="password", key="password_reg2", placeholder="••••••••")
+            if st.button("Crear cuenta", use_container_width=True):
+                if email_reg and password_reg and password_reg2:
+                    if password_reg == password_reg2:
+                        if len(password_reg) >= 6:
+                            result = registrar_usuario(email_reg, password_reg)
+                            if result['success']:
+                                st.success("✅ Cuenta creada. Ahora inicia sesión.")
+                                st.session_state.login_modo = "login"; st.rerun()
+                            else:
+                                st.error(f"❌ {result['error']}")
+                        else:
+                            st.warning("⚠️ La contraseña debe tener al menos 6 caracteres")
+                    else:
+                        st.warning("⚠️ Las contraseñas no coinciden")
+                else:
+                    st.warning("⚠️ Completa todos los campos")
+            if st.button("← Volver al login", use_container_width=False, key="ir_login"):
+                st.session_state.login_modo = "login"; st.rerun()
 
-        records.append(rec)
-    return records
+    st.stop()
 
+# ================================================================
+# SECCIÓN 5 — CARGA DE DATOS DESDE SUPABASE
+# ================================================================
+if "df_inm_persistent" not in st.session_state:
+    st.session_state.df_inm_persistent = leer_inmuebles(user_id=st.session_state.user_id)
 
-def guardar_inmuebles(df, user_id):
-    """Guarda inmuebles — PATCH si tienen id, POST si son nuevos."""
-    if not _validar_user_id(user_id, "guardar_inmuebles"):
-        return False
-    try:
-        h = {
-            'apikey': SUPABASE_KEY,
-            'Authorization': f'Bearer {SUPABASE_KEY}',
-            'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates,return=minimal'
-        }
+# ── Health check Supabase (una vez por sesión) ─────────────────
+if "supabase_ok" not in st.session_state:
+    hc = health_check()
+    st.session_state["supabase_ok"] = hc["ok"]
+    if not hc["ok"]:
+        st.error(f"⚠️ Sin conexión con Supabase: {hc.get('error','')}. Los datos no se guardarán.")
+        st.stop()
 
-        if df is None or len(df) == 0:
-            return True
+# Cargar logo desde Supabase Storage (una vez por sesión)
+if "sidebar_logo_bytes" not in st.session_state:
+    logo_cargado = leer_logo_usuario(st.session_state.user_id)
+    if logo_cargado:
+        st.session_state["sidebar_logo_bytes"] = logo_cargado
+if "df_mov_persistent" not in st.session_state:
+    st.session_state.df_mov_persistent = leer_movimientos(user_id=st.session_state.user_id)
 
-        # ── FIX CRÍTICO: asegurar user_id en TODAS las filas ──────
-        # Cuando el data_editor añade filas nuevas, user_id llega NaN/None
-        df2 = df.copy()
-        if 'user_id' in df2.columns:
-            mask_vacio = df2['user_id'].isna() | (df2['user_id'].astype(str).str.strip().isin(['', 'None', 'nan']))
-            df2.loc[mask_vacio, 'user_id'] = user_id
-        # Eliminar filas sin nombre (filas vacías del data_editor)
-        if 'Nombre' in df2.columns:
-            df2 = df2[df2['Nombre'].notna() & (df2['Nombre'].astype(str).str.strip() != '')]
-        elif 'nombre' in df2.columns:
-            df2 = df2[df2['nombre'].notna() & (df2['nombre'].astype(str).str.strip() != '')]
+df_inm = st.session_state.df_inm_persistent
+df_mov = st.session_state.df_mov_persistent
+_sin_inmuebles = df_inm is None or len(df_inm) == 0
 
-        # Reset index para que df2.iloc[i] coincida con records[i]
-        df2 = df2.reset_index(drop=True)
-        records = _df_inm_to_records(df2, user_id)
-        if not records:
-            st.error("❌ No se generaron registros para guardar.")
-            return False
+# ── Cargar perfil UNA VEZ al inicio — evita parpadeo IS/IRPF ──
+if "perfil_datos" not in st.session_state or not st.session_state.get("perfil_datos"):
+    _perfil_cargado = leer_perfil_usuario(st.session_state.get("user_id","")) or {}
+    st.session_state.perfil_datos = _perfil_cargado
+    # Si es sociedad, forzar rerun INMEDIATO para que todo renderice en modo IS desde el inicio
+    if _perfil_cargado.get("tipo_cuenta") == "sociedad":
+        st.rerun()
 
-        errores = []
-        ok_count = 0
-        for i, rec in enumerate(records):
-            rec.pop('created_at', None)
+# ================================================================
+# SECCIÓN 5B — DATOS DE HIPOTECAS
+# Hipotecas cargadas desde Supabase por user_id
+# ================================================================
+def _cargar_hipotecas_supabase():
+    from supabase_db import leer_hipotecas
+    uid = st.session_state.get("user_id", "")
+    df = leer_hipotecas(uid) if uid else pd.DataFrame()
+    # Normalizar columnas para compatibilidad con el resto del código
+    col_map = {
+        "inmueble": "Inmueble", "principal": "Principal",
+        "tasa_inicial": "Tasa_Inicial", "plazo_años": "Plazo_Años",
+        "fecha_inicio": "Fecha_Inicio", "es_variable": "Es_Variable",
+        "indice_variable": "Indice_Variable", "margen": "Margen",
+        "saldo_actual": "Saldo_Actual"
+    }
+    if not df.empty:
+        df = df.rename(columns=col_map)
+    else:
+        df = pd.DataFrame(columns=list(col_map.values()) + ["id"])
+    return df
 
-            # Obtener id original del df (antes de que _df_inm_to_records lo elimine)
-            id_original = None
-            if 'id' in df2.columns:
-                raw_id = df2.iloc[i]['id'] if i < len(df2) else None
-                if raw_id is not None and str(raw_id).strip() not in ('', 'None', 'nan'):
-                    try:
-                        id_original = int(float(raw_id))
-                    except (ValueError, TypeError):
-                        id_original = None
+if "df_hip" not in st.session_state:
+    st.session_state.df_hip = _cargar_hipotecas_supabase()
+df_hip = st.session_state.df_hip
 
-            rec.pop('id', None)  # Nunca mandar id en el body
+if "menu" not in st.session_state:      st.session_state.menu = "Torre de Control"
+if "ficha_sel" not in st.session_state:  st.session_state.ficha_sel = None
 
-            if id_original:
-                # ── PATCH: actualizar registro existente por id ──────────
-                r = requests.patch(
-                    f"{SUPABASE_URL}/rest/v1/inmuebles?id=eq.{id_original}&user_id=eq.{user_id}",
-                    headers=h,
-                    json=rec,
-                    timeout=15
-                )
-            else:
-                # ── POST: insertar nuevo ─────────────────────────────────
-                r = requests.post(
-                    f"{SUPABASE_URL}/rest/v1/inmuebles?on_conflict=nombre,user_id",
-                    headers=h,
-                    json=rec,
-                    timeout=15
-                )
-
-            if r.status_code not in [200, 201, 204]:
-                import json as _json
-                errores.append(
-                    f"**{rec.get('nombre','?')}** — HTTP {r.status_code}\n"
-                    f"Respuesta: {r.text[:400]}"
-                )
-            else:
-                ok_count += 1
-
-        if errores:
-            # Guardar en session_state para que persistan tras st.rerun()
-            st.session_state["_errores_guardar_inm"] = errores
-            st.session_state["_ok_guardar_inm"] = ok_count
-            return False
-        st.session_state.pop("_errores_guardar_inm", None)
-        return True
-    except Exception as e:
-        st.error(f"Error guardando inmuebles: {e}")
-        return False
-
-
-def _limpiar_numericos_inm(df):
-    """Limpia columnas numéricas de inmuebles in-place."""
-    cols_num = [
-        "Renta", "Renta_Mercado", "Comunidad", "Valor_Construccion",
-        "Año_Reforma", "Año_Construccion", "M2_Construidos", "Habitaciones",
-        "Planta", "Intereses_Hipoteca", "IBI_Anual", "Seguro_Anual",
-        "Gastos_Juridicos", "Retenciones_IRPF", "Gastos_Formalizacion",
-        "Gastos_Pendientes_Años_Ant", "Servicios_Suministros",
-        "Precio_Compra", "Impuestos_Compra", "Gastos_Compra",
-        "Valor_Catastral", "Valor_Catastral_Piso", "Pct_Suelo", "Pct_Construccion",
-        "Valor_Real_Construccion", "Amortizacion_Fiscal", "Seguro_Vida",
-        "Gasto_Ascensor", "IBI_Cocheras", "Comunidad_Cocheras",
-        "Tipo_IVA", "Retencion_IRPF_Pct", "Dias_Arrendados_Anio", "Imputacion_Rentas"
-    ]
-    for col in cols_num:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-
-
-def _inmuebles_iniciales_df(user_id):
-    """DataFrame con inmuebles de ejemplo (sin insertar en BD)."""
-    rows = [
-        {"Nombre":"Casa Abarqueros","Inquilino":"Victor Aguiluz","Renta":2200.0,"Renta_Mercado":2600.0,"Comunidad":193.76,"Valor_Construccion":150000.0,"Año_Reforma":2018,"Año_Construccion":1975,"Mobiliario":"S","Tipo":"Casa","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":180,"Habitaciones":5,"CP":"18001","Planta":0,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-01-01","Fecha_Vencimiento_Contrato":"2027-01-01","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":800,"Seguro_Anual":250,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-        {"Nombre":"Paseo del Salón","Inquilino":"Pool Despachos","Renta":1591.8,"Renta_Mercado":1650.0,"Comunidad":175.18,"Valor_Construccion":120000.0,"Año_Reforma":2020,"Año_Construccion":1990,"Mobiliario":"N","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":130,"Habitaciones":4,"CP":"18005","Planta":3,"Parking":"S","Estado":"Bueno","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"S","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2021-06-01","Fecha_Vencimiento_Contrato":"2026-06-01","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":600,"Seguro_Anual":200,"Gastos_Juridicos":0,"Retenciones_IRPF":286.0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-        {"Nombre":"Huerto Unidad 1","Inquilino":"Alain","Renta":660.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2022,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":60,"Habitaciones":2,"CP":"18008","Planta":1,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"S","Fecha_Inicio_Contrato":"2023-03-01","Fecha_Vencimiento_Contrato":"2028-03-01","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-        {"Nombre":"Huerto Unidad 2","Inquilino":"Laura/Alex","Renta":800.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2022,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":65,"Habitaciones":2,"CP":"18008","Planta":2,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Temporada","Cochera_Vinculada":"N","Zona_Tensionada":"S","Fecha_Inicio_Contrato":"2024-09-01","Fecha_Vencimiento_Contrato":"2025-08-31","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-        {"Nombre":"Huerto Unidad 3","Inquilino":"Jose Manuel","Renta":850.0,"Renta_Mercado":800.0,"Comunidad":74.63,"Valor_Construccion":45000.0,"Año_Reforma":2021,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":68,"Habitaciones":3,"CP":"18008","Planta":3,"Parking":"N","Estado":"Bueno","Tipo_Arrendamiento":"Larga Duración","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2022-11-01","Fecha_Vencimiento_Contrato":"2027-11-01","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-        {"Nombre":"Huerto Unidad 4","Inquilino":"Pendiente","Renta":600.0,"Renta_Mercado":800.0,"Comunidad":74.62,"Valor_Construccion":45000.0,"Año_Reforma":2024,"Año_Construccion":2005,"Mobiliario":"S","Tipo":"Piso","Ref_Catastral":"","Titular":"Pedro Nolasco","M2_Construidos":62,"Habitaciones":2,"CP":"18008","Planta":4,"Parking":"N","Estado":"Reformado","Tipo_Arrendamiento":"Vacacional","Cochera_Vinculada":"N","Zona_Tensionada":"N","Fecha_Inicio_Contrato":"2025-01-01","Fecha_Vencimiento_Contrato":"2026-12-31","NIF_Inquilino":"","Intereses_Hipoteca":0,"IBI_Anual":300,"Seguro_Anual":150,"Gastos_Juridicos":0,"Retenciones_IRPF":0,"Gastos_Formalizacion":0,"Gastos_Pendientes_Años_Ant":0,"Servicios_Suministros":0},
-    ]
-    return pd.DataFrame(rows)
-
-
-# ─── BACKUP CSV ──────────────────────────────────────────────────
-
-def generar_csv_backup(df, nombre_archivo):
-    """Genera CSV en memoria para descarga."""
-    return df.to_csv(index=False).encode('utf-8')
-
-
-# ─── GASTOS RECURRENTES ──────────────────────────────────────────
-
-GASTOS_FIJOS_DEFAULT = [
-    {"inmueble": "Casa Abarqueros",  "concepto": "Comunidad",                "categoria": "Comunidad",    "importe": 193.76, "deducible": "S"},
-    {"inmueble": "Casa Abarqueros",  "concepto": "Hipoteca (Intereses)",     "categoria": "Financiero",   "importe": 554.73, "deducible": "S"},
-    {"inmueble": "Casa Abarqueros",  "concepto": "Seguro MyBox Hogar/Alarma","categoria": "Seguros",      "importe": 96.43,  "deducible": "S"},
-    {"inmueble": "Casa Abarqueros",  "concepto": "Seguro Seviam Vida",       "categoria": "Seguros",      "importe": 55.93,  "deducible": "S"},
-    {"inmueble": "Casa Abarqueros",  "concepto": "Mantenimiento Ascensor",   "categoria": "Mantenimiento","importe": 65.44,  "deducible": "S"},
-    {"inmueble": "Paseo del Salón",  "concepto": "Comunidad",                "categoria": "Comunidad",    "importe": 175.18, "deducible": "S"},
-    {"inmueble": "Huerto Unidad 1",  "concepto": "Comunidad (parte)",        "categoria": "Comunidad",    "importe": 74.62,  "deducible": "S"},
-    {"inmueble": "Huerto Unidad 2",  "concepto": "Comunidad (parte)",        "categoria": "Comunidad",    "importe": 74.62,  "deducible": "S"},
-    {"inmueble": "Huerto Unidad 3",  "concepto": "Comunidad (parte)",        "categoria": "Comunidad",    "importe": 74.63,  "deducible": "S"},
+# ================================================================
+# SECCIÓN 6 — MENÚ DE NAVEGACIÓN
+# Para añadir pantalla: agrega ("🔑", "Nombre", "Grupo") aquí
+# ================================================================
+PAGES = [
+    ("📊", "Torre de Control",              "Core"),
+    ("🏠", "Fichas (Benchmark)",            "Core"),
+    ("📥", "Ingresos · Rentas",             "Core"),
+    ("📝", "Gastos",                         "Core"),
+    ("💵", "Cash Flow",                     "Core"),
+    ("⚡", "Suministros",                   "Core"),
+    ("💰", "Fiscalidad",                    "Core"),
+    ("💎", "Macrofinanzas",                 "Core"),
+    ("🧠", "Asesor Patrimonial IA",         "B2B2C"),
+    ("🔒", "Privacidad y Consentimientos",  "B2B2C"),
+    ("🔗", "Compartir con Asesor",           "B2B2C"),
+    ("⚖️", "Legal",                         "Tools"),
+    ("📂", "Datos de la Cartera",           "Config"),
+    ("👤", "Mi Perfil",                     "Config"),
 ]
 
-BASE_GR = f"{SUPABASE_URL}/rest/v1/gastos_recurrentes"
+with st.sidebar:
+    # ── LOGO (solo lectura — editar en Mi Perfil) ──────────────
+    logo_bytes = st.session_state.get("sidebar_logo_bytes")
+    if logo_bytes:
+        st.image(logo_bytes, use_container_width=True)
 
+    st.markdown("""
+<div style='padding:0.8rem 1.4rem 1rem;'>
+  <div style='font-family:"DM Serif Display",serif;font-size:1.5rem;color:#FFFFFF;line-height:1.2;'>Nolasco Capital</div>
+  <div style='font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;color:rgba(255,255,255,0.45);margin-top:4px;'>Granada · Gestión Patrimonial</div>
+</div>
+<hr style='border:0;border-top:1px solid rgba(255,255,255,0.1);margin:0 0 0.6rem 0;'>
+""", unsafe_allow_html=True)
 
-def leer_gastos_recurrentes(user_id: str) -> pd.DataFrame:
-    """Lee gastos recurrentes del usuario. Si no tiene, inserta los defaults."""
-    try:
-        url = f"{BASE_GR}?user_id=eq.{user_id}&order=inmueble.asc,concepto.asc&select=*"
-        r = requests.get(url, headers=_headers(), timeout=10)
-        data = r.json() if r.status_code == 200 else []
-        if data:
-            df = pd.DataFrame(data)
-            df["importe"] = pd.to_numeric(df["importe"], errors="coerce").fillna(0)
-            return df
-        # Primera vez — insertar defaults
-        for g in GASTOS_FIJOS_DEFAULT:
-            row = {**g, "user_id": user_id, "activo": True}
-            requests.post(BASE_GR, json=row, headers=_headers(), timeout=10)
-        r2 = requests.get(url, headers=_headers(), timeout=10)
-        data2 = r2.json() if r2.status_code == 200 else []
-        df = pd.DataFrame(data2) if data2 else pd.DataFrame()
-        if not df.empty:
-            df["importe"] = pd.to_numeric(df["importe"], errors="coerce").fillna(0)
-        return df
-    except Exception as e:
-        print(f"[leer_gastos_recurrentes] Error: {e}")
-        return pd.DataFrame()
+    st.markdown(f"""
+<div style='padding:0.5rem 1rem;background:rgba(255,255,255,0.07);border-radius:6px;margin:0 1rem 1rem;'>
+    <div style='font-size:0.7rem;color:rgba(255,255,255,0.45);'>👤 Usuario</div>
+    <div style='font-size:0.85rem;color:#fff;margin-top:2px;'>{st.session_state.user_email}</div>
+</div>
+""", unsafe_allow_html=True)
 
+    if st.button("🔄 Recargar datos", use_container_width=True, key="btn_refresh"):
+        for k in ["df_inm_persistent","df_mov_persistent","perfil_datos","df_hip"]:
+            if k in st.session_state: del st.session_state[k]
+        st.rerun()
 
-def guardar_gasto_recurrente(user_id: str, inmueble: str, concepto: str,
-                              categoria: str, importe: float, deducible: str = "S") -> bool:
-    """Inserta un nuevo gasto recurrente."""
-    try:
-        row = {
-            "user_id": user_id, "inmueble": inmueble, "concepto": concepto,
-            "categoria": categoria, "importe": importe,
-            "deducible": deducible, "activo": True
-        }
-        r = requests.post(BASE_GR, json=row, headers=_headers(), timeout=10)
-        return r.status_code in (200, 201)
-    except Exception as e:
-        print(f"[guardar_gasto_recurrente] Error: {e}")
-        return False
+    if st.button("🚪 Cerrar Sesión", use_container_width=True, key="btn_logout_1"):
+        st.session_state.user_logged_in = False
+        st.session_state.user_id = None
+        st.session_state.user_email = None
+        for k in ["df_inm_persistent","df_mov_persistent","sidebar_logo_bytes"]:
+            if k in st.session_state: del st.session_state[k]
+        st.rerun()
 
+    st.markdown("<br>", unsafe_allow_html=True)
 
-def actualizar_gasto_recurrente(id_gasto: int, importe: float = None,
-                                 activo: bool = None, concepto: str = None) -> bool:
-    """Actualiza importe, concepto o estado activo de un gasto recurrente."""
-    try:
-        payload = {}
-        if importe  is not None: payload["importe"]  = importe
-        if activo   is not None: payload["activo"]   = activo
-        if concepto is not None: payload["concepto"] = concepto
-        if not payload:
-            return False
-        url = f"{BASE_GR}?id=eq.{id_gasto}"
-        r = requests.patch(url, json=payload, headers=_headers(), timeout=10)
-        return r.status_code in (200, 204)
-    except Exception as e:
-        print(f"[actualizar_gasto_recurrente] Error: {e}")
-        return False
+    def nav_group(label, grupo_id):
+        st.markdown(f"<div style='font-size:0.62rem;letter-spacing:0.15em;text-transform:uppercase;color:rgba(255,255,255,0.4);padding:0.5rem 1rem 0.3rem;'>{label}</div>", unsafe_allow_html=True)
+        for icon, page, grupo in PAGES:
+            if grupo != grupo_id: continue
+            is_active = st.session_state.menu == page
+            if is_active:
+                st.markdown(f"""<div style='background:rgba(96,180,255,0.18);border-left:3px solid #60B4FF;
+                    padding:0.55rem 1rem;border-radius:0 6px 6px 0;margin-bottom:2px;
+                    display:flex;align-items:center;gap:10px;'>
+                    <span style='font-size:1.05rem;'>{icon}</span>
+                    <span style='font-size:0.95rem;font-weight:700;color:#FFFFFF;'>{page}</span>
+                </div>""", unsafe_allow_html=True)
+            else:
+                if st.button(f"{icon}  {page}", key=f"nav_{page}", use_container_width=True):
+                    st.session_state.menu = page; st.rerun()
 
+    nav_group("Gestión", "Core")
+    st.markdown("<hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.5rem 0;'>", unsafe_allow_html=True)
+    nav_group("Servicios IA", "B2B2C")
+    st.markdown("<hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.5rem 0;'>", unsafe_allow_html=True)
+    nav_group("Herramientas", "Tools")
+    st.markdown("<hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.5rem 0;'>", unsafe_allow_html=True)
+    nav_group("Configuración", "Config")
 
-def eliminar_gasto_recurrente(id_gasto: int) -> bool:
-    """Elimina permanentemente un gasto recurrente."""
-    try:
-        url = f"{BASE_GR}?id=eq.{id_gasto}"
-        r = requests.delete(url, headers=_headers(), timeout=10)
-        return r.status_code in (200, 204)
-    except Exception as e:
-        print(f"[eliminar_gasto_recurrente] Error: {e}")
-        return False
+    st.markdown(f"""
+    <hr style='border:0;border-top:1px solid rgba(255,255,255,0.08);margin:0.8rem 0 0.4rem;'>
+    <div style='padding:0.3rem 1rem;font-size:0.68rem;color:rgba(255,255,255,0.3);'>
+        {len(df_inm)} activos · {datetime.now().strftime('%b %Y')}
+    </div>""", unsafe_allow_html=True)
 
+menu = st.session_state.menu
 
 # ================================================================
-# ACCESOS ASESOR — Compartir patrimonio con asesor/inmobiliaria
+# SECCIÓN 7 — FUNCIONES AUXILIARES GLOBALES
+# ⚠️  safe_float definida UNA SOLA VEZ aquí — no duplicar
+# bench_pill, safe_float, safe_int, safe_index, tasacion,
+# alerta_vencimiento, guardar_movimientos, parsear_ingresos
 # ================================================================
-
-def generar_codigo_acceso(propietario_id: str) -> dict:
-    """Genera un código de 6 dígitos para compartir patrimonio."""
-    import random, string
+def safe_float(value, default=0):
+    """Convierte valor a float de forma segura. Única definición global."""
     try:
-        # Obtener email del usuario logueado
-        email = st.session_state.get("user_email", "")
-        nombre = email.split("@")[0].title() if email else "Propietario"
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return float(default)
+        return float(value)
+    except:
+        return float(default)
 
-        # Desactivar código anterior si existe
-        requests.patch(
-            f"{SUPABASE_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}",
-            headers={**_headers(), "Prefer": "return=minimal"},
-            json={"activo": False}, timeout=8
-        )
-        # Generar nuevo código único
-        codigo = ''.join(random.choices(string.digits, k=6))
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/accesos_asesor",
-            headers={**_headers(), "Prefer": "return=representation"},
-            json={"propietario_id": propietario_id, "codigo": codigo,
-                  "activo": True, "email": email, "nombre": nombre},
-            timeout=8
-        )
-        if r.status_code in (200, 201):
-            return {"success": True, "codigo": codigo}
-        return {"success": False, "error": f"Error {r.status_code}: {r.text[:100]}"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-def obtener_codigo_activo(propietario_id: str) -> str | None:
-    """Devuelve el código activo del propietario o None."""
+def safe_int(val, default=0):
+    """Convierte valor a int de forma segura."""
     try:
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}&activo=eq.true&select=codigo",
-            headers=_headers(), timeout=8
-        )
-        data = r.json()
-        return data[0]["codigo"] if data else None
+        if pd.isna(val) or val in [None, "", "nan", "NaN", "None"]:
+            return default
+        return int(float(val))
+    except (ValueError, TypeError):
+        return default
+
+def safe_index(options, val, default=0):
+    """Devuelve el índice de val en options, o default si no existe."""
+    try:
+        return options.index(val) if val in options else default
+    except (ValueError, TypeError):
+        return default
+
+def bench_pill(desv):
+    if desv < -15: return "pill-red","🔴"
+    if desv < -5:  return "pill-amber","🟡"
+    return "pill-green","🟢"
+
+PRECIOS_CP = {
+    "18001":12.5,"18002":11.8,"18003":10.2,"18004":10.8,"18005":11.2,
+    "18006":10.0,"18007":9.5,"18008":10.4,"18009":8.2,"18010":9.8,
+    "18011":10.1,"18012":9.6,"18013":9.0,"18014":9.3,"18015":8.8
+}
+
+def tasacion(row):
+    p   = PRECIOS_CP.get(str(row.get("CP","18005")),10.0)
+    m2  = safe_float(row.get("M2_Construidos",80))
+    am  = 1.05 if row.get("Mobiliario")=="S" else 1.0
+    ap  = 1.04 if row.get("Parking")=="S" else 1.0
+    ae  = {"Reformado":1.08,"Bueno":1.0,"Regular":0.92}.get(row.get("Estado","Bueno"),1.0)
+    pl  = int(row.get("Planta",1))
+    apl = 0.95 if pl==0 else (1.03 if pl>=3 else 1.0)
+    h   = int(row.get("Habitaciones",2))
+    ah  = 1.05 if h>=4 else (0.97 if h==1 else 1.0)
+    return round(p*m2*am*ap*ae*apl*ah,2)
+
+def dias_para_vencimiento(fecha_str):
+    try:
+        return (datetime.strptime(str(fecha_str),"%Y-%m-%d").date() - date.today()).days
     except:
         return None
 
+def alerta_vencimiento(row):
+    dias = dias_para_vencimiento(row.get("Fecha_Vencimiento_Contrato",""))
+    if dias is None:  return None, None
+    if dias < 0:      return "vencido", f"⚠️ Contrato vencido hace {abs(dias)} días"
+    if dias < 60:     return "urgente", f"🔴 Vence en {dias} días — actuar ahora"
+    if dias < 180:    return "aviso",   f"🟡 Vence en {dias} días ({round(dias/30)} meses)"
+    return "ok", f"✅ Vence en {round(dias/30)} meses"
 
-def revocar_codigo_acceso(propietario_id: str) -> bool:
-    """Revoca el código activo del propietario."""
+def guardar_movimientos(nuevos):
+    user_id = st.session_state.get("user_id", "")
+    agregar_movimientos(nuevos, user_id)
+    df_nuevos = pd.DataFrame(nuevos)
+    df_final = pd.concat([st.session_state.df_mov_persistent, df_nuevos], ignore_index=True)
+    st.session_state.df_mov_persistent = df_final
+
+def parsear_ingresos(texto, df_inm_local):
+    rentas  = dict(zip(df_inm_local["Nombre"], df_inm_local["Renta"]))
+    nombres = df_inm_local["Nombre"].tolist()
+    texto_l = texto.lower()
+    registros = []
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    mes = datetime.now().strftime("%B %Y")
+
+    def mencionado(nombre):
+        partes = [nombre.lower()] + [p.lower() for p in nombre.split()]
+        return any(p in texto_l for p in partes if len(p) > 2)
+
+    mencionados = [n for n in nombres if mencionado(n)]
+    palabras_negativas = ["no ","pendiente","falta","sin pagar","no ha","no pagó","no pago","excepto","menos"]
+    es_negativo = any(p in texto_l for p in palabras_negativas)
+
+    if "todos" in texto_l and not es_negativo and not mencionados:
+        for n in nombres:
+            registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":"Cobrado"})
+    elif "todos" in texto_l and mencionados:
+        for n in nombres:
+            estado = "Pendiente" if n in mencionados else "Cobrado"
+            registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":estado})
+    elif mencionados and not es_negativo:
+        for n in mencionados:
+            registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":"Cobrado"})
+    elif mencionados and es_negativo:
+        for n in mencionados:
+            registros.append({"Fecha":hoy,"Apartamento":n,"Concepto":f"Renta {mes}","Categoría":"Ingresos","Tipo":"Ingreso","Importe":rentas.get(n,0),"Deducible":"S","Estado":"Pendiente"})
+    return registros
+
+# ================================================================
+# SECCIÓN 8 — FUNCIONES FISCALES (Modelo 100 IRPF)
+# ================================================================
+def calcular_dias_arrendado(row, año_fiscal=None):
     try:
-        r = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/accesos_asesor?propietario_id=eq.{propietario_id}",
-            headers={**_headers(), "Prefer": "return=minimal"},
-            json={"activo": False}, timeout=8
-        )
-        return r.status_code in (200, 204)
+        inicio = datetime.strptime(str(row.get("Fecha_Inicio_Contrato","")), "%Y-%m-%d").date()
+        fin    = datetime.strptime(str(row.get("Fecha_Vencimiento_Contrato","")), "%Y-%m-%d").date()
+        hoy    = date.today()
+        año_actual = año_fiscal if año_fiscal else hoy.year - 1 if hoy.month < 7 else hoy.year
+        inicio_año = date(año_actual, 1, 1)
+        fin_año    = date(año_actual, 12, 31)
+        inicio_efectivo = max(inicio, inicio_año)
+        fin_efectivo    = min(fin, fin_año)
+        if inicio_efectivo > fin_efectivo: return 0
+        return (fin_efectivo - inicio_efectivo).days + 1
     except:
-        return False
+        return 365
 
 
-def buscar_propietario_por_codigo(codigo: str) -> dict | None:
-    """Busca el propietario asociado a un código de acceso activo."""
-    try:
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/accesos_asesor?codigo=eq.{codigo}&activo=eq.true&select=propietario_id",
-            headers=_headers(), timeout=8
-        )
-        data = r.json()
-        if not data:
-            return None
-        propietario_id = data[0]["propietario_id"]
-        # Leer datos del propietario
-        inmuebles = leer_inmuebles(user_id=propietario_id)
-        movimientos = leer_movimientos(user_id=propietario_id)
-        # Obtener nombre del propietario desde tabla usuarios
-        ru = requests.get(
-            f"{SUPABASE_URL}/rest/v1/usuarios?user_id=eq.{propietario_id}&select=nombre,email",
-            headers=_headers(), timeout=8
-        )
-        usuario = ru.json()
-        nombre = usuario[0].get("nombre", "Propietario") if usuario else "Propietario"
-        email  = usuario[0].get("email", "") if usuario else ""
+# ================================================================
+# SCORE DE SALUD DEL ACTIVO — 1 a 10
+# ================================================================
+
+def calcular_score_salud(row, df_mov, tipo_cuenta="particular", df_hip=None):
+    nombre = str(row.get("Nombre", ""))
+    renta  = safe_float(row.get("Renta", 0))
+    renta_mercado = safe_float(row.get("Renta_Mercado", 0)) or renta
+    vencimiento   = str(row.get("Fecha_Fin_Contrato", "") or "")
+    inquilino     = str(row.get("Inquilino", "") or "")
+    ibi           = safe_float(row.get("IBI_Anual", 0))
+    seguro        = safe_float(row.get("Seguro_Anual", 0))
+    ref_cat       = str(row.get("Ref_Catastral", "") or "")
+    precio_compra = safe_float(row.get("Precio_Compra", 0))
+
+    score = 10.0
+    detalle = []
+    alertas = []
+
+    # 1. Rentabilidad vs mercado (30%)
+    if renta_mercado > 0 and renta > 0:
+        ratio = renta / renta_mercado
+        if ratio >= 0.95:
+            pts = 3.0; detalle.append(("Rentabilidad", "✅ Renta en línea con mercado", 3.0, 3.0))
+        elif ratio >= 0.80:
+            pts = 2.0; detalle.append(("Rentabilidad", f"⚠️ Renta {int((1-ratio)*100)}% bajo mercado", 2.0, 3.0))
+            alertas.append(f"Renta {int((1-ratio)*100)}% por debajo del mercado")
+        elif ratio >= 0.60:
+            pts = 1.0; detalle.append(("Rentabilidad", f"🔴 Renta {int((1-ratio)*100)}% bajo mercado", 1.0, 3.0))
+            alertas.append(f"Renta {int((1-ratio)*100)}% muy por debajo del mercado")
+        else:
+            pts = 0.0; detalle.append(("Rentabilidad", "🔴 Renta crítica vs mercado", 0.0, 3.0))
+            alertas.append("Renta crítica — posible infravaloración")
+    else:
+        pts = 1.5; detalle.append(("Rentabilidad", "⚪ Sin datos de mercado", 1.5, 3.0))
+    score -= (3.0 - pts)
+
+    # 2. Vencimiento contrato (25%)
+    dias_venc = 999
+    if vencimiento and len(vencimiento) >= 8:
+        try:
+            _venc = pd.to_datetime(vencimiento)
+            dias_venc = (_venc - pd.Timestamp.now()).days
+        except: pass
+
+    if not inquilino or inquilino in ("", "nan", "None"):
+        pts = 0.5; detalle.append(("Ocupación", "🔴 Sin inquilino registrado", 0.5, 2.5))
+        alertas.append("Sin inquilino registrado")
+    elif dias_venc > 180:
+        pts = 2.5; detalle.append(("Vencimiento", f"✅ Vigente ({dias_venc}d)", 2.5, 2.5))
+    elif dias_venc > 90:
+        pts = 1.5; detalle.append(("Vencimiento", f"⚠️ Vence en {dias_venc}d", 1.5, 2.5))
+        alertas.append(f"Contrato vence en {dias_venc} días")
+    elif dias_venc > 0:
+        pts = 0.5; detalle.append(("Vencimiento", f"🔴 Vence en {dias_venc}d", 0.5, 2.5))
+        alertas.append(f"⚠️ URGENTE — Contrato vence en {dias_venc} días")
+    else:
+        pts = 0.0; detalle.append(("Vencimiento", "🔴 Contrato vencido", 0.0, 2.5))
+        alertas.append("Contrato vencido")
+    score -= (2.5 - pts)
+
+    # 3. Fatiga / Reparaciones (20%)
+    _hoy = pd.Timestamp.now()
+    _hace_12m = _hoy - pd.DateOffset(months=12)
+    _mov_inm = df_mov[df_mov["Apartamento"] == nombre].copy() if not df_mov.empty else pd.DataFrame()
+    _tot_reps = 0; _num_reps = 0
+    if not _mov_inm.empty:
+        try:
+            _mov_inm["Fecha"] = pd.to_datetime(_mov_inm["Fecha"], errors="coerce")
+            _cats_rep = ["Mantenimiento","Reparación","Avería","reparacion","mantenimiento","Mantenimiento y Reparaciones"]
+            _reps = _mov_inm[(_mov_inm["Fecha"] >= _hace_12m) & (_mov_inm["Tipo"]=="Gasto") & (_mov_inm.get("Categoria", _mov_inm.get("Categoría", pd.Series())).isin(_cats_rep))]
+            _tot_reps = _reps["Importe"].sum()
+            _num_reps = len(_reps)
+        except: pass
+
+    _renta_anual = renta * 12
+    if _tot_reps == 0:
+        pts = 2.0; detalle.append(("Mantenimiento", "✅ Sin reparaciones en 12m", 2.0, 2.0))
+    elif _tot_reps < 1000 or (_renta_anual > 0 and _tot_reps / _renta_anual < 0.05):
+        pts = 1.5; detalle.append(("Mantenimiento", f"✅ Normal ({_tot_reps:,.0f}€)", 1.5, 2.0))
+    elif _tot_reps < 3000 or (_renta_anual > 0 and _tot_reps / _renta_anual < 0.15):
+        pts = 1.0; detalle.append(("Mantenimiento", f"⚠️ Elevado ({_tot_reps:,.0f}€)", 1.0, 2.0))
+        alertas.append(f"Reparaciones {_tot_reps:,.0f}€ en 12 meses")
+    else:
+        pts = 0.0; detalle.append(("Mantenimiento", f"🔴 FATIGA — {_tot_reps:,.0f}€ / {_num_reps} incidencias", 0.0, 2.0))
+        alertas.append(f"🔴 FATIGA — {_tot_reps:,.0f}€ en reparaciones / {_num_reps} incidencias")
+    score -= (2.0 - pts)
+
+    # 4. Cobertura hipoteca (15%)
+    _cuota_anual = 0
+    if df_hip is not None and not df_hip.empty and "Inmueble" in df_hip.columns:
+        _hip_inm = df_hip[df_hip["Inmueble"].str.lower() == nombre.lower()]
+        for _, _h in _hip_inm.iterrows():
+            _p = safe_float(_h.get("Principal", 0))
+            _r = safe_float(_h.get("Tasa_Inicial", 0)) / 100 / 12
+            _n = int(safe_float(_h.get("Plazo_Años", 20))) * 12
+            if _r > 0 and _n > 0:
+                _cuota_anual += _p * (_r*(1+_r)**_n) / ((1+_r)**_n - 1) * 12
+            elif _n > 0:
+                _cuota_anual += _p / _n * 12
+
+    if _cuota_anual == 0:
+        pts = 1.5; detalle.append(("Hipoteca", "⚪ Sin hipoteca registrada", 1.5, 1.5))
+    elif _renta_anual > 0:
+        _cob = _renta_anual / _cuota_anual
+        if _cob >= 1.5:
+            pts = 1.5; detalle.append(("Hipoteca", f"✅ Cobertura {_cob:.1f}×", 1.5, 1.5))
+        elif _cob >= 1.2:
+            pts = 1.0; detalle.append(("Hipoteca", f"⚠️ Cobertura {_cob:.1f}×", 1.0, 1.5))
+        else:
+            pts = 0.0; detalle.append(("Hipoteca", f"🔴 Cobertura {_cob:.1f}×", 0.0, 1.5))
+            alertas.append(f"Renta no cubre hipoteca ({_cob:.1f}×)")
+        score -= (1.5 - pts)
+
+    # 5. Documentación (10%)
+    _docs = sum([ibi > 0, seguro > 0,
+                 bool(ref_cat and ref_cat not in ("","nan","None","N/A")),
+                 precio_compra > 0])
+    pts = round(_docs / 4, 2)
+    detalle.append(("Documentación", f"{'✅' if _docs==4 else '⚠️'} {_docs}/4 campos", pts, 1.0))
+    score -= (1.0 - pts)
+
+    score = max(1.0, min(10.0, round(score, 1)))
+    if score >= 8:   color, etiq, suger = "#059669", "Excelente", None
+    elif score >= 6: color, etiq, suger = "#185FA5", "Bueno", "Revisar puntos de mejora"
+    elif score >= 4: color, etiq, suger = "#D97706", "Atención", "Considera renegociar o refinanciar"
+    else:            color, etiq, suger = "#DC2626", "Crítico", "Considera vender o reestructurar"
+
+    return {"score": score, "color": color, "etiq": etiq, "suger": suger,
+            "detalle": detalle, "alertas": alertas,
+            "tot_reps_12m": _tot_reps, "num_reps_12m": _num_reps}
+
+
+def render_score_badge(sd, size="normal"):
+    fs = "2.2rem" if size=="large" else "1.6rem"
+    return (f'<div style="display:inline-flex;align-items:center;gap:10px;">' +
+            f'<div style="background:{sd["color"]};color:#fff;border-radius:10px;' +
+            f'padding:6px 14px;font-size:{fs};font-weight:900;line-height:1;">' +
+            f'{sd["score"]:.1f}</div>' +
+            f'<div style="font-size:13px;font-weight:700;color:{sd["color"]};'  +
+            f'"> {sd["etiq"]}</div></div>')
+
+
+def calcular_modelo_100(row, df_mov_local, año_fiscal=None, tipo_cuenta=None):
+    # Si no se pasa tipo_cuenta, leer del perfil en session_state
+    if tipo_cuenta is None:
+        import streamlit as _st
+        _perfil = _st.session_state.get("perfil_datos", {})
+        tipo_cuenta = _perfil.get("tipo_cuenta", "particular")
+    import re as _re2
+    dias_arrendado = int(safe_float(row.get("Dias_Arrendados_Anio", 365)))
+    if dias_arrendado <= 0: dias_arrendado = 365
+    factor_dias = min(dias_arrendado, 365) / 365
+    renta_mensual = safe_float(row.get("Renta", 0))
+    ingresos_integros = round(renta_mensual * 12 * factor_dias, 2)
+    intereses = round(safe_float(row.get("Intereses_Hipoteca", 0)) * factor_dias, 2)
+    gastos_reparacion = round(df_mov_local[
+        (df_mov_local["Apartamento"] == row["Nombre"]) &
+        (df_mov_local["Tipo"] == "Gasto") &
+        (df_mov_local["Categoría"].isin(["Mantenimiento", "Reparación"]))
+    ]["Importe"].sum() * factor_dias, 2)
+    ibi_anual = round(safe_float(row.get("IBI_Anual", 0)) * factor_dias, 2)
+    comunidad_anual = safe_float(row.get("Comunidad", 0)) * 12
+    seguro_hogar    = safe_float(row.get("Seguro_Anual", 0))
+    seguro_vida     = safe_float(row.get("Seguro_Vida", 0))
+    gasto_ascensor  = safe_float(row.get("Gasto_Ascensor", 0))
+    formalizacion   = safe_float(row.get("Gastos_Formalizacion", 0))
+    casilla_0110 = round((comunidad_anual + seguro_hogar + seguro_vida + gasto_ascensor + formalizacion) * factor_dias, 2)
+    servicios = round(safe_float(row.get("Servicios_Suministros", 0)) * factor_dias, 2)
+    gastos_juridicos = round(safe_float(row.get("Gastos_Juridicos", 0)) * factor_dias, 2)
+    precio_compra    = safe_float(row.get("Precio_Compra", 0))
+    impuestos_compra = safe_float(row.get("Impuestos_Compra", 0))
+    gastos_compra_v  = safe_float(row.get("Gastos_Compra", 0))
+    valor_catastral  = safe_float(row.get("Valor_Catastral", 0))
+    pct_construccion = safe_float(row.get("Pct_Construccion", 0.75))
+    titular_str = str(row.get("Titular", "100"))
+    _m = _re2.search(r'(\d+(?:\.\d+)?)', titular_str)
+    pct_titular = float(_m.group(1)) / 100 if _m else 1.0
+    if pct_titular > 1: pct_titular = pct_titular / 100
+    base_compra = precio_compra + impuestos_compra + gastos_compra_v
+    if base_compra == 0: base_compra = safe_float(row.get("Valor_Construccion", 0))
+    base_amortizacion = max(base_compra, valor_catastral) * pct_construccion
+    amortizacion = round(base_amortizacion * 0.03 * pct_titular * factor_dias, 2)
+    gastos_años_ant = round(safe_float(row.get("Gastos_Pendientes_Años_Ant", 0)), 2)
+    total_gastos = round(intereses + gastos_reparacion + ibi_anual + casilla_0110 +
+                         servicios + gastos_juridicos + amortizacion + gastos_años_ant, 2)
+    rendimiento_neto = round(ingresos_integros - total_gastos, 2)
+    tipo_arrendamiento = str(row.get("Tipo_Arrendamiento", "Larga Duración"))
+    retenciones = safe_float(row.get("Retenciones_IRPF", 0))
+
+    # ── Rama IS (Sociedad Patrimonial) ──────────────────────────
+    if tipo_cuenta == "sociedad":
+        reduccion_pct     = 0.00  # Sin reducción en IS
+        reduccion_importe = 0.00
+        rendimiento_final = round(rendimiento_neto, 2)
+        cuota_is          = round(max(rendimiento_final * 0.25, 0), 2)
         return {
-            "propietario_id": propietario_id,
-            "nombre": nombre,
-            "email": email,
-            "inmuebles": inmuebles,
-            "movimientos": movimientos
-        }
-    except Exception as e:
-        return None
-
-
-def upsert_inmueble(registro: dict, user_id: str) -> dict:
-    """
-    Inserta o actualiza UN inmueble sin tocar los demás.
-    Usa upsert nativo de Supabase (POST con Prefer: resolution=merge-duplicates).
-    Requiere restricción UNIQUE (nombre, user_id) en la tabla.
-    """
-    try:
-        nombre = registro.get("Nombre") or registro.get("nombre", "")
-        if not nombre:
-            return {"ok": False, "error": "Registro sin nombre"}
-
-        # Convertir claves a formato base de datos
-        # Mapa completo App→DB — cubre TODOS los campos para evitar fallback k.lower()
-        # que convierte Año_Reforma → año_reforma (ñ inválida en PostgreSQL)
-        MAP_APP_TO_DB = {
-            'Nombre': 'nombre', 'Direccion': 'direccion',
-            'Inquilino': 'inquilino', 'Renta': 'renta',
-            'Renta_Mercado': 'renta_mercado', 'Comunidad': 'comunidad',
-            'Valor_Construccion': 'valor_construccion',
-            'Año_Reforma': 'ano_reforma', 'Año_Construccion': 'ano_construccion',
-            'Mobiliario': 'mobiliario', 'Tipo': 'tipo',
-            'Ref_Catastral': 'ref_catastral', 'Titular': 'titular',
-            'M2_Construidos': 'm2_construidos', 'Habitaciones': 'habitaciones',
-            'CP': 'cp', 'Planta': 'planta', 'Parking': 'parking', 'Estado': 'estado',
-            'Tipo_Arrendamiento': 'tipo_arrendamiento',
-            'Cochera_Vinculada': 'cochera_vinculada',
-            'Zona_Tensionada': 'zona_tensionada',
-            'Fecha_Inicio_Contrato': 'fecha_inicio_contrato',
-            'Fecha_Vencimiento_Contrato': 'fecha_vencimiento_contrato',
-            'NIF_Inquilino': 'nif_inquilino',
-            'Intereses_Hipoteca': 'intereses_hipoteca',
-            'IBI_Anual': 'ibi_anual', 'Seguro_Anual': 'seguro_anual',
-            'Gastos_Juridicos': 'gastos_juridicos',
-            'Retenciones_IRPF': 'retenciones_irpf',
-            'Gastos_Formalizacion': 'gastos_formalizacion',
-            'Gastos_Pendientes_Años_Ant': 'gastos_pendientes_anos_ant',
-            'Servicios_Suministros': 'servicios_suministros',
-            'Fecha_Adquisicion': 'fecha_adquisicion',
-            'Precio_Compra': 'precio_compra',
-            'Impuestos_Compra': 'impuestos_compra',
-            'Gastos_Compra': 'gastos_compra',
-            'Valor_Catastral': 'valor_catastral',
-            'Valor_Catastral_Piso': 'valor_catastral_piso',
-            'Pct_Suelo': 'pct_suelo', 'Pct_Construccion': 'pct_construccion',
-            'Valor_Real_Construccion': 'valor_real_construccion',
-            'Amortizacion_Fiscal': 'amortizacion_fiscal',
-            'Seguro_Vida': 'seguro_vida', 'Gasto_Ascensor': 'gasto_ascensor',
-            'Ref_Catastral_Cochera': 'ref_catastral_cochera',
-            'IBI_Cocheras': 'ibi_cocheras', 'Comunidad_Cocheras': 'comunidad_cocheras',
-            'IVA_Aplicable': 'iva_aplicable', 'Tipo_IVA': 'tipo_iva',
-            'Retencion_IRPF_Pct': 'retencion_irpf_pct',
-            'Dias_Arrendados_Anio': 'dias_arrendados_anio',
-            'Imputacion_Rentas': 'imputacion_rentas',
+            "0062_0075":      f"Ref: {row.get('Ref_Catastral', 'N/A')}",
+            "0076":           "A (Arrendamiento)",
+            "0100":           "SÍ" if tipo_arrendamiento == "Larga Duración" else "NO",
+            "0101":           dias_arrendado,
+            "0102":           ingresos_integros,
+            "0105":           intereses,
+            "0106":           gastos_reparacion,
+            "0107":           total_gastos,
+            "0108":           ibi_anual,
+            "0110":           casilla_0110,
+            "0111":           servicios,
+            "0112":           gastos_juridicos,
+            "0113":           amortizacion,
+            "0113_detalle":   f"MAX({base_compra:,.0f}€ compra, {valor_catastral:,.0f}€ catastral) × {pct_construccion*100:.0f}% × 3% × {pct_titular*100:.0f}%",
+            "0149":           rendimiento_neto,
+            "0150":           reduccion_importe,
+            "0152":           rendimiento_final,
+            "0153":           round(retenciones, 2),
+            "reduccion_pct":  0,
+            "nota_reduccion": "ℹ️ Sociedad Patrimonial: IS al 25% sin reducción por arrendamiento",
+            "iva_aplicable":  bool(row.get("IVA_Aplicable", False)),
+            "tipo_arrendamiento": tipo_arrendamiento,
+            # Casillas específicas Modelo 200
+            "m200_318":       ingresos_integros,
+            "m200_319":       total_gastos,
+            "m200_320":       amortizacion,
+            "m200_399":       rendimiento_final,
+            "cuota_is_25":    cuota_is,
+            "modo_fiscal":    "IS",
         }
 
-        # Columnas INTEGER en Supabase — enviar como int, no float
-        COLS_INT_DB = {
-            'ano_reforma', 'ano_construccion', 'habitaciones', 'planta',
-            'dias_arrendados_anio'
-        }
-        rec_db = {}
-        for k, v in registro.items():
-            k_db = MAP_APP_TO_DB.get(k)
-            if k_db is None:
-                continue  # clave no reconocida — ignorar
-            if v is not None and str(v) not in ("nan", "None", ""):
-                try:
-                    if k_db in COLS_INT_DB:
-                        rec_db[k_db] = int(float(v))  # 2000.0 → 2000
-                    elif isinstance(v, bool):
-                        rec_db[k_db] = v  # booleanos primero (bool es subclase de int)
-                    elif isinstance(v, (int, float)):
-                        rec_db[k_db] = float(v)
-                    else:
-                        rec_db[k_db] = v
-                except:
-                    rec_db[k_db] = v
-        rec_db["user_id"] = user_id
-        rec_db["nombre"]  = nombre
+    # ── Rama IRPF (Particular) — comportamiento original ────────
+    reduccion_pct = 0.60 if tipo_arrendamiento == "Larga Duración" else 0.00
+    reduccion_importe = round(rendimiento_neto * reduccion_pct, 2)
+    rendimiento_final = round(rendimiento_neto - reduccion_importe, 2)
+    return {
+        "0062_0075":     f"Ref: {row.get('Ref_Catastral', 'N/A')}",
+        "0076":          "A (Arrendamiento)",
+        "0100":          "SÍ" if tipo_arrendamiento == "Larga Duración" else "NO",
+        "0101":          dias_arrendado,
+        "0102":          ingresos_integros,
+        "0105":          intereses,
+        "0106":           gastos_reparacion,
+        "0107":          total_gastos,
+        "0108":          ibi_anual,
+        "0110":          casilla_0110,
+        "0111":          servicios,
+        "0112":          gastos_juridicos,
+        "0113":          amortizacion,
+        "0113_detalle":  f"MAX({base_compra:,.0f}€ compra, {valor_catastral:,.0f}€ catastral) × {pct_construccion*100:.0f}% × 3% × {pct_titular*100:.0f}%",
+        "0149":          rendimiento_neto,
+        "0150":          reduccion_importe,
+        "0152":          rendimiento_final,
+        "0153":          round(retenciones, 2),
+        "reduccion_pct": int(reduccion_pct * 100),
+        "nota_reduccion":"⚠️ Reducción 60% orientativa — validar con asesor según ingresos totales contribuyente",
+        "iva_aplicable": bool(row.get("IVA_Aplicable", False)),
+        "tipo_arrendamiento": tipo_arrendamiento,
+        "modo_fiscal":   "IRPF",
+    }
 
-        h_base = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/json",
-        }
-        nombre_encoded = requests.utils.quote(nombre, safe='')
-
-        # 1. Verificar si existe primero (GET)
-        r_check = requests.get(
-            f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre_encoded}&user_id=eq.{user_id}&select=id",
-            headers=h_base,
-            timeout=10
-        )
-        existe = r_check.status_code == 200 and len(r_check.json()) > 0
-
-        if existe:
-            # 2a. Existe → PATCH
-            r_patch = requests.patch(
-                f"{SUPABASE_URL}/rest/v1/inmuebles?nombre=eq.{nombre_encoded}&user_id=eq.{user_id}",
-                headers={**h_base, "Prefer": "return=minimal"},
-                json=rec_db,
-                timeout=10
-            )
-            if r_patch.status_code in (200, 204):
-                return {"ok": True, "accion": "actualizado"}
-            return {"ok": False, "error": f"PATCH {r_patch.status_code}: {r_patch.text[:300]}"}
+# ================================================================
+# SECCIÓN 9 — FUNCIONES MACROFINANZAS
+# calcular_amortizacion, stress_test_euribor, analisis_sensibilidad_renta
+# ================================================================
+def calcular_amortizacion(principal, tasa_anual, plazo_años, modo="cuota_fija"):
+    tasa_mensual = tasa_anual / 100 / 12
+    num_cuotas = plazo_años * 12
+    if modo == "cuota_fija":
+        cuota_mensual = principal / num_cuotas if tasa_mensual == 0 else \
+            principal * (tasa_mensual * (1+tasa_mensual)**num_cuotas) / ((1+tasa_mensual)**num_cuotas - 1)
+    else:
+        cuota_mensual = None
+    tabla = []; capital_pendiente = principal; total_intereses = 0
+    for mes in range(1, int(num_cuotas) + 1):
+        if modo == "cuota_fija":
+            interes = capital_pendiente * tasa_mensual
+            capital = cuota_mensual - interes
+            capital_pendiente -= capital
         else:
-            # 2b. No existe → INSERT
-            r_post = requests.post(
-                f"{SUPABASE_URL}/rest/v1/inmuebles",
-                headers={**h_base, "Prefer": "return=minimal"},
-                json=rec_db,
-                timeout=10
-            )
-            if r_post.status_code in (200, 201, 204):
-                return {"ok": True, "accion": "creado"}
-            return {"ok": False, "error": f"POST {r_post.status_code}: {r_post.text[:300]}"}
+            capital = principal / num_cuotas
+            interes = capital_pendiente * tasa_mensual
+            cuota = capital + interes
+            capital_pendiente -= capital
+        total_intereses += interes
+        tabla.append({"Mes":mes,"Cuota":cuota_mensual if modo=="cuota_fija" else interes+capital,"Capital":capital,"Intereses":interes,"Pendiente":max(0,capital_pendiente)})
+    return {"cuota_mensual":cuota_mensual if modo=="cuota_fija" else "variable","total_intereses":round(total_intereses,2),"total_pagado":round(principal+total_intereses,2),"tabla":pd.DataFrame(tabla)}
 
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+def stress_test_euribor(saldo_actual, margen, euribor_base, plazo_restante_años):
+    escenarios = {"Euríbor -1%":euribor_base-1,"Euríbor actual":euribor_base,"Euríbor +1%":euribor_base+1,"Euríbor +2%":euribor_base+2,"Euríbor +3%":euribor_base+3}
+    resultados = {}
+    for escenario, tasa in escenarios.items():
+        tasa_total = (tasa + margen) / 100
+        cuota = saldo_actual / (plazo_restante_años*12) if tasa_total==0 else \
+            saldo_actual * (tasa_total/12 * (1+tasa_total/12)**(plazo_restante_años*12)) / ((1+tasa_total/12)**(plazo_restante_años*12)-1)
+        resultados[escenario] = {"tasa_total":round(tasa+margen,2),"cuota_mensual":round(cuota,2),"cuota_anual":round(cuota*12,2)}
+    return resultados
 
+def analisis_sensibilidad_renta(renta_actual, gastos_anuales, valor_construccion, variaciones=None):
+    if variaciones is None: variaciones = [-15,-10,-5,0,5,10,15]
+    escenarios = []
+    for var_pct in variaciones:
+        nueva_renta = renta_actual * (1 + var_pct/100)
+        ingresos_anuales = nueva_renta * 12
+        neto_anual = ingresos_anuales - gastos_anuales
+        rentabilidad = (neto_anual / valor_construccion * 100) if valor_construccion > 0 else 0
+        escenarios.append({"Variación":f"{var_pct:+.0f}%","Renta Mensual":f"{nueva_renta:.2f} €","Ingresos Anuales":f"{ingresos_anuales:.2f} €","Gastos Anuales":f"{gastos_anuales:.2f} €","Neto Anual":f"{neto_anual:.2f} €","Rentabilidad":f"{rentabilidad:.2f}%"})
+    return pd.DataFrame(escenarios)
 
 # ================================================================
-# LOGO DE USUARIO — guardado en tabla 'user_profiles' (base64)
-# Más simple que Storage, no requiere configurar buckets
-# SQL: CREATE TABLE IF NOT EXISTS user_profiles (
-#   user_id uuid PRIMARY KEY,
-#   logo_b64 text,
-#   updated_at timestamptz DEFAULT now()
-# );
+# SECCIÓN 10 — GENERADOR DE PDF (Modelo 100)
 # ================================================================
-
-def guardar_logo_usuario(user_id: str, logo_bytes: bytes, extension: str = "png") -> bool:
-    """Guarda el logo como base64 en la tabla user_profiles."""
-    import base64
-    try:
-        h = {
-            'apikey': SUPABASE_KEY,
-            'Authorization': f'Bearer {SUPABASE_KEY}',
-            'Content-Type': 'application/json',
-            'Prefer': 'resolution=merge-duplicates,return=minimal'
-        }
-        b64 = base64.b64encode(logo_bytes).decode('utf-8')
-        data = {'user_id': user_id, 'logo_b64': f"data:image/{extension};base64,{b64}"}
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/user_profiles?on_conflict=user_id",
-            headers=h, json=data, timeout=20
-        )
-        return r.status_code in [200, 201, 204]
-    except Exception:
-        return False
-
-
-def leer_logo_usuario(user_id: str) -> bytes | None:
-    """Lee el logo desde la tabla user_profiles."""
-    import base64
-    try:
-        h = {
-            'apikey': SUPABASE_KEY,
-            'Authorization': f'Bearer {SUPABASE_KEY}',
-        }
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/user_profiles?user_id=eq.{user_id}&select=logo_b64",
-            headers=h, timeout=10
-        )
-        if r.status_code == 200:
-            data = r.json()
-            if data and data[0].get('logo_b64'):
-                b64_str = data[0]['logo_b64']
-                # Quitar el prefijo data:image/...;base64,
-                if ',' in b64_str:
-                    b64_str = b64_str.split(',', 1)[1]
-                return base64.b64decode(b64_str)
+def _generar_pdf_factura(perfil: dict, datos: dict, numero: str, es_rectificativa: bool = False):
+    """Genera PDF de factura de renta al estilo Nolasco Capital."""
+    if not REPORTLAB_OK:
         return None
-    except Exception:
-        return None
-
-
-# ================================================================
-# FACTURAS — Supabase Storage + PATCH individual de movimiento
-# Bucket: facturas (privado)
-# Ruta:   facturas/{user_id}/{mov_id}.pdf
-# ================================================================
-
-def subir_factura(user_id: str, mov_id, archivo_bytes: bytes,
-                  extension: str = "pdf") -> dict:
-    """
-    Sube una factura a Supabase Storage y actualiza el movimiento.
-    - mov_id: id del movimiento en Supabase (int)
-    - archivo_bytes: contenido binario del PDF/imagen
-    - extension: 'pdf', 'jpg', 'png', 'jpeg'
-    Devuelve: {'ok': True, 'url': '...'} o {'ok': False, 'error': '...'}
-    """
-    if not _validar_user_id(user_id, "subir_factura"):
-        return {"ok": False, "error": "user_id inválido"}
     try:
-        ruta = f"{user_id}/{mov_id}.{extension}"
-        content_type = "application/pdf" if extension == "pdf" else f"image/{extension}"
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.colors import HexColor, white
+        from reportlab.pdfgen import canvas as rl_canvas
+        from reportlab.platypus import Table, TableStyle
 
-        # 1. Subir a Storage (upsert: sobreescribe si ya existe)
-        h_storage = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": content_type,
-            "x-upsert": "true",
-        }
-        r_upload = requests.post(
-            f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
-            headers=h_storage,
-            data=archivo_bytes,
-            timeout=30
-        )
-        if r_upload.status_code not in (200, 201):
-            return {"ok": False, "error": f"Storage {r_upload.status_code}: {r_upload.text[:200]}"}
+        buffer = io.BytesIO()
+        c = rl_canvas.Canvas(buffer, pagesize=A4)
+        w, h = A4
+        azul   = HexColor("#0F2744")
+        acento = HexColor("#185FA5")
+        gris   = HexColor("#F4F7FB")
+        borde  = HexColor("#D0DFF0")
+        verde  = HexColor("#1a7a40")
+        rojo   = HexColor("#C0392B")
 
-        # 2. Construir URL pública firmada (1 hora = 3600 s)
-        r_sign = requests.post(
-            f"{SUPABASE_URL}/storage/v1/object/sign/facturas/{ruta}",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-                "Content-Type": "application/json",
-            },
-            json={"expiresIn": 3600},
-            timeout=10
-        )
-        if r_sign.status_code == 200:
-            signed_url = r_sign.json().get("signedURL", "")
-            factura_url = f"{SUPABASE_URL}/storage/v1{signed_url}" if signed_url.startswith("/") else signed_url
+        # ── CABECERA ────────────────────────────────────────────
+        c.setFillColor(azul); c.rect(0, h-100, w, 100, fill=True, stroke=False)
+        c.setFillColor(acento); c.roundRect(30, h-85, 55, 55, 6, fill=True, stroke=False)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 22); c.drawCentredString(57.5, h-65, "NC")
+        c.setFont("Helvetica", 7); c.drawCentredString(57.5, h-77, "CAPITAL")
+        c.setFont("Helvetica-Bold", 20); c.drawString(100, h-50, "Nolasco Capital")
+        c.setFont("Helvetica", 9); c.drawString(100, h-65, "GRANADA  |  GESTIÓN PATRIMONIAL INMOBILIARIA")
+        c.setFont("Helvetica", 8)
+        c.drawRightString(w-30, h-45, f"Nº: {numero}")
+        c.drawRightString(w-30, h-57, f"Fecha: {datos.get('fecha','')}")
+        c.drawRightString(w-30, h-69, f"Vencimiento: {datos.get('vencimiento','')}")
+        c.setStrokeColor(acento); c.setLineWidth(3); c.line(0, h-103, w, h-103)
+
+        # ── TÍTULO ──────────────────────────────────────────────
+        y = h-130
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 14)
+        _titulo_pdf = "FACTURA RECTIFICATIVA" if es_rectificativa else "FACTURA"
+        c.drawString(30, y, _titulo_pdf)
+        c.setFont("Helvetica", 9); c.setFillColor(HexColor("#5A7A9A"))
+        c.drawString(30, y-16, f"Arrendamiento inmobiliario — {datos.get('concepto','')}")
+
+        # ── BLOQUE EMISOR / RECEPTOR ────────────────────────────
+        y -= 45
+        # Emisor
+        c.setFillColor(gris); c.roundRect(25, y-90, (w-60)/2-5, 90, 5, fill=True, stroke=False)
+        c.setStrokeColor(borde); c.roundRect(25, y-90, (w-60)/2-5, 90, 5, fill=False, stroke=True)
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 9); c.drawString(35, y-14, "EMISOR (Arrendador)")
+        c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
+        c.drawString(35, y-28, perfil.get("nombre_fiscal",""))
+        c.drawString(35, y-40, f"NIF: {perfil.get('nif','')}")
+        c.drawString(35, y-52, perfil.get("direccion",""))
+        c.drawString(35, y-64, f"{perfil.get('cp','')} {perfil.get('ciudad','')}")
+        if perfil.get("telefono"): c.drawString(35, y-76, f"Tel: {perfil.get('telefono','')}")
+
+        # Receptor
+        mid = 30 + (w-60)/2 + 5
+        c.setFillColor(HexColor("#FFFDF0")); c.roundRect(mid, y-90, (w-60)/2-5, 90, 5, fill=True, stroke=False)
+        c.setStrokeColor(borde); c.roundRect(mid, y-90, (w-60)/2-5, 90, 5, fill=False, stroke=True)
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 9); c.drawString(mid+10, y-14, "RECEPTOR (Arrendatario)")
+        c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
+        c.drawString(mid+10, y-28, datos.get("inquilino",""))
+        c.drawString(mid+10, y-40, f"NIF: {datos.get('nif_inquilino','')}")
+        dir_inq = datos.get("direccion_inquilino","")
+        # Dividir dirección en dos líneas si es larga
+        if len(dir_inq) > 45:
+            c.drawString(mid+10, y-52, dir_inq[:45])
+            c.drawString(mid+10, y-64, dir_inq[45:90])
         else:
-            # Fallback: URL pública directa (solo funciona si el bucket es público)
-            factura_url = f"{SUPABASE_URL}/storage/v1/object/public/facturas/{ruta}"
+            c.drawString(mid+10, y-52, dir_inq)
 
-        # 3. PATCH el movimiento — actualizar factura_url, tiene_factura, estado_fiscal
-        h_patch = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/json",
-            "Prefer": "return=minimal",
-        }
-        r_patch = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
-            headers=h_patch,
-            json={
-                "factura_url": ruta,          # guardamos la ruta, no la URL firmada (caduca)
-                "tiene_factura": True,
-                "estado_fiscal": "con_factura",
-            },
-            timeout=10
-        )
-        if r_patch.status_code not in (200, 204):
-            return {"ok": False, "error": f"PATCH movimiento {r_patch.status_code}: {r_patch.text[:200]}"}
+        # ── TABLA CONCEPTOS ─────────────────────────────────────
+        y -= 110
+        c.setFillColor(azul); c.setFont("Helvetica-Bold", 11)
+        c.drawString(30, y, "Detalle de la factura")
+        c.setStrokeColor(acento); c.setLineWidth(2); c.line(30, y-4, 230, y-4)
+        y -= 20
 
-        return {"ok": True, "url": factura_url, "ruta": ruta}
+        data_tabla = [
+            ["Concepto", "Precio ud.", "Unidades", "Subtotal", "IVA", "Retención", "Total"],
+            [
+                datos.get("concepto",""),
+                f"{datos.get('base_imponible',0):,.2f}€",
+                "1",
+                f"{datos.get('base_imponible',0):,.2f}€",
+                f"{datos.get('pct_iva',0):.0f}%",
+                f"-{datos.get('pct_retencion',0):.0f}%",
+                f"{datos.get('total',0):,.2f}€"
+            ]
+        ]
+        t = Table(data_tabla, colWidths=[165,55,45,55,30,45,55])
+        t.setStyle(TableStyle([
+            ("BACKGROUND",(0,0),(-1,0),azul),
+            ("TEXTCOLOR",(0,0),(-1,0),white),
+            ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+            ("FONTSIZE",(0,0),(-1,0),8),
+            ("FONTNAME",(0,1),(-1,-1),"Helvetica"),
+            ("FONTSIZE",(0,1),(-1,-1),8),
+            ("ALIGN",(1,0),(-1,-1),"RIGHT"),
+            ("GRID",(0,0),(-1,-1),0.4,borde),
+            ("LINEBELOW",(0,0),(-1,0),2,acento),
+            ("BACKGROUND",(0,1),(-1,-1),gris),
+            ("TOPPADDING",(0,0),(-1,-1),5),
+            ("BOTTOMPADDING",(0,0),(-1,-1),5),
+            ("LEFTPADDING",(0,0),(-1,-1),6),
+        ]))
+        t.wrapOn(c, w, h); t.drawOn(c, 25, y-35)
+        y -= 55
 
+        # ── RESUMEN FISCAL ──────────────────────────────────────
+        y -= 20
+        resumen = [
+            ["Base Imponible", f"{datos.get('base_imponible',0):,.2f} €"],
+            [f"IVA {datos.get('pct_iva',0):.0f}%", f"{datos.get('importe_iva',0):,.2f} €"],
+            [f"Retención {datos.get('pct_retencion',0):.0f}%", f"−{datos.get('importe_retencion',0):,.2f} €"],
+            ["TOTAL", f"{datos.get('total',0):,.2f} €"],
+        ]
+        tabla_res = Table(resumen, colWidths=[150, 100])
+        tabla_res.setStyle(TableStyle([
+            ("FONTNAME",(0,0),(-1,-2),"Helvetica"),
+            ("FONTNAME",(0,-1),(-1,-1),"Helvetica-Bold"),
+            ("FONTSIZE",(0,0),(-1,-1),9),
+            ("ALIGN",(1,0),(1,-1),"RIGHT"),
+            ("GRID",(0,0),(-1,-1),0.4,borde),
+            ("BACKGROUND",(0,-1),(-1,-1),acento),
+            ("TEXTCOLOR",(0,-1),(-1,-1),white),
+            ("TOPPADDING",(0,0),(-1,-1),5),
+            ("BOTTOMPADDING",(0,0),(-1,-1),5),
+            ("LEFTPADDING",(0,0),(-1,-1),8),
+        ]))
+        tabla_res.wrapOn(c, w, h)
+        tabla_res.drawOn(c, w-285, y-80)
+        y -= 100
+
+        # ── CONDICIONES DE PAGO ─────────────────────────────────
+        if perfil.get("iban"):
+            y -= 20
+            c.setFillColor(gris); c.roundRect(25, y-45, w-50, 45, 5, fill=True, stroke=False)
+            c.setStrokeColor(borde); c.roundRect(25, y-45, w-50, 45, 5, fill=False, stroke=True)
+            c.setFillColor(azul); c.setFont("Helvetica-Bold", 9)
+            c.drawString(35, y-14, "Condiciones de pago")
+            c.setFont("Helvetica", 8); c.setFillColor(HexColor("#333333"))
+            c.drawString(35, y-28, "TRANSFERENCIA BANCARIA A CUENTA:")
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(35, y-40, f"Nº: {perfil.get('iban','')}")
+
+        # ── FOOTER ──────────────────────────────────────────────
+        c.setFillColor(azul); c.rect(0, 0, w, 30, fill=True, stroke=False)
+        c.setFillColor(white); c.setFont("Helvetica", 7)
+        c.drawString(30, 11, "Nolasco Capital  |  Granada  |  Gestión Patrimonial Inmobiliaria")
+        c.drawRightString(w-30, 11, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+
+        c.save()
+        buffer.seek(0)
+        return buffer
     except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-def obtener_url_factura(user_id: str, ruta: str, expira_segundos: int = 3600) -> str | None:
-    """
-    Genera una URL firmada temporal para ver/descargar una factura.
-    - ruta: valor guardado en movimientos.factura_url (ej: "uuid/123.pdf")
-    - expira_segundos: validez de la URL (default 1 hora)
-    Devuelve la URL o None si falla.
-    """
-    if not ruta:
+        print(f"Error generando PDF factura: {e}")
         return None
-    try:
-        r = requests.post(
-            f"{SUPABASE_URL}/storage/v1/object/sign/facturas/{ruta}",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-                "Content-Type": "application/json",
+
+
+def generar_pdf_modelo100(inmueble_data, modelo):
+    if not REPORTLAB_OK: return None
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    w, h = A4
+    azul_oscuro = HexColor("#0F2744"); azul_acento = HexColor("#185FA5")
+    verde = HexColor("#1a7a40"); naranja = HexColor("#B45309")
+    gris_claro = HexColor("#F4F7FB"); gris_borde = HexColor("#D0DFF0"); amarillo = HexColor("#FFF9E6")
+    ref = f"NC-{datetime.now().strftime('%Y')}-{inmueble_data['Nombre'][:3].upper()}"
+    tipo_arr = str(inmueble_data.get("Tipo_Arrendamiento","Larga Duracion"))
+    dias_arr = int(safe_float(inmueble_data.get("Dias_Arrendados_Anio",365)))
+    # Cabecera
+    c.setFillColor(azul_oscuro); c.rect(0,h-100,w,100,fill=True,stroke=False)
+    c.setFillColor(azul_acento); c.roundRect(30,h-85,55,55,6,fill=True,stroke=False)
+    c.setFillColor(white); c.setFont("Helvetica-Bold",22); c.drawCentredString(57.5,h-65,"NC")
+    c.setFont("Helvetica",7); c.drawCentredString(57.5,h-77,"CAPITAL")
+    c.setFont("Helvetica-Bold",20); c.drawString(100,h-50,"Nolasco Capital")
+    c.setFont("Helvetica",9); c.drawString(100,h-65,"GRANADA  |  GESTION PATRIMONIAL INMOBILIARIA")
+    c.setFont("Helvetica",8)
+    c.drawRightString(w-30,h-45,f"Ref: {ref}"); c.drawRightString(w-30,h-57,f"Fecha: {datetime.now().strftime('%d/%m/%Y')}")
+    c.drawRightString(w-30,h-69,f"Ejercicio: {datetime.now().year}")
+    c.setStrokeColor(azul_acento); c.setLineWidth(3); c.line(0,h-103,w,h-103)
+    # Título
+    y = h-130; c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold",13)
+    c.drawString(30,y,"Modelo 100 - Rendimientos del Capital Inmobiliario")
+    c.setFont("Helvetica",9); c.setFillColor(HexColor("#5A7A9A"))
+    c.drawString(30,y-15,"Datos informativos para el asesor fiscal | Pendiente validacion profesional")
+    # Datos inmueble
+    y -= 45; c.setFillColor(gris_claro); c.roundRect(25,y-70,w-50,70,6,fill=True,stroke=False)
+    c.setStrokeColor(gris_borde); c.roundRect(25,y-70,w-50,70,6,fill=False,stroke=True)
+    c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold",10); c.drawString(35,y-14,"Datos del Inmueble")
+    labels1=[("Inmueble:",35,str(inmueble_data["Nombre"])),("Ref. Catastral:",200,str(inmueble_data.get("Ref_Catastral","N/A"))),("Titular:",390,str(inmueble_data.get("Titular","N/A")))]
+    labels2=[("Modalidad:",35,tipo_arr),("NIF Inquilino:",200,str(inmueble_data.get("NIF_Inquilino","N/A"))),("Dias arrendados:",390,f"{dias_arr} dias")]
+    c.setFont("Helvetica",8); c.setFillColor(HexColor("#5A7A9A"))
+    for lbl,x,_ in labels1: c.drawString(x,y-30,lbl)
+    for lbl,x,_ in labels2: c.drawString(x,y-48,lbl)
+    c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold",8)
+    for lbl,x,val in labels1: c.drawString(x+60,y-30,val)
+    for lbl,x,val in labels2: c.drawString(x+65,y-48,val)
+    # Tabla casillas
+    y -= 95; c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold",11)
+    c.drawString(30,y,"Casillas del Modelo 100")
+    c.setStrokeColor(azul_acento); c.setLineWidth(2); c.line(30,y-4,230,y-4); y -= 22
+    amort_detalle = modelo.get("0113_detalle","")
+    data = [
+        ["Casilla","Descripcion","Importe (EUR)","Nota para asesor"],
+        ["0101","Dias arrendado en el ano",f"{modelo['0101']} dias",""],
+        ["0102","Ingresos integros",f"{modelo['0102']:,.2f}",""],
+        ["0105","Intereses hipoteca/financiacion",f"{modelo['0105']:,.2f}","Solo intereses, no capital"],
+        ["0106","Reparacion y conservacion",f"{modelo['0106']:,.2f}","Del diario contable"],
+        ["0108","Tributos e IBI",f"{modelo['0108']:,.2f}",""],
+        ["0110","Comunidad + Seguros + Ascensor",f"{modelo['0110']:,.2f}","Hogar + vida + comunidad"],
+        ["0111","Servicios y suministros",f"{modelo['0111']:,.2f}",""],
+        ["0112","Gastos juridicos",f"{modelo['0112']:,.2f}",""],
+        ["0113","Amortizacion fiscal (3%)",f"{modelo['0113']:,.2f}",amort_detalle[:40] if amort_detalle else ""],
+        ["0107","TOTAL GASTOS DEDUCIBLES",f"{modelo['0107']:,.2f}",""],
+        ["0149","RENDIMIENTO NETO",f"{modelo['0149']:,.2f}",""],
+        ["0150",f"Reduccion {modelo['reduccion_pct']}% (orientativa)",f"-{modelo['0150']:,.2f}","VALIDAR con asesor"],
+        ["0152","RENDIMIENTO NETO REDUCIDO",f"{modelo['0152']:,.2f}","VALIDAR con asesor"],
+        ["0153","Retenciones practicadas",f"{modelo['0153']:,.2f}",""],
+    ]
+    t = Table(data, colWidths=[58,165,90,152])
+    t.setStyle(TableStyle([
+        ("BACKGROUND",(0,0),(-1,0),azul_oscuro),("TEXTCOLOR",(0,0),(-1,0),white),
+        ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),8),
+        ("FONTNAME",(0,1),(-1,-1),"Helvetica"),("FONTSIZE",(0,1),(-1,-1),7.5),
+        ("ALIGN",(2,1),(2,-1),"RIGHT"),("FONTNAME",(0,1),(0,-1),"Helvetica-Bold"),
+        ("GRID",(0,0),(-1,-1),0.4,gris_borde),("LINEBELOW",(0,0),(-1,0),2,azul_acento),
+        ("ROWBACKGROUNDS",(0,1),(-1,-5),[white,gris_claro]),
+        ("BACKGROUND",(0,-4),(-1,-4),HexColor("#F0F8FF")),("FONTNAME",(0,-4),(-1,-4),"Helvetica-Bold"),
+        ("BACKGROUND",(0,-3),(-1,-3),amarillo),("FONTNAME",(0,-3),(-1,-3),"Helvetica-Bold"),
+        ("TEXTCOLOR",(3,-3),(3,-3),naranja),
+        ("BACKGROUND",(0,-2),(-1,-2),HexColor("#FFF0DC")),("FONTNAME",(0,-2),(-1,-2),"Helvetica-Bold"),
+        ("TEXTCOLOR",(3,-2),(3,-2),naranja),("BACKGROUND",(0,-1),(-1,-1),gris_claro),
+        ("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5),("LEFTPADDING",(0,0),(-1,-1),6),
+    ]))
+    t.wrapOn(c,w,h); t.drawOn(c,25,y-len(data)*19-5)
+    y_after = y-len(data)*19-20
+    # Aviso
+    y_av = y_after-15; c.setFillColor(amarillo); c.roundRect(25,y_av-55,w-50,55,5,fill=True,stroke=False)
+    c.setStrokeColor(naranja); c.setLineWidth(1); c.roundRect(25,y_av-55,w-50,55,5,fill=False,stroke=True)
+    c.setFillColor(naranja); c.setFont("Helvetica-Bold",9)
+    c.drawString(35,y_av-14,"IMPORTANTE: Documento informativo — pendiente validacion por asesor fiscal")
+    c.setFont("Helvetica",8); c.setFillColor(HexColor("#5A4A00"))
+    c.drawString(35,y_av-28,"Reduccion 60% (cas. 0150): orientativa. Depende de los ingresos totales del contribuyente.")
+    c.drawString(35,y_av-40,"Amortizacion: MAX(precio compra, catastral) x % construccion x 3%. Verificar datos catastrales.")
+    if modelo.get("iva_aplicable"): c.drawString(35,y_av-52,"IVA: Este inmueble tributa por Modelo 303 (IVA). No incluido en este Modelo 100.")
+    # Página 2
+    c.showPage()
+    c.setFillColor(azul_oscuro); c.rect(0,h-60,w,60,fill=True,stroke=False)
+    c.setFillColor(white); c.setFont("Helvetica-Bold",14); c.drawString(30,h-38,"Nolasco Capital")
+    c.setFont("Helvetica",8); c.drawString(30,h-50,f"Modelo 100 - {inmueble_data['Nombre']} | Ref: {ref}")
+    c.drawRightString(w-30,h-38,"Pagina 2 de 2")
+    c.setStrokeColor(azul_acento); c.setLineWidth(3); c.line(0,h-63,w,h-63)
+    y_firma = h-110; c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold",11)
+    c.drawString(30,y_firma,"Verificacion y Firma")
+    # Bloque propietario
+    c.setFillColor(gris_claro); c.roundRect(25,y_firma-95,(w-60)/2,80,5,fill=True,stroke=False)
+    c.setStrokeColor(gris_borde); c.roundRect(25,y_firma-95,(w-60)/2,80,5,fill=False,stroke=True)
+    c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold",9); c.drawString(35,y_firma-22,"Propietario")
+    c.setFont("Helvetica",8); c.drawString(35,y_firma-38,f"Nombre: {inmueble_data.get('Titular','Pedro Nolasco')}")
+    c.drawString(35,y_firma-52,f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    c.setFillColor(verde); c.setFont("Helvetica-Bold",9); c.drawString(35,y_firma-68,"DATOS VERIFICADOS")
+    c.setFont("Helvetica",7); c.setFillColor(HexColor("#5A7A9A"))
+    c.drawString(35,y_firma-80,f"Hash: NC{datetime.now().strftime('%Y%m%d%H%M')}{inmueble_data['Nombre'][:3].upper()}")
+    # Bloque asesor
+    mid = 30+(w-60)/2+10
+    c.setFillColor(HexColor("#FFFDF0")); c.roundRect(mid,y_firma-95,(w-60)/2,80,5,fill=True,stroke=False)
+    c.setStrokeColor(naranja); c.roundRect(mid,y_firma-95,(w-60)/2,80,5,fill=False,stroke=True)
+    c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold",9); c.drawString(mid+10,y_firma-22,"Asesor Fiscal")
+    c.setFont("Helvetica",8); c.setFillColor(naranja); c.drawString(mid+10,y_firma-38,"PENDIENTE VALIDACION")
+    c.setFillColor(HexColor("#5A7A9A"))
+    c.drawString(mid+10,y_firma-52,"Nombre: ____________________________")
+    c.drawString(mid+10,y_firma-66,"Fecha:  ____________________________")
+    c.drawString(mid+10,y_firma-80,"Firma:  ____________________________")
+    # Notas legales
+    y_notas = y_firma-120; c.setFillColor(azul_oscuro); c.setFont("Helvetica-Bold",10)
+    c.drawString(30,y_notas,"Notas Legales"); c.setStrokeColor(azul_acento); c.setLineWidth(1.5)
+    c.line(30,y_notas-4,140,y_notas-4)
+    notas = [
+        "1. Este documento es INFORMATIVO y no sustituye el asesoramiento fiscal profesional.",
+        "2. Los datos han sido pre-rellenados automaticamente desde Nolasco Capital.",
+        "3. La reduccion del 60% (casilla 0150) es orientativa y depende de los ingresos totales",
+        "   del contribuyente. Debe ser validada y aplicada por el asesor fiscal.",
+        "4. La amortizacion fiscal se calcula como: MAX(precio compra total, valor catastral)",
+        "   x porcentaje de construccion x 3% x porcentaje de titularidad (Art. 14 RIRPF).",
+        "5. Los dias de arrendamiento (casilla 0101) afectan proporcionalmente a todos los gastos.",
+        f"6. Modalidad declarada: {tipo_arr}. Dias arrendados: {dias_arr}.",
+        "7. Si el inmueble esta arrendado a una empresa, el IVA tributa en Modelo 303.",
+        f"8. Referencia interna: {ref} | Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+    ]
+    c.setFont("Helvetica",7.5); yn = y_notas-18
+    for nota in notas:
+        c.setFillColor(HexColor("#333333")); c.drawString(30,yn,nota); yn -= 13
+    # Footer
+    c.setFillColor(azul_oscuro); c.rect(0,0,w,30,fill=True,stroke=False)
+    c.setFillColor(white); c.setFont("Helvetica",7)
+    c.drawString(30,11,"Nolasco Capital  |  Granada  |  Gestion Patrimonial Inmobiliaria")
+    c.drawRightString(w-30,11,f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    c.save(); buffer.seek(0)
+    return buffer
+
+# ================================================================
+# SECCIÓN 11 — GENERADORES DE CONTRATOS LAU
+# generar_contrato_larga_duracion, _temporada, _habitacion
+# ================================================================
+def generar_contrato_larga_duracion(data):
+    suministros = [k for k,v in [("electricidad",data["incluye_luz"]),("gas",data["incluye_gas"]),("agua",data["incluye_agua"]),("internet",data["incluye_internet"])] if v]
+    s_txt = ", ".join(suministros) if suministros else "ninguno"
+    ipc_cl = "La renta se actualizará anualmente según IPC conforme al artículo 18 de la LAU." if data["ipc"] else "La renta permanecerá fija durante toda la duración del contrato."
+    return f"""
+══════════════════════════════════════════════════════════════
+CONTRATO DE ARRENDAMIENTO DE VIVIENDA
+Ley 29/1994 de Arrendamientos Urbanos (LAU)
+══════════════════════════════════════════════════════════════
+ARRENDADOR: ________________________, DNI ____________
+ARRENDATARIO: ________________________, DNI ____________
+
+INMUEBLE: {data["direccion"]} · Ref. Catastral: {data["ref_catastral"]} · {data["m2"]} m²
+
+CLÁUSULAS
+
+PRIMERA.- OBJETO: Vivienda habitual (Art. 2 LAU).
+SEGUNDA.- DURACIÓN: {data["duracion_anos"]} años.
+TERCERA.- RENTA: {data["renta"]:,.2f} €/mes. {ipc_cl}
+CUARTA.- FIANZA: {data["importe_fianza"]:,.2f} € ({data["fianza_meses"]} mes/es) conforme Art. 36 LAU.
+QUINTA.- SUMINISTROS incluidos en renta: {s_txt}.
+SEXTA.- GASTOS COMUNIDAD e IBI: a cargo del arrendador.
+SÉPTIMA.- OBRAS: reparaciones necesarias a cargo del arrendador (Art. 21 LAU).
+OCTAVA.- CESIÓN/SUBARRIENDO: no permitidos sin consentimiento escrito (Art. 8 LAU).
+NOVENA.- MASCOTAS: {data["mascotas"]}.
+DÉCIMA.- LEGISLACIÓN: LAU 29/1994. Juzgados de Granada.
+
+Granada, a ___ de ______________ de 20__
+
+EL ARRENDADOR ___________________   EL ARRENDATARIO ___________________
+
+══════════════════════════════════════════════════════════════
+Generado con Nolasco Capital · Documento orientativo LAU 29/1994 · Consulte con abogado
+══════════════════════════════════════════════════════════════
+"""
+
+def generar_contrato_temporada(data):
+    suministros = [k for k,v in [("electricidad",data["incluye_luz"]),("gas",data["incluye_gas"]),("agua",data["incluye_agua"]),("internet",data["incluye_internet"])] if v]
+    s_txt = ", ".join(suministros) if suministros else "ninguno"
+    return f"""
+══════════════════════════════════════════════════════════════
+CONTRATO DE ARRENDAMIENTO DE TEMPORADA
+Ley 29/1994 de Arrendamientos Urbanos (LAU) · Art. 3
+══════════════════════════════════════════════════════════════
+ARRENDADOR: ________________________, DNI ____________
+ARRENDATARIO: ________________________, DNI ____________
+
+INMUEBLE: {data["direccion"]} · Ref. Catastral: {data["ref_catastral"]} · {data["m2"]} m²
+Uso distinto de vivienda habitual permanente (Art. 3 LAU y Código Civil).
+
+CLÁUSULAS
+
+PRIMERA.- DURACIÓN: {data["duracion_meses"]} mes/es. Extinción automática SIN PRÓRROGA OBLIGATORIA.
+SEGUNDA.- RENTA: {data["renta"]:,.2f} €/mes. Fija durante toda la duración.
+TERCERA.- FIANZA: {data["importe_fianza"]:,.2f} €.
+CUARTA.- SUMINISTROS incluidos: {s_txt}.
+QUINTA.- ENTREGA: inmueble en las mismas condiciones al término.
+
+Granada, a ___ de ______________ de 20__
+
+EL ARRENDADOR ___________________   EL ARRENDATARIO ___________________
+
+══════════════════════════════════════════════════════════════
+Generado con Nolasco Capital · Consulte con abogado
+══════════════════════════════════════════════════════════════
+"""
+
+def generar_contrato_habitacion(data):
+    return f"""
+══════════════════════════════════════════════════════════════
+CONTRATO DE ARRENDAMIENTO DE HABITACIÓN
+══════════════════════════════════════════════════════════════
+ARRENDADOR: ________________________, DNI ____________
+ARRENDATARIO: ________________________, DNI ____________
+
+INMUEBLE: {data["direccion"]} · Ref. Catastral: {data["ref_catastral"]}
+
+CLÁUSULAS
+
+PRIMERA.- OBJETO: cesión de UNA HABITACIÓN. Uso compartido de zonas comunes.
+SEGUNDA.- DURACIÓN: {data["duracion_meses"]} mes/es.
+TERCERA.- RENTA: {data["renta"]:,.2f} €/mes. Suministros incluidos.
+CUARTA.- FIANZA: {data["importe_fianza"]:,.2f} €.
+QUINTA.- NORMAS: silencio 23:00-8:00h. Zonas comunes limpias. Avisar de visitas que pernocten.
+SEXTA.- DESISTIMIENTO: 30 días de preaviso por cualquiera de las partes.
+
+Granada, a ___ de ______________ de 20__
+
+EL ARRENDADOR ___________________   EL ARRENDATARIO ___________________
+
+══════════════════════════════════════════════════════════════
+Generado con Nolasco Capital · Consulte con abogado
+══════════════════════════════════════════════════════════════
+"""
+
+# ================================================================
+# ================================================================
+# PANTALLAS — LÓGICA DE NAVEGACIÓN
+# Cada elif es una pantalla independiente y autónoma
+# ================================================================
+# ================================================================
+
+# ================================================================
+# PANTALLA: TORRE DE CONTROL
+# Deps: df_inm, df_mov, tasacion(), alerta_vencimiento()
+# ================================================================
+if menu == "Torre de Control":
+    if df_inm.empty:
+        st.markdown("## 🏠 Bienvenido a Nolasco Capital")
+        st.info("📭 Aún no tienes inmuebles registrados. Ve a **Datos de Cartera** para añadir tu primer inmueble.")
+        st.stop()
+
+    # ── Detectar modo fiscal ──────────────────────────────────────
+    # Perfil ya cargado al inicio — leer directamente del session_state
+    _perfil_tc      = st.session_state.get("perfil_datos", {})
+    _es_sociedad_tc = _perfil_tc.get("tipo_cuenta","particular") == "sociedad"
+    _nom_soc_tc = _perfil_tc.get("nombre_sociedad","Sociedad Patrimonial")
+
+    if _es_sociedad_tc:
+        st.markdown(f'<div class="nc-brand-header">Torre de Control IS</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="nc-brand-sub">🏢 {_nom_soc_tc} · Impuesto de Sociedades · Modelo 200</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="nc-brand-header">Torre de Control</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-brand-sub">Rendimiento consolidado · Cartera Nolasco</div>', unsafe_allow_html=True)
+
+    # Ingresos = facturas emitidas cobradas (nueva tabla) + ingresos en movimientos (legacy)
+    _df_facs_tc = leer_facturas_emitidas(st.session_state.user_id)
+    _ing_facturas = _df_facs_tc[_df_facs_tc["estado"]=="cobrada"]["total"].sum() if not _df_facs_tc.empty else 0
+    _ing_movimientos = df_mov[df_mov["Tipo"]=="Ingreso"]["Importe"].sum()
+    total_ingresos_registrados = _ing_facturas + _ing_movimientos
+    total_gastos_registrados   = df_mov[df_mov["Tipo"]=="Gasto"]["Importe"].sum()
+    balance_real  = total_ingresos_registrados - total_gastos_registrados
+    margen_real   = (balance_real / total_ingresos_registrados * 100) if total_ingresos_registrados > 0 else 0
+
+    mes_actual  = datetime.now().month
+    anio_actual = datetime.now().year
+    df_mov_fecha = df_mov.copy()
+    df_mov_fecha["Fecha"] = pd.to_datetime(df_mov_fecha["Fecha"], errors="coerce")
+    df_mes = df_mov_fecha[(df_mov_fecha["Fecha"].dt.month==mes_actual)&(df_mov_fecha["Fecha"].dt.year==anio_actual)]
+    ing_mes_movimientos = df_mes[df_mes["Tipo"]=="Ingreso"]["Importe"].sum()
+    # Sumar también facturas cobradas del mes actual (tabla facturas_emitidas)
+    ing_mes_facturas = 0
+    _df_facs_mes = _df_facs_tc.copy() if not _df_facs_tc.empty else pd.DataFrame()
+    if not _df_facs_mes.empty:
+        try:
+            _fcol = "fecha" if "fecha" in _df_facs_mes.columns else "fecha_emision"
+            _df_facs_mes[_fcol] = pd.to_datetime(_df_facs_mes[_fcol], errors="coerce")
+            _facs_mes = _df_facs_mes[
+                (_df_facs_mes["estado"]=="cobrada") &
+                (_df_facs_mes[_fcol].dt.month==mes_actual) &
+                (_df_facs_mes[_fcol].dt.year==anio_actual)
+            ]
+            ing_mes_facturas = _facs_mes["total"].sum() if not _facs_mes.empty else 0
+        except: pass
+    ing_mes_real = ing_mes_movimientos + ing_mes_facturas
+    gas_mes_real = df_mes[df_mes["Tipo"]=="Gasto"]["Importe"].sum()
+    bal_mes_real = ing_mes_real - gas_mes_real
+
+    ing_previsto = df_inm["Renta"].apply(lambda x: safe_float(x)).sum()
+    gas_previsto = (
+        df_inm["Comunidad"].apply(lambda x: safe_float(x)).sum() +
+        df_inm["IBI_Anual"].apply(lambda x: safe_float(x)).sum()/12 +
+        df_inm["Seguro_Anual"].apply(lambda x: safe_float(x)).sum()/12 +
+        df_inm["Intereses_Hipoteca"].apply(lambda x: safe_float(x)).sum()
+    )
+    bal_previsto = ing_previsto - gas_previsto
+    ing_pct = min(int(ing_mes_real/ing_previsto*100),100) if ing_previsto>0 else 0
+    gas_pct = min(int(gas_mes_real/gas_previsto*100),100) if gas_previsto>0 else 0
+    bal_pct = min(int(bal_mes_real/bal_previsto*100),100) if bal_previsto>0 else 0
+    ing_desv = ing_mes_real - ing_previsto
+    gas_desv = gas_mes_real - gas_previsto
+    bal_desv = bal_mes_real - bal_previsto
+
+    # Alertas robot mini
+    alertas_criticas = []; alertas_medias = []
+    for _, row in df_inm.iterrows():
+        tipo_alert, msg = alerta_vencimiento(row)
+        if tipo_alert in ("vencido","urgente"): alertas_criticas.append(f"{row['Nombre']}: {msg}")
+        elif tipo_alert == "aviso": alertas_medias.append(f"{row['Nombre']}: {msg}")
+    for _, row in df_inm.iterrows():
+        rm = tasacion(row); desv_r = (safe_float(row.get("Renta",0))-rm)/rm*100 if rm>0 else 0
+        if desv_r < -15:
+            perdida = rm - safe_float(row.get("Renta",0))
+            alertas_criticas.append(f"{row['Nombre']}: renta {abs(desv_r):.0f}% bajo mercado — pérdida {perdida:,.0f}€/mes")
+        elif desv_r < -5:
+            alertas_medias.append(f"{row['Nombre']}: renta {abs(desv_r):.0f}% bajo mercado")
+
+    if alertas_criticas or alertas_medias:
+        alerta_txt = alertas_criticas[0] if alertas_criticas else alertas_medias[0]
+        es_critica = bool(alertas_criticas)
+        borde_color = "#C0392B" if es_critica else "#F39C12"
+        fondo_color = "#FDECEA" if es_critica else "#FFF9E6"
+        texto_color = "#C0392B" if es_critica else "#854F0B"
+        extra = f"<span style='font-size:0.75rem;color:{borde_color};margin-left:8px;'>+{len(alertas_criticas)-1} alertas más</span>" if len(alertas_criticas)>1 else ""
+        st.markdown(f"""
+            <div style="position:relative;background:{fondo_color};border:1px solid {borde_color};
+                        border-radius:10px;padding:9px 14px;margin-top:4px;">
+              <span style="font-size:0.85rem;font-weight:600;color:{texto_color};">
+                {"🚨" if es_critica else "⚠️"} {alerta_txt}
+              </span>{extra}
+            </div>""", unsafe_allow_html=True)
+
+    # ── KPIs — bifurcación IS / IRPF ─────────────────────────────
+    st.markdown('<div style="font-size:0.75rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#9CA3AF;margin:20px 0 12px;">Acumulado del año en curso</div>', unsafe_allow_html=True)
+
+    if _es_sociedad_tc:
+        # ── Calcular KPIs societarios ─────────────────────────────
+        _intereses_tc  = df_inm["Intereses_Hipoteca"].apply(lambda x: safe_float(x)).sum()
+        _amort_tc      = df_inm["Amortizacion_Fiscal"].apply(lambda x: safe_float(x)).sum()
+        # IS usa renta contractual anualizada (no cobros reales)
+        # La AEAT calcula IS sobre el derecho a cobrar, no sobre lo cobrado
+        _renta_contractual = df_inm["Renta"].apply(lambda x: safe_float(x)).sum() * 12
+        _gas_op_tc     = total_gastos_registrados - _intereses_tc - _amort_tc
+        _ebitda_tc     = _renta_contractual - _gas_op_tc
+        _resultado_tc  = _renta_contractual - total_gastos_registrados
+        _is_tc         = round(max(_resultado_tc * 0.25, 0), 0)
+
+        # DSCR — cuota anual desde hipotecas
+        _df_hip_tc = _cargar_hipotecas_supabase() if "df_hip" not in st.session_state else st.session_state.df_hip
+        _cuota_anual_tc = 0
+        _saldo_deuda_tc = 0
+        if not _df_hip_tc.empty:
+            for _, _h in _df_hip_tc.iterrows():
+                _p  = safe_float(_h.get("Principal", 0))
+                _r  = safe_float(_h.get("Tasa_Inicial", 0)) / 100 / 12
+                _n  = int(safe_float(_h.get("Plazo_Años", 20))) * 12
+                if _r > 0 and _n > 0:
+                    _cuota_m = _p * (_r * (1+_r)**_n) / ((1+_r)**_n - 1)
+                else:
+                    _cuota_m = _p / _n if _n > 0 else 0
+                _cuota_anual_tc += _cuota_m * 12
+                _saldo_deuda_tc += safe_float(_h.get("Saldo_Actual", 0)) or _p
+
+        # Cash Flow usa cobros reales vs gastos reales vs cuotas
+        _cash_flow_tc = total_ingresos_registrados - total_gastos_registrados - _cuota_anual_tc
+
+        # Cobrado vs pendiente (renta contractual acumulada hasta hoy vs cobrado real)
+        _meses_transcurridos = pd.Timestamp.now().month
+        _renta_acumulada_teorica = _renta_contractual / 12 * _meses_transcurridos
+        _pendiente_cobro = max(_renta_acumulada_teorica - total_ingresos_registrados, 0)
+        _dscr_tc      = round(_ebitda_tc / _cuota_anual_tc, 2) if _cuota_anual_tc > 0 else 0
+        _dscr_color   = RED if _dscr_tc < 1.20 and _dscr_tc > 0 else GREEN if _dscr_tc >= 1.20 else AMBER
+
+        # ROI y LTV
+        _inversion_tc = (
+            df_inm["Precio_Compra"].apply(lambda x: safe_float(x)).sum() +
+            df_inm["Impuestos_Compra"].apply(lambda x: safe_float(x)).sum() +
+            df_inm["Gastos_Compra"].apply(lambda x: safe_float(x)).sum()
+        )
+        _roi_tc = round(_resultado_tc / _inversion_tc * 100, 1) if _inversion_tc > 0 else 0
+        _val_cat_tc = df_inm["Valor_Catastral"].apply(lambda x: safe_float(x)).sum()
+        _ltv_tc = round(_saldo_deuda_tc / _val_cat_tc * 100, 1) if _val_cat_tc > 0 else 0
+        _ltv_color = RED if _ltv_tc > 70 else AMBER if _ltv_tc > 50 else GREEN
+
+        # Guardar datos en session_state para página de detalle
+        st.session_state["ratio_detalle_datos"] = {
+            "ebitda": _ebitda_tc, "is_est": _is_tc, "cf_neto": _cash_flow_tc,
+            "dscr": _dscr_tc, "roi": _roi_tc, "ltv": _ltv_tc,
+            "ingresos": total_ingresos_registrados, "gas_op": _gas_op_tc,
+            "cuota_anual": _cuota_anual_tc, "resultado": _resultado_tc,
+            "inversion": _inversion_tc, "deuda": _saldo_deuda_tc,
+            "val_cat": _val_cat_tc,
+        }
+
+        def _btn_ratio(key, ratio_id):
+            if st.button("ℹ️", key=key, help=f"Ver explicación de {ratio_id}"):
+                st.session_state.ratio_detalle_sel = ratio_id
+                st.session_state.menu = "Ratio_Detalle"
+                st.rerun()
+
+        # Banner DSCR si < 1.20
+        if _dscr_tc > 0 and _dscr_tc < 1.20:
+            st.markdown(f"""
+            <div style="background:#FDECEA;border:1px solid #C0392B;border-radius:10px;
+                        padding:10px 16px;margin-bottom:12px;">
+              <span style="font-size:0.85rem;font-weight:700;color:#C0392B;">
+                🚨 DSCR {_dscr_tc:.2f} — Por debajo del umbral bancario (1.20).
+                La sociedad no genera suficiente EBITDA para cubrir 1.2× las cuotas hipotecarias.
+              </span>
+            </div>""", unsafe_allow_html=True)
+
+        # Fila 1 — Resultados
+        render_kpi_row([
+            {"label": "EBITDA Inmobiliario",
+             "value": f"{_ebitda_tc:,.0f} €",
+             "color": GREEN,
+             "subtitle": f"Renta {_renta_contractual:,.0f}€/año − gastos op."},
+            {"label": "IS Estimado 25%",
+             "value": f"−{_is_tc:,.0f} €",
+             "color": RED,
+             "subtitle": "Cuota IS orientativa"},
+            {"label": "Cash Flow Neto",
+             "value": f"{_cash_flow_tc:,.0f} €",
+             "color": ACCENT if _cash_flow_tc >= 0 else RED,
+             "subtitle": "EBITDA − IS − cuotas hipoteca"},
+        ])
+        _b1, _b2, _b3 = st.columns(3)
+        with _b1: _btn_ratio("btn_info_ebitda", "EBITDA")
+        with _b2: _btn_ratio("btn_info_is", "IS")
+        with _b3: _btn_ratio("btn_info_cf", "CashFlow")
+        st.markdown('<div style="height:6px"></div>', unsafe_allow_html=True)
+        # Fila 2 — Ratios
+        render_kpi_row([
+            {"label": f"DSCR {'⚠️' if _dscr_tc < 1.20 and _dscr_tc > 0 else '✅'}",
+             "value": f"{_dscr_tc:.2f}×" if _dscr_tc > 0 else "Sin datos",
+             "color": _dscr_color,
+             "subtitle": "EBITDA / cuota anual · min. 1.20"},
+            {"label": "ROI Societario",
+             "value": f"{_roi_tc:.1f}%",
+             "color": GREEN if _roi_tc > 5 else AMBER,
+             "subtitle": "Resultado / inversión total"},
+            {"label": f"LTV Cartera {'⚠️' if _ltv_tc > 70 else ''}",
+             "value": f"{_ltv_tc:.1f}%" if _ltv_tc > 0 else "Sin datos",
+             "color": _ltv_color,
+             "subtitle": "Deuda / valor catastral"},
+        ])
+        _b4, _b5, _b6 = st.columns(3)
+        with _b4: _btn_ratio("btn_info_dscr", "DSCR")
+        with _b5: _btn_ratio("btn_info_roi", "ROI")
+        with _b6: _btn_ratio("btn_info_ltv", "LTV")
+
+        # ── Cobrado vs pendiente ─────────────────────────────────
+        _col_cob1, _col_cob2, _col_cob3 = st.columns(3)
+        _col_cob1.markdown(
+            f'<div style="background:#F0FDF4;border-radius:8px;padding:10px 14px;' +
+            f'border:1px solid #059669;margin-top:4px;">' +
+            f'<div style="font-size:10px;font-weight:700;color:#059669;' +
+            f'text-transform:uppercase;">💶 Cobrado hasta hoy (real)</div>' +
+            f'<div style="font-size:1.3rem;font-weight:800;color:#059669;">' +
+            f'{total_ingresos_registrados:,.0f} €</div>' +
+            f'<div style="font-size:10px;color:#64748B;">Facturas cobradas + movimientos</div>' +
+            f'</div>', unsafe_allow_html=True)
+        _col_cob2.markdown(
+            f'<div style="background:#FEF3C7;border-radius:8px;padding:10px 14px;' +
+            f'border:1px solid #D97706;margin-top:4px;">' +
+            f'<div style="font-size:10px;font-weight:700;color:#D97706;' +
+            f'text-transform:uppercase;">⏳ Pendiente de cobro</div>' +
+            f'<div style="font-size:1.3rem;font-weight:800;color:#D97706;">' +
+            f'{_pendiente_cobro:,.0f} €</div>' +
+            f'<div style="font-size:10px;color:#64748B;">Renta devengada no cobrada</div>' +
+            f'</div>', unsafe_allow_html=True)
+        _col_cob3.markdown(
+            f'<div style="background:#EFF6FF;border-radius:8px;padding:10px 14px;' +
+            f'border:1px solid #185FA5;margin-top:4px;">' +
+            f'<div style="font-size:10px;font-weight:700;color:#185FA5;' +
+            f'text-transform:uppercase;">📋 Renta contractual {pd.Timestamp.now().year}</div>' +
+            f'<div style="font-size:1.3rem;font-weight:800;color:#185FA5;">' +
+            f'{_renta_contractual:,.0f} €</div>' +
+            f'<div style="font-size:10px;color:#64748B;">Base IS · {len(df_inm)} inmuebles</div>' +
+            f'</div>', unsafe_allow_html=True)
+
+    else:
+        render_kpi_row([
+            {
+                "label": "Ingresos Registrados",
+                "value": f"{total_ingresos_registrados:,.0f} €",
+                "color": GREEN,
+                "subtitle": "Total cobrado acumulado"
             },
-            json={"expiresIn": expira_segundos},
-            timeout=10
-        )
-        if r.status_code == 200:
-            signed = r.json().get("signedURL", "")
-            if signed.startswith("/"):
-                return f"{SUPABASE_URL}/storage/v1{signed}"
-            return signed
-        return None
-    except Exception:
-        return None
-
-
-def eliminar_factura(user_id: str, mov_id, ruta: str) -> bool:
-    """
-    Elimina una factura de Storage y limpia los campos en el movimiento.
-    - mov_id: id del movimiento en Supabase
-    - ruta: valor guardado en movimientos.factura_url
-    Devuelve True si todo fue bien.
-    """
-    if not _validar_user_id(user_id, "eliminar_factura"):
-        return False
-    try:
-        h_base = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/json",
-        }
-
-        # 1. Borrar de Storage — endpoint bulk delete de Supabase
-        r_del = requests.delete(
-            f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
-            headers=h_base,
-            timeout=10
-        )
-        # Supabase Storage bulk delete (endpoint correcto)
-        if r_del.status_code not in (200, 204, 404):
-            r_del = requests.post(
-                f"{SUPABASE_URL}/storage/v1/object/facturas",
-                headers={**h_base, "Content-Type": "application/json"},
-                json={"prefixes": [ruta]},
-                timeout=10
-            )
-        # 200, 204 = borrado. 404 = ya no existía. Ambos son ok.
-        # Continuamos aunque falle Storage — lo importante es limpiar la BD
-
-        # 2. Limpiar campos en movimiento
-        r_patch = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
-            headers={**h_base, "Prefer": "return=minimal"},
-            json={
-                "factura_url": None,
-                "tiene_factura": False,
-                "estado_fiscal": "pendiente",
+            {
+                "label": "Gastos Registrados",
+                "value": f"−{total_gastos_registrados:,.0f} €",
+                "color": RED,
+                "subtitle": "Total pagado acumulado"
             },
-            timeout=10
-        )
-        return r_patch.status_code in (200, 204)
-
-    except Exception:
-        return False
-
-
-def actualizar_estado_fiscal_movimiento(user_id: str, mov_id, estado: str) -> bool:
-    """
-    Actualiza solo el estado_fiscal de un movimiento.
-    estados válidos: 'pendiente' | 'con_factura' | 'validado'
-    Útil para que el asesor marque como validado desde su panel.
-    """
-    if not _validar_user_id(user_id, "actualizar_estado_fiscal"):
-        return False
-    estados_validos = {"pendiente", "con_factura", "validado"}
-    if estado not in estados_validos:
-        return False
-    try:
-        r = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal",
-            },
-            json={"estado_fiscal": estado},
-            timeout=10
-        )
-        return r.status_code in (200, 204)
-    except Exception:
-        return False
-
-
-# ================================================================
-# PERFIL DE USUARIO
-# ================================================================
-
-def leer_perfil_usuario(user_id: str) -> dict:
-    try:
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/user_profiles?user_id=eq.{user_id}&select=*",
-            headers=_headers(), timeout=10
-        )
-        if r.status_code == 200 and r.json():
-            return r.json()[0]
-        return {}
-    except Exception:
-        return {}
-
-
-def guardar_perfil_usuario(user_id: str, datos: dict) -> bool:
-    if not _validar_user_id(user_id, "guardar_perfil_usuario"):
-        return False
-    try:
-        payload = {k: v for k, v in datos.items()
-                   if k in ("nombre_fiscal","nif","direccion","ciudad",
-                            "cp","telefono","iban","siguiente_numero","prefijo_factura",
-                            "tipo_cuenta","nombre_sociedad","cif_sociedad")}
-        payload["user_id"] = user_id
-        h = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates,return=minimal"
-        }
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/user_profiles?on_conflict=user_id",
-            headers=h, json=payload, timeout=10
-        )
-        return r.status_code in (200, 201, 204)
-    except Exception:
-        return False
-
-
-def cambiar_contrasena(access_token: str, nueva_contrasena: str) -> dict:
-    try:
-        r = requests.put(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json"
-            },
-            json={"password": nueva_contrasena}, timeout=10
-        )
-        if r.status_code == 200:
-            return {"ok": True}
-        return {"ok": False, "error": r.json().get("msg", "Error desconocido")}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-def cambiar_email(access_token: str, nuevo_email: str) -> dict:
-    try:
-        r = requests.put(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json"
-            },
-            json={"email": nuevo_email}, timeout=10
-        )
-        if r.status_code == 200:
-            return {"ok": True}
-        return {"ok": False, "error": r.json().get("msg", "Error desconocido")}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-# ================================================================
-# PLANTILLAS DE FACTURA
-# ================================================================
-
-def leer_plantillas_factura(user_id: str) -> pd.DataFrame:
-    try:
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/plantillas_factura"
-            f"?user_id=eq.{user_id}&activa=eq.true&select=*&order=inmueble.asc",
-            headers=_headers(), timeout=10
-        )
-        if r.status_code == 200 and r.json():
-            return pd.DataFrame(r.json())
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
-
-def guardar_plantilla_factura(user_id: str, datos: dict) -> dict:
-    if not _validar_user_id(user_id, "guardar_plantilla_factura"):
-        return {"ok": False, "error": "user_id inválido"}
-    try:
-        payload = {**datos, "user_id": user_id, "activa": True}
-        h = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates,return=representation"
-        }
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/plantillas_factura?on_conflict=user_id,inmueble",
-            headers=h, json=payload, timeout=10
-        )
-        if r.status_code in (200, 201):
-            return {"ok": True, "data": r.json()}
-        return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-# ================================================================
-# FACTURAS EMITIDAS
-# ================================================================
-
-def leer_facturas_emitidas(user_id: str) -> pd.DataFrame:
-    try:
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
-            f"?user_id=eq.{user_id}&select=*&order=fecha.desc",
-            headers=_headers(), timeout=10
-        )
-        if r.status_code == 200 and r.json():
-            df = pd.DataFrame(r.json())
-            for col in ["base_imponible","importe_iva","importe_retencion","total",
-                        "pct_iva","pct_retencion"]:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-            return df
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
-
-def crear_factura_emitida(user_id: str, datos: dict) -> dict:
-    if not _validar_user_id(user_id, "crear_factura_emitida"):
-        return {"ok": False, "error": "user_id inválido"}
-    try:
-        payload = {**datos, "user_id": user_id}
-        h = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/json",
-            "Prefer": "return=representation"
-        }
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/facturas_emitidas",
-            headers=h, json=payload, timeout=10
-        )
-        if r.status_code in (200, 201):
-            fac_id = r.json()[0]["id"]
-            perfil = leer_perfil_usuario(user_id)
-            nuevo_num = int(perfil.get("siguiente_numero", 1)) + 1
-            guardar_perfil_usuario(user_id, {"siguiente_numero": nuevo_num})
-            return {"ok": True, "id": fac_id}
-        return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-def actualizar_estado_factura(user_id: str, factura_id: int, estado: str) -> bool:
-    if not _validar_user_id(user_id, "actualizar_estado_factura"):
-        return False
-    if estado not in ("emitida", "cobrada", "anulada"):
-        return False
-    try:
-        r = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
-            f"?id=eq.{factura_id}&user_id=eq.{user_id}",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal"
-            },
-            json={"estado": estado}, timeout=10
-        )
-        return r.status_code in (200, 204)
-    except Exception:
-        return False
-
-
-def guardar_pdf_factura(user_id: str, factura_id: int,
-                        numero: str, pdf_bytes: bytes) -> bool:
-    try:
-        ruta = f"{user_id}/{numero}.pdf"
-        h_storage = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/pdf",
-            "x-upsert": "true"
-        }
-        r_up = requests.post(
-            f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
-            headers=h_storage, data=pdf_bytes, timeout=30
-        )
-        if r_up.status_code not in (200, 201):
-            return False
-        r_patch = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
-            f"?id=eq.{factura_id}&user_id=eq.{user_id}",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal"
-            },
-            json={"pdf_url": ruta}, timeout=10
-        )
-        return r_patch.status_code in (200, 204)
-    except Exception:
-        return False
-
-
-# ================================================================
-# FACTURAS RECTIFICATIVAS
-# ================================================================
-
-def crear_factura_rectificativa(user_id: str, fac_original: dict) -> dict:
-    """
-    Crea una factura rectificativa a partir de una factura original.
-    - Genera número REC26XXXX correlativo
-    - Importes en negativo
-    - Marca la original como 'anulada'
-    - Incrementa siguiente_numero_rec en user_profiles
-    """
-    if not _validar_user_id(user_id, "crear_factura_rectificativa"):
-        return {"ok": False, "error": "user_id inválido"}
-    try:
-        # Leer perfil para obtener siguiente número rectificativa
-        perfil = leer_perfil_usuario(user_id)
-        sig_rec = int(perfil.get("siguiente_numero_rec") or 1)
-        anio_2d = str(__import__('datetime').date.today().year)[2:]
-        num_rec = f"REC{anio_2d}{sig_rec:04d}"
-
-        # Construir payload rectificativa (importes en negativo)
-        base  = -abs(float(fac_original.get("base_imponible", 0)))
-        iva   = -abs(float(fac_original.get("importe_iva", 0)))
-        ret   = -abs(float(fac_original.get("importe_retencion", 0)))
-        total = round(base + iva - ret, 2)  # negativo
-
-        payload = {
-            "user_id":              user_id,
-            "numero":               num_rec,
-            "fecha":                str(__import__('datetime').date.today()),
-            "vencimiento":          str(__import__('datetime').date.today()),
-            "inmueble":             fac_original.get("inmueble", ""),
-            "inquilino":            fac_original.get("inquilino", ""),
-            "nif_inquilino":        fac_original.get("nif_inquilino", ""),
-            "direccion_inquilino":  fac_original.get("direccion_inquilino", ""),
-            "concepto":             f"ANULACIÓN {fac_original.get('numero','')} — {fac_original.get('concepto','')}",
-            "base_imponible":       base,
-            "pct_iva":              float(fac_original.get("pct_iva", 0)),
-            "importe_iva":          iva,
-            "pct_retencion":        float(fac_original.get("pct_retencion", 0)),
-            "importe_retencion":    ret,
-            "total":                total,
-            "estado":               "emitida",
-            "es_rectificativa":     True,
-            "factura_rectificada":  fac_original.get("numero", ""),
-        }
-
-        h = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": "application/json",
-            "Prefer": "return=representation"
-        }
-
-        # 1. Insertar rectificativa
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/facturas_emitidas",
-            headers=h, json=payload, timeout=10
-        )
-        if r.status_code not in (200, 201):
-            return {"ok": False, "error": f"HTTP {r.status_code}: {r.text[:200]}"}
-
-        rec_id = r.json()[0]["id"]
-
-        # 2. Marcar original como anulada
-        requests.patch(
-            f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
-            f"?id=eq.{fac_original['id']}&user_id=eq.{user_id}",
-            headers={**h, "Prefer": "return=minimal"},
-            json={"estado": "anulada"},
-            timeout=10
-        )
-
-        # 3. Incrementar siguiente_numero_rec
-        guardar_perfil_usuario(user_id, {"siguiente_numero_rec": sig_rec + 1})
-
-        return {
-            "ok": True,
-            "id": rec_id,
-            "numero": num_rec,
-            "total": total,
-            "payload": payload,
-        }
-
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-# ================================================================
-# HIPOTECAS — CRUD con user_id
-# ================================================================
-
-def leer_hipotecas(user_id):
-    """Lee hipotecas del usuario desde Supabase."""
-    try:
-        h = _headers()
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/hipotecas?user_id=eq.{user_id}&order=id.asc",
-            headers=h, timeout=10
-        )
-        if r.status_code == 200:
-            data = r.json()
-            if not data:
-                return pd.DataFrame(columns=[
-                    "id","inmueble","principal","tasa_inicial","plazo_años",
-                    "fecha_inicio","es_variable","indice_variable","margen","saldo_actual"
-                ])
-            df = pd.DataFrame(data)
-            for col in ["principal","tasa_inicial","margen","saldo_actual"]:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-            if "plazo_años" in df.columns:
-                df["plazo_años"] = pd.to_numeric(df["plazo_años"], errors="coerce").fillna(0).astype(int)
-            return df
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
-
-def guardar_hipoteca(user_id, datos, hip_id=None):
-    """Crea o actualiza una hipoteca. Si hip_id es None, crea nueva."""
-    try:
-        h = _headers()
-        payload = {
-            "user_id":         user_id,
-            "inmueble":        datos.get("inmueble", ""),
-            "principal":       float(datos.get("principal", 0)),
-            "tasa_inicial":    float(datos.get("tasa_inicial", 0)),
-            "plazo_años":      int(datos.get("plazo_años", 0)),
-            "fecha_inicio":    datos.get("fecha_inicio", ""),
-            "es_variable":     datos.get("es_variable", "N"),
-            "indice_variable": datos.get("indice_variable", ""),
-            "margen":          float(datos.get("margen", 0)),
-            "saldo_actual":    float(datos.get("saldo_actual", 0)),
-        }
-        if hip_id:
-            r = requests.patch(
-                f"{SUPABASE_URL}/rest/v1/hipotecas?id=eq.{hip_id}&user_id=eq.{user_id}",
-                headers={**h, "Prefer": "return=minimal"},
-                json=payload, timeout=10
-            )
-        else:
-            r = requests.post(
-                f"{SUPABASE_URL}/rest/v1/hipotecas",
-                headers={**h, "Prefer": "return=representation"},
-                json=payload, timeout=10
-            )
-        return r.status_code in (200, 201, 204)
-    except Exception:
-        return False
-
-
-def eliminar_hipoteca(user_id, hip_id):
-    """Elimina una hipoteca por id."""
-    try:
-        h = _headers()
-        r = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/hipotecas?id=eq.{hip_id}&user_id=eq.{user_id}",
-            headers={**h, "Prefer": "return=minimal"},
-            timeout=10
-        )
-        return r.status_code in (200, 204)
-    except Exception:
-        return False
-
-
-# ================================================================
-# ASIENTOS BSS — Contabilidad importada desde A3/Holded/Sage
-# ================================================================
-
-def guardar_asientos_bss(user_id, ejercicio, fuente, asientos):
-    """
-    Reemplaza TODOS los asientos BSS del user+ejercicio y guarda los nuevos.
-    asientos: lista de dicts {cuenta, descripcion, inmueble, debe, haber}
-    """
-    try:
-        h = _headers()
-        # 1. Borrar asientos anteriores del mismo ejercicio
-        requests.delete(
-            f"{SUPABASE_URL}/rest/v1/asientos_bss"
-            f"?user_id=eq.{user_id}&ejercicio=eq.{ejercicio}",
-            headers={**h, "Prefer": "return=minimal"},
-            timeout=10
-        )
-        # 2. Insertar nuevos en lote
-        if not asientos:
-            return True
-        records = [{
-            "user_id":     user_id,
-            "ejercicio":   ejercicio,
-            "fuente":      fuente,
-            "cuenta":      a.get("cuenta", ""),
-            "descripcion": a.get("descripcion", "")[:200],
-            "inmueble":    a.get("inmueble", ""),
-            "debe":        float(a.get("debe", 0)),
-            "haber":       float(a.get("haber", 0)),
-        } for a in asientos]
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/asientos_bss",
-            headers={**h, "Prefer": "return=minimal"},
-            json=records, timeout=15
-        )
-        return r.status_code in (200, 201, 204)
-    except Exception as e:
-        return False
-
-
-def leer_asientos_bss(user_id, ejercicio=None):
-    """Lee asientos BSS del usuario. Si ejercicio=None lee todos."""
-    try:
-        h = _headers()
-        url = f"{SUPABASE_URL}/rest/v1/asientos_bss?user_id=eq.{user_id}&order=cuenta.asc"
-        if ejercicio:
-            url += f"&ejercicio=eq.{ejercicio}"
-        r = requests.get(url, headers=h, timeout=10)
-        if r.status_code == 200 and r.json():
-            df = pd.DataFrame(r.json())
-            for col in ["debe", "haber"]:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-            return df
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
-
-def hay_asientos_bss(user_id, ejercicio):
-    """Devuelve True si hay datos BSS importados para ese ejercicio."""
-    try:
-        h = _headers()
-        r = requests.get(
-            f"{SUPABASE_URL}/rest/v1/asientos_bss"
-            f"?user_id=eq.{user_id}&ejercicio=eq.{ejercicio}&select=id&limit=1",
-            headers=h, timeout=10
-        )
-        return r.status_code == 200 and bool(r.json())
-    except Exception:
-        return False
-
-
-def guardar_modo_contable(user_id, modo):
-    """Actualiza modo_contable en user_profiles: 'manual' | 'bss_a3' | 'bss_holded'"""
-    try:
-        h = _headers()
-        r = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/user_profiles?user_id=eq.{user_id}",
-            headers={**h, "Prefer": "return=minimal"},
-            json={"modo_contable": modo}, timeout=10
-        )
-        return r.status_code in (200, 204)
-    except Exception:
-        return False
-
-
-# ================================================================
-# CASHFLOW PROGRAMADO
-# Gastos e ingresos variables en meses concretos
-# ================================================================
-
-def leer_cashflow_programado(user_id: str, inmueble: str = None,
-                              mes: int = None, anio: int = None) -> pd.DataFrame:
-    """
-    Lee los eventos de cashflow programado del usuario.
-    - inmueble: filtra por inmueble (None = todos)
-    - mes:      filtra por mes 1-12 (None = todos)
-    - anio:     filtra por año concreto (None = todos)
-    """
-    if not _validar_user_id(user_id, "leer_cashflow_programado"):
-        return pd.DataFrame()
-    try:
-        url = f"{SUPABASE_URL}/rest/v1/cashflow_programado?user_id=eq.{user_id}&select=*&order=mes.asc,anio.asc"
-        if inmueble:
-            url += f"&inmueble=eq.{requests.utils.quote(inmueble)}"
-        if mes:
-            url += f"&mes=eq.{mes}"
-        if anio:
-            url += f"&anio=eq.{anio}"
-        r = requests.get(url, headers=_headers(), timeout=10)
-        if r.status_code == 200 and r.json():
-            return pd.DataFrame(r.json())
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
-
-def crear_cashflow_programado(user_id: str, datos: dict) -> dict:
-    """
-    Crea un nuevo evento de cashflow programado.
-    datos debe contener: tipo, categoria, descripcion, importe, mes,
-                         recurrencia, inmueble (opcional), anio (opcional)
-    Devuelve: {'ok': True, 'id': uuid} o {'ok': False, 'error': ...}
-    """
-    if not _validar_user_id(user_id, "crear_cashflow_programado"):
-        return {"ok": False, "error": "user_id inválido"}
-    try:
-        payload = {
-            "user_id": user_id,
-            "tipo":        datos.get("tipo"),
-            "categoria":   datos.get("categoria", "otro"),
-            "descripcion": datos.get("descripcion", ""),
-            "importe":     float(datos.get("importe", 0)),
-            "mes":         int(datos.get("mes")),
-            "anio":        datos.get("anio"),           # None si es anual
-            "recurrencia": datos.get("recurrencia", "unico"),
-            "estado":      "programado",
-            "inmueble":    datos.get("inmueble"),       # None si es cartera general
-            "notas":       datos.get("notas", ""),
-        }
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/cashflow_programado",
-            headers={**_headers(), "Prefer": "return=representation"},
-            json=payload, timeout=10
-        )
-        if r.status_code in (200, 201):
-            nuevo = r.json()
-            return {"ok": True, "id": nuevo[0]["id"] if isinstance(nuevo, list) else nuevo.get("id")}
-        return {"ok": False, "error": f"{r.status_code}: {r.text[:200]}"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-def actualizar_cashflow_programado(evento_id: str, user_id: str, datos: dict) -> bool:
-    """
-    Actualiza un evento existente. Solo los campos presentes en datos se modifican.
-    Campos actualizables: tipo, categoria, descripcion, importe, mes, anio,
-                          recurrencia, estado, inmueble, movimiento_id, notas
-    """
-    if not _validar_user_id(user_id, "actualizar_cashflow_programado"):
-        return False
-    campos_validos = {"tipo", "categoria", "descripcion", "importe", "mes",
-                      "anio", "recurrencia", "estado", "inmueble", "movimiento_id", "notas"}
-    payload = {k: v for k, v in datos.items() if k in campos_validos}
-    if not payload:
-        return False
-    try:
-        r = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/cashflow_programado?id=eq.{evento_id}&user_id=eq.{user_id}",
-            headers={**_headers(), "Prefer": "return=minimal"},
-            json=payload, timeout=10
-        )
-        return r.status_code in (200, 204)
-    except Exception:
-        return False
-
-
-def eliminar_cashflow_programado(evento_id: str, user_id: str) -> bool:
-    """Elimina un evento de cashflow programado por su id."""
-    if not _validar_user_id(user_id, "eliminar_cashflow_programado"):
-        return False
-    try:
-        r = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/cashflow_programado?id=eq.{evento_id}&user_id=eq.{user_id}",
-            headers=_headers(), timeout=10
-        )
-        return r.status_code in (200, 204)
-    except Exception:
-        return False
-
-
-def realizar_evento_cashflow(evento_id: str, user_id: str, movimiento_id: int) -> bool:
-    """
-    Marca un evento como 'realizado' y lo linkea al movimiento del diario.
-    Usar tras registrar el pago en movimientos.
-    """
-    return actualizar_cashflow_programado(evento_id, user_id, {
-        "estado": "realizado",
-        "movimiento_id": movimiento_id,
-    })
-
-
-# ================================================================
-# FACTURAS RECIBIDAS
-# Facturas de gasto (deducibles) y recibos de ingreso (alquileres)
-# ================================================================
-
-def leer_facturas_recibidas(user_id: str, inmueble: str = None,
-                             ejercicio: int = None, trimestre: int = None,
-                             tipo: str = None) -> pd.DataFrame:
-    """
-    Lee las facturas recibidas del usuario con filtros opcionales.
-    - inmueble:   nombre del inmueble (None = todos)
-    - ejercicio:  año fiscal, ej. 2025 (None = todos)
-    - trimestre:  1-4 (None = todos)
-    - tipo:       'gasto' | 'ingreso' (None = ambos)
-    """
-    if not _validar_user_id(user_id, "leer_facturas_recibidas"):
-        return pd.DataFrame()
-    try:
-        url = (f"{SUPABASE_URL}/rest/v1/facturas_recibidas"
-               f"?user_id=eq.{user_id}&select=*&order=fecha.desc")
-        if inmueble:
-            url += f"&inmueble=eq.{requests.utils.quote(inmueble)}"
-        if ejercicio:
-            url += f"&ejercicio=eq.{ejercicio}"
-        if trimestre:
-            url += f"&trimestre=eq.{trimestre}"
-        if tipo:
-            url += f"&tipo=eq.{tipo}"
-        r = requests.get(url, headers=_headers(), timeout=10)
-        if r.status_code == 200 and r.json():
-            return pd.DataFrame(r.json())
-        return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
-
-def crear_factura_recibida(user_id: str, datos: dict) -> dict:
-    """
-    Registra una nueva factura recibida (gasto o ingreso).
-    datos debe contener: tipo, categoria, fecha, ejercicio, importe, importe_total
-    Opcionales: inmueble, proveedor, concepto, iva, movimiento_id,
-                archivo_ruta, archivo_nombre, interpretado_ia, notas
-    Devuelve: {'ok': True, 'id': uuid} o {'ok': False, 'error': ...}
-    """
-    if not _validar_user_id(user_id, "crear_factura_recibida"):
-        return {"ok": False, "error": "user_id inválido"}
-    try:
-        payload = {
-            "user_id":         user_id,
-            "tipo":            datos.get("tipo"),
-            "categoria":       datos.get("categoria", "otro"),
-            "fecha":           str(datos.get("fecha")),
-            "ejercicio":       int(datos.get("ejercicio")),
-            "inmueble":        datos.get("inmueble"),
-            "movimiento_id":   datos.get("movimiento_id"),
-            "proveedor":       datos.get("proveedor", ""),
-            "concepto":        datos.get("concepto", ""),
-            "importe":         float(datos.get("importe", 0)),
-            "iva":             float(datos.get("iva", 0)),
-            "importe_total":   float(datos.get("importe_total") or datos.get("importe", 0)),
-            "archivo_ruta":    datos.get("archivo_ruta"),
-            "archivo_nombre":  datos.get("archivo_nombre"),
-            "interpretado_ia": bool(datos.get("interpretado_ia", False)),
-            "notas":           datos.get("notas", ""),
-        }
-        r = requests.post(
-            f"{SUPABASE_URL}/rest/v1/facturas_recibidas",
-            headers={**_headers(), "Prefer": "return=representation"},
-            json=payload, timeout=10
-        )
-        if r.status_code in (200, 201):
-            nuevo = r.json()
-            return {"ok": True, "id": nuevo[0]["id"] if isinstance(nuevo, list) else nuevo.get("id")}
-        return {"ok": False, "error": f"{r.status_code}: {r.text[:200]}"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-def actualizar_factura_recibida(factura_id: str, user_id: str, datos: dict) -> bool:
-    """
-    Actualiza campos de una factura recibida existente.
-    Útil para corregir datos tras la interpretación IA o linkar un movimiento.
-    """
-    if not _validar_user_id(user_id, "actualizar_factura_recibida"):
-        return False
-    campos_validos = {"tipo", "categoria", "fecha", "ejercicio", "inmueble",
-                      "movimiento_id", "proveedor", "concepto", "importe",
-                      "iva", "importe_total", "archivo_ruta", "archivo_nombre",
-                      "interpretado_ia", "notas"}
-    payload = {k: v for k, v in datos.items() if k in campos_validos}
-    if not payload:
-        return False
-    try:
-        r = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/facturas_recibidas?id=eq.{factura_id}&user_id=eq.{user_id}",
-            headers={**_headers(), "Prefer": "return=minimal"},
-            json=payload, timeout=10
-        )
-        return r.status_code in (200, 204)
-    except Exception:
-        return False
-
-
-def eliminar_factura_recibida(factura_id: str, user_id: str,
-                               archivo_ruta: str = None) -> bool:
-    """
-    Elimina una factura recibida. Si tiene archivo, lo borra también de Storage.
-    """
-    if not _validar_user_id(user_id, "eliminar_factura_recibida"):
-        return False
-    try:
-        # 1. Borrar archivo de Storage si existe
-        if archivo_ruta:
-            h = {
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-                "Content-Type": "application/json",
+            {
+                "label": "Balance Real",
+                "value": f"{balance_real:,.0f} €",
+                "color": ACCENT,
+                "subtitle": f"Margen {margen_real:.0f}%"
             }
-            requests.delete(
-                f"{SUPABASE_URL}/storage/v1/object/facturas/{archivo_ruta}",
-                headers=h, timeout=10
-            )
-        # 2. Borrar registro de la tabla
-        r = requests.delete(
-            f"{SUPABASE_URL}/rest/v1/facturas_recibidas?id=eq.{factura_id}&user_id=eq.{user_id}",
-            headers=_headers(), timeout=10
-        )
-        return r.status_code in (200, 204)
-    except Exception:
-        return False
+        ])
+
+    nombre_mes = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][mes_actual-1]
+    def _color_desv(val, invertido=False):
+        if invertido: return GREEN if val<=0 else RED
+        return GREEN if val>=0 else RED
+    def _flecha(val, invertido=False):
+        if invertido: return "▼" if val<=0 else "▲"
+        return "▲" if val>=0 else "▼"
+    def _barra(pct, color):
+        return f'<div style="height:5px;background:#D0DFF0;border-radius:4px;overflow:hidden;margin:4px 0 2px 0;"><div style="width:{pct}%;height:100%;background:{color};border-radius:4px;"></div></div>'
+
+    _titulo_panel_mes = f"Previsión vs Real — {nombre_mes} {anio_actual}"
+    if _es_sociedad_tc:
+        _titulo_panel_mes += " · IS 25%"
+    st.markdown(f'<div class="nc-section-title">{_titulo_panel_mes}</div>', unsafe_allow_html=True)
+    p1, p2, p3 = st.columns(3)
+    p1.markdown(f"""<div class="nc-kpi"><div class="nc-kpi__label">Ingresos {nombre_mes}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;"><div class="nc-kpi__value" style="color:{GREEN};font-size:1.5rem;">{ing_mes_real:,.0f} €</div><div style="font-size:0.8rem;color:{TEXT_SEC};">de {ing_previsto:,.0f} €</div></div>
+      {_barra(ing_pct,GREEN)}<div style="display:flex;justify-content:space-between;"><span style="font-size:0.7rem;color:{TEXT_SEC};">{ing_pct}% completado</span><span style="font-size:0.78rem;font-weight:600;color:{_color_desv(ing_desv)};">{_flecha(ing_desv)} {abs(ing_desv):,.0f} €</span></div></div>""", unsafe_allow_html=True)
+    p2.markdown(f"""<div class="nc-kpi"><div class="nc-kpi__label">Gastos {nombre_mes}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;"><div class="nc-kpi__value" style="color:{RED};font-size:1.5rem;">{gas_mes_real:,.0f} €</div><div style="font-size:0.8rem;color:{TEXT_SEC};">de {gas_previsto:,.0f} €</div></div>
+      {_barra(gas_pct,RED)}<div style="display:flex;justify-content:space-between;"><span style="font-size:0.7rem;color:{TEXT_SEC};">{gas_pct}% ejecutado</span><span style="font-size:0.78rem;font-weight:600;color:{_color_desv(gas_desv,invertido=True)};">{_flecha(gas_desv,invertido=True)} {abs(gas_desv):,.0f} €</span></div></div>""", unsafe_allow_html=True)
+    p3.markdown(f"""<div class="nc-kpi" style="border-left:3px solid {ACCENT};"><div class="nc-kpi__label">Balance {nombre_mes}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;"><div class="nc-kpi__value" style="color:{ACCENT};font-size:1.5rem;">{bal_mes_real:,.0f} €</div><div style="font-size:0.8rem;color:{TEXT_SEC};">de {bal_previsto:,.0f} €</div></div>
+      {_barra(bal_pct,ACCENT)}<div style="display:flex;justify-content:space-between;"><span style="font-size:0.7rem;color:{TEXT_SEC};">{bal_pct}% del objetivo</span><span style="font-size:0.78rem;font-weight:600;color:{_color_desv(bal_desv)};">{_flecha(bal_desv)} {abs(bal_desv):,.0f} €</span></div></div>""", unsafe_allow_html=True)
+
+    # Tarjetas casita
+    # ── KPIs Patrimoniales de Cartera ────────────────────────────
+    st.markdown('<div class="nc-section-title">🏛️ Cartera Patrimonial</div>', unsafe_allow_html=True)
+
+    _val_cat_total  = df_inm["Valor_Catastral"].apply(lambda x: safe_float(x)).sum()
+    _inv_total      = (df_inm["Precio_Compra"].apply(lambda x: safe_float(x)) +
+                       df_inm["Impuestos_Compra"].apply(lambda x: safe_float(x)) +
+                       df_inm["Gastos_Compra"].apply(lambda x: safe_float(x))).sum()
+    _m2_total       = df_inm["M2_Construidos"].apply(lambda x: safe_float(x)).sum()
+    _n_activos      = len(df_inm)
+    _renta_prevista = df_inm["Renta"].apply(lambda x: safe_float(x)).sum() * 12
+    _deuda_tc       = 0
+    _df_hip_pat     = st.session_state.get("df_hip", pd.DataFrame())
+    if not _df_hip_pat.empty:
+        for _, _hrow in _df_hip_pat.iterrows():
+            _sal = safe_float(_hrow.get("Saldo_Actual", 0))
+            _pri = safe_float(_hrow.get("Principal", 0))
+            # Usar Saldo_Actual si existe, si no usar Principal como proxy
+            _deuda_tc += _sal if _sal > 0 else _pri
+
+    if _es_sociedad_tc:
+        # Modo IS — énfasis en LTV, amortización y base fiscal
+        _amort_total = df_inm["Amortizacion_Fiscal"].apply(lambda x: safe_float(x)).sum()
+        _ltv_pat     = round(_deuda_tc / _val_cat_total * 100, 1) if _val_cat_total > 0 else 0
+        _ltv_col     = "#DC2626" if _ltv_pat > 70 else "#D97706" if _ltv_pat > 50 else "#059669"
+        render_kpi_row([
+            {"label": "🏛️ Valor catastral total",
+             "value": f"{_val_cat_total:,.0f} €",
+             "color": "#185FA5",
+             "subtitle": f"Base amortización IS · {_n_activos} activos"},
+            {"label": "💰 Inversión total cartera",
+             "value": f"{_inv_total:,.0f} €" if _inv_total > 0 else "Sin datos",
+             "color": "#185FA5",
+             "subtitle": "Precio compra + impuestos + gastos"},
+            {"label": "📐 Superficie total",
+             "value": f"{_m2_total:,.0f} m²",
+             "color": "#475569",
+             "subtitle": f"Media {_m2_total/_n_activos:.0f} m²/activo" if _n_activos > 0 else ""},
+            {"label": f"LTV cartera {'⚠️' if _ltv_pat > 70 else ''}",
+             "value": f"{_ltv_pat:.1f}%" if _ltv_pat > 0 else "Sin deuda",
+             "color": _ltv_col,
+             "subtitle": f"Deuda {_deuda_tc:,.0f}€ / Val. catastral"},
+        ])
+    else:
+        # Modo IRPF — énfasis en inversión y rentabilidad
+        _yield_bruto = round(_renta_prevista / _inv_total * 100, 1) if _inv_total > 0 else 0
+        render_kpi_row([
+            {"label": "🏛️ Valor catastral total",
+             "value": f"{_val_cat_total:,.0f} €" if _val_cat_total > 0 else "Sin datos",
+             "color": "#185FA5",
+             "subtitle": f"{_n_activos} activos en cartera"},
+            {"label": "💰 Inversión total cartera",
+             "value": f"{_inv_total:,.0f} €" if _inv_total > 0 else "Sin datos",
+             "color": "#185FA5",
+             "subtitle": "Precio compra + impuestos + gastos"},
+            {"label": "📐 Superficie total",
+             "value": f"{_m2_total:,.0f} m²",
+             "color": "#475569",
+             "subtitle": f"Media {_m2_total/_n_activos:.0f} m²/activo" if _n_activos > 0 else ""},
+            {"label": "📈 Yield bruto cartera",
+             "value": f"{_yield_bruto:.1f}%" if _yield_bruto > 0 else "Sin datos",
+             "color": "#059669" if _yield_bruto > 5 else "#D97706",
+             "subtitle": f"Renta anual {_renta_prevista:,.0f}€ / inversión"},
+        ])
+    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+
+    # ── Salud de la Cartera ──────────────────────────────────────
+    st.markdown('<div class="nc-section-title">🏥 Salud de la Cartera</div>', unsafe_allow_html=True)
+    _df_hip_tc2 = st.session_state.get("df_hip", pd.DataFrame())
+    _n_inm_sc   = min(len(df_inm), 4)
+    if _n_inm_sc > 0:
+        _cols_sc = st.columns(_n_inm_sc)
+        for _idx_sc, (_, _row_sc) in enumerate(df_inm.head(_n_inm_sc).iterrows()):
+            _sd_sc = calcular_score_salud(_row_sc, df_mov,
+                                           tipo_cuenta=_perfil_tc.get("tipo_cuenta","particular"),
+                                           df_hip=_df_hip_tc2)
+            with _cols_sc[_idx_sc]:
+                _primera_alerta = _sd_sc["alertas"][0][:35] + "..." if _sd_sc["alertas"] else ""
+                st.markdown(
+                    f'<div style="background:#fff;border-radius:12px;padding:14px;' +
+                    f'border:2px solid {_sd_sc["color"]};text-align:center;margin-bottom:8px;">' +
+                    f'<div style="font-size:10px;color:#94A3B8;font-weight:700;' +
+                    f'text-transform:uppercase;margin-bottom:4px;white-space:nowrap;' +
+                    f'overflow:hidden;text-overflow:ellipsis;">{str(_row_sc.get("Nombre",""))[:18]}</div>' +
+                    f'<div style="font-size:2.2rem;font-weight:900;color:{_sd_sc["color"]};line-height:1;">' +
+                    f'{_sd_sc["score"]:.1f}</div>' +
+                    f'<div style="font-size:11px;color:{_sd_sc["color"]};font-weight:600;margin-top:3px;">' +
+                    f'{_sd_sc["etiq"]}</div>' +
+                    (f'<div style="font-size:9px;color:#DC2626;margin-top:4px;">{_primera_alerta}</div>' if _primera_alerta else "") +
+                    f'</div>', unsafe_allow_html=True)
+    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+
+    _titulo_activos = "Rentabilidad por Activo IS — [399] Resultado por inmueble" if _es_sociedad_tc else "Rentabilidad por Activo"
+    st.markdown(f'<div class="nc-section-title">{_titulo_activos}</div>', unsafe_allow_html=True)
+    def _roof_color(row):
+        texto = str(row.get("Nombre","")).lower()+" "+str(row.get("Tipo",row.get("Tipo_Arrendamiento",""))).lower()
+        if any(x in texto for x in ["nave","industrial","almacen","almacén","taller","fabrica","fábrica"]): return "#374151","Nave Industrial"
+        if any(x in texto for x in ["despacho","oficina","comercial","local","salón","salon","coworking"]): return "#185FA5","Despacho/Local"
+        if any(x in texto for x in ["casa","chalet","adosado","unifamiliar","abarqueros","villa","cortijo","finca"]): return "#6B2737","Casa"
+        if any(x in texto for x in ["cochera","garaje","parking","trastero"]): return "#4A5568","Garaje"
+        if any(x in texto for x in ["estudio","loft","ático","atico"]): return "#6D4C9E","Estudio"
+        if any(x in texto for x in ["piso","apartamento","huerto","campus","cadiz","gojar","rosario"]): return "#B8924A","Piso"
+        return "#B8924A","Inmueble"
+
+    st.markdown("""<style>
+    .casita-body{background:var(--background-color,#fff);border:0.5px solid rgba(0,0,0,0.1);border-top:none;border-radius:0 0 12px 12px;padding:12px 12px 10px;box-sizing:border-box;}
+    .c-name{font-size:13px;font-weight:600;margin:0 0 2px;line-height:1.3;} .c-tenant{font-size:11px;color:#888;margin:0 0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .c-row{display:flex;justify-content:space-between;margin-bottom:4px;} .c-lbl{font-size:11px;color:#888;} .c-div{height:0.5px;background:rgba(0,0,0,0.08);margin:7px 0;}
+    .c-pill{border-radius:6px;padding:3px 8px;text-align:center;font-size:11px;margin:8px 0 10px;display:block;}
+    .c-pos{color:#1a7a40;font-size:12px;font-weight:600;} .c-neg{color:#a32d2d;font-size:12px;font-weight:600;} .c-neu{font-size:13px;font-weight:600;}
+    .pill-pos{background:#eaf3de;color:#3b6d11;} .pill-neg{background:#ffebeb;color:#a32d2d;} .pill-neu{background:#f4f4f4;color:#666;}
+    </style>""", unsafe_allow_html=True)
+
+    MAX_COLS = 4
+    inmuebles_list = list(df_inm.iterrows())
+    for fila_start in range(0, len(inmuebles_list), MAX_COLS):
+        fila_rows = inmuebles_list[fila_start:fila_start+MAX_COLS]
+        cols = st.columns(MAX_COLS)
+        for col_idx, (i, row) in enumerate(fila_rows):
+            g_esp    = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
+            comunidad= safe_float(row.get("Comunidad",0)) if pd.notna(row.get("Comunidad",0)) else 0
+            gastos_u = comunidad + g_esp
+            neto_u   = safe_float(row.get("Renta",0)) - gastos_u
+            rm       = tasacion(row)
+            desv     = (safe_float(row.get("Renta",0))-rm)/rm*100 if rm else 0
+            zt       = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
+            roof_col, tipo_label = _roof_color(row)
+            if desv>5:   pill_cls,desv_txt="pill-pos",f"+{desv:.1f}% mercado"
+            elif desv<-5: pill_cls,desv_txt="pill-neg",f"{desv:.1f}% mercado"
+            else:         pill_cls,desv_txt="pill-neu",f"{desv:+.1f}% mercado"
+            neto_col = "#1a7a40" if neto_u>=0 else "#a32d2d"
+            with cols[col_idx]:
+                st.markdown(f"""<svg viewBox="0 0 200 52" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-bottom:-1px;" preserveAspectRatio="none">
+                  <polygon points="100,4 196,52 4,52" fill="{roof_col}"/>
+                  <text x="100" y="40" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="white" opacity="0.95">{tipo_label}</text>
+                  <text x="100" y="20" text-anchor="middle" font-family="sans-serif" font-size="13" fill="white" opacity="0.6">⌂</text>
+                </svg>
+                <div class="casita-body">
+                  <p class="c-name">{row["Nombre"]}{zt}</p>
+                  <p class="c-tenant">{row.get("Inquilino","—")}</p>
+                  <div class="c-row"><span class="c-lbl">Renta</span><span class="c-pos">+{safe_float(row.get("Renta",0)):,.0f}€</span></div>
+                  <div class="c-row"><span class="c-lbl">Gastos</span><span class="c-neg">−{gastos_u:,.0f}€</span></div>
+                  <div class="c-div"></div>
+                  <div class="c-row"><span class="c-lbl">Neto</span><span class="c-neu" style="color:{neto_col};">{neto_u:,.0f}€</span></div>
+                  <span class="c-pill {pill_cls}">{desv_txt}</span>
+                </div>""", unsafe_allow_html=True)
+                if st.button("→ Ver ficha", key=f"card_{fila_start}_{col_idx}", use_container_width=True):
+                    st.session_state.menu="Fichas (Benchmark)"; st.session_state.ficha_sel=row["Nombre"]; st.rerun()
+
+    col_l, col_r = st.columns(2)
+    with col_l:
+        st.markdown('<div class="nc-section-title">Composición de Rentas</div>', unsafe_allow_html=True)
+        fig = go.Figure(go.Bar(x=df_inm["Renta"],y=df_inm["Nombre"],orientation="h",marker_color=COLOR_TOPS[:len(df_inm)],text=[f"{r:,.0f} €" for r in df_inm["Renta"]],textposition="outside"))
+        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=60,t=10,b=10),height=280,xaxis=dict(showgrid=False,visible=False),yaxis=dict(showgrid=False),font=dict(family="DM Sans",size=12))
+        st.plotly_chart(fig,use_container_width=True)
+    with col_r:
+        st.markdown('<div class="nc-section-title">Lucro Cesante Anual</div>', unsafe_allow_html=True)
+        total_lc=0
+        for _,row in df_inm.iterrows():
+            rm=tasacion(row); pa=max(0,rm-safe_float(row.get("Renta",0)))*12; total_lc+=pa
+            if pa>0:
+                dv=(safe_float(row.get("Renta",0))-rm)/rm*100 if rm else 0; cv=RED if dv<-15 else AMBER
+                st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:{CARD_BG};border:1px solid {BORDER};border-radius:8px;margin-bottom:6px;"><span style="font-size:0.8rem;color:{TEXT_SEC};">{row["Nombre"]}</span><span style="font-size:0.9rem;font-weight:600;color:{cv};">−{pa:,.0f} €/año</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:{ACCENT};border-radius:8px;margin-top:4px;"><span style="font-size:0.72rem;font-weight:500;color:#B5D4F4;text-transform:uppercase;letter-spacing:0.06em;">Total pérdida anual</span><span style="font-size:1.3rem;font-weight:600;color:#fff;">−{total_lc:,.0f} €</span></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="nc-section-title">📈 Evolución Últimos 12 Meses</div>', unsafe_allow_html=True)
+    df_mov["Fecha"] = pd.to_datetime(df_mov["Fecha"], errors="coerce")
+    df_mov_12m = df_mov[df_mov["Fecha"].notna()].copy()
+    df_mov_12m["Mes"] = df_mov_12m["Fecha"].dt.to_period("M")
+    ingresos_mes = df_mov_12m[df_mov_12m["Tipo"]=="Ingreso"].groupby("Mes")["Importe"].sum()
+    gastos_mes   = df_mov_12m[df_mov_12m["Tipo"]=="Gasto"].groupby("Mes")["Importe"].sum()
+    hoy = pd.Period(datetime.now(), freq="M")
+    meses = [hoy-i for i in range(11,-1,-1)]; meses_str=[str(m) for m in meses]
+    ing_data=[ingresos_mes.get(m,0) for m in meses]; gas_data=[gastos_mes.get(m,0) for m in meses]
+    neto_data=[i-g for i,g in zip(ing_data,gas_data)]
+    fig_hist = go.Figure()
+    fig_hist.add_trace(go.Scatter(x=meses_str,y=ing_data,mode='lines+markers',name='Ingresos',line=dict(color=GREEN,width=3),marker=dict(size=7)))
+    fig_hist.add_trace(go.Scatter(x=meses_str,y=gas_data,mode='lines+markers',name='Gastos',line=dict(color=RED,width=3),marker=dict(size=7)))
+    fig_hist.add_trace(go.Scatter(x=meses_str,y=neto_data,mode='lines+markers',name='Neto',line=dict(color=ACCENT,width=3,dash='dot'),marker=dict(size=7)))
+    fig_hist.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=40),height=280,xaxis=dict(showgrid=True,gridcolor="rgba(0,0,0,0.05)"),yaxis=dict(showgrid=True,gridcolor="rgba(0,0,0,0.05)",title="€"),font=dict(family="DM Sans",size=11),legend=dict(orientation="h",yanchor="bottom",y=1.02,xanchor="center",x=0.5),hovermode="x unified")
+    st.plotly_chart(fig_hist,use_container_width=True)
+
+    alertas = [(row["Nombre"],*alerta_vencimiento(row)) for _,row in df_inm.iterrows() if alerta_vencimiento(row)[0] in ("vencido","urgente","aviso")]
+    if alertas:
+        st.markdown('<div class="nc-section-title">📅 Alertas de Contratos</div>', unsafe_allow_html=True)
+        for nombre,tipo,msg in alertas:
+            cls = "status-red" if tipo in ("vencido","urgente") else "status-yellow"
+            st.markdown(f'<div class="{cls}" style="margin-bottom:6px;"><b>{nombre}</b> — {msg}</div>', unsafe_allow_html=True)
+
+    # ── SABIO IA — Torre de Control (activado por botón robot) ──
+    contexto_torre = {
+        "total_ingresos": total_ingresos_registrados,
+        "total_gastos": total_gastos_registrados,
+        "balance": balance_real,
+        "margen_pct": margen_real,
+        "alertas_criticas": alertas_criticas,
+        "alertas_medias": alertas_medias,
+        "num_inmuebles": len(df_inm),
+    }
+
+# ================================================================
+# PANTALLA: FICHAS (BENCHMARK)
+# Análisis de mercado, motor de tasación, simulador de renta
+# Deps: df_inm, df_mov, tasacion(), alerta_vencimiento(), safe_float()
+# ================================================================
+elif menu == "Fichas (Benchmark)":
+    if _sin_inmuebles:
+        st.info("📭 Sin inmuebles registrados. Ve a **Datos de Cartera** para añadir el primero."); st.stop()
+
+    # CSS tabs + ficha
+    st.markdown("""<style>
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px;
+        border-bottom: 2px solid #E2E8F0;
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 13px;
+        font-weight: 500;
+        padding: 8px 16px;
+        border-radius: 6px 6px 0 0;
+        color: #6B7280;
+        background: transparent;
+        border: none;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #0F2744 !important;
+        background: #F0F5FF !important;
+        border-bottom: 2px solid #185FA5 !important;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #185FA5;
+        background: #F8FAFC;
+    }
+    </style>""", unsafe_allow_html=True)
+
+    lista_inmuebles = df_inm["Nombre"].tolist()
+    default_idx = lista_inmuebles.index(st.session_state.ficha_sel) if st.session_state.ficha_sel in lista_inmuebles else 0
+    col_nav1, col_nav2, col_nav3 = st.columns([1,6,1])
+    with col_nav1:
+        if st.button("←", key="prev_inmueble", use_container_width=True, disabled=(default_idx==0)):
+            st.session_state.ficha_sel=lista_inmuebles[default_idx-1]; st.rerun()
+    with col_nav2:
+        sel = st.selectbox("Inmueble a auditar:", lista_inmuebles, index=default_idx, label_visibility="collapsed")
+        st.session_state.ficha_sel = sel
+    with col_nav3:
+        if st.button("→", key="next_inmueble", use_container_width=True, disabled=(default_idx==len(lista_inmuebles)-1)):
+            st.session_state.ficha_sel=lista_inmuebles[default_idx+1]; st.rerun()
+
+    f = df_inm[df_inm["Nombre"]==sel].iloc[0]
+    renta_act=safe_float(f.get("Renta",0)); renta_mer=tasacion(f)
+
+    # Header dinámico con nombre del inmueble
+    _tipo_inm  = str(f.get("Tipo_Arrendamiento","Larga Duración"))
+    _estado_inm = str(f.get("Estado",""))
+    st.markdown(f"""
+    <div style="margin:4px 0 16px;padding:16px 20px;background:#0F2744;border-radius:12px;
+                display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-size:20px;font-weight:600;color:#E6F1FB;">{sel}</div>
+        <div style="font-size:13px;color:#B5D4F4;margin-top:3px;">
+          {_tipo_inm} · {_estado_inm} · {str(f.get("CP",""))}
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:24px;font-weight:600;color:#E6F1FB;">{renta_act:,.0f} €<span style="font-size:13px;font-weight:400;color:#B5D4F4;">/mes</span></div>
+      </div>
+    </div>""", unsafe_allow_html=True)
+    desv=(renta_act-renta_mer)/renta_mer*100 if renta_mer else 0
+    perdida_m=max(0,renta_mer-renta_act); perdida_a=perdida_m*12
+    df_gf=df_mov[(df_mov["Apartamento"]==sel)&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]
+    gastos_u=(safe_float(f.get("Comunidad",0)) if pd.notna(f.get("Comunidad",0)) else 0)+df_gf["Importe"].sum()
+    rent_bruta=(renta_act*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
+    rent_neta=((renta_act-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
+    tipo_arr=str(f.get("Tipo_Arrendamiento","Larga Duración")); zona_tens=str(f.get("Zona_Tensionada","N"))=="S"; cochera_v=str(f.get("Cochera_Vinculada","N"))=="S"
+
+    # ── 5 TABS ──────────────────────────────────────────────────
+    _ft1,_ft2,_ft3,_ft4,_ft5 = st.tabs([
+        "📊 Resumen","💰 Ingresos","📉 Gastos","🧾 Facturas","📅 Programado"
+    ])
+
+    with _ft1:
+
+        # ── SCORE DE SALUD ───────────────────────────────────────────
+        _perfil_fic   = st.session_state.get("perfil_datos", {})
+        _es_soc_fic   = _perfil_fic.get("tipo_cuenta","particular") == "sociedad"
+        _df_hip_score = st.session_state.get("df_hip", pd.DataFrame())
+        _sd = calcular_score_salud(f, df_mov, tipo_cuenta=_perfil_fic.get("tipo_cuenta","particular"), df_hip=_df_hip_score)
+
+        # KPIs de Fichas — nuevo estilo grande y prominente
+        st.markdown('<div style="margin:12px 0 8px;"></div>', unsafe_allow_html=True)
+
+        # ── KPIs IS si es sociedad ────────────────────────────────────
+
+        if _es_soc_fic:
+            # Calcular KPIs IS de este inmueble
+            _renta_anual_fic   = renta_act * 12
+            _ibi_fic     = safe_float(f.get("IBI_Anual", 0))
+            _seguro_fic  = safe_float(f.get("Seguro_Anual", 0))
+            _com_fic     = safe_float(f.get("Comunidad", 0)) * 12
+            _int_fic     = safe_float(f.get("Intereses_Hipoteca", 0))
+            _amort_fic   = safe_float(f.get("Amortizacion_Fiscal", 0))
+            _rep_fic     = df_gf["Importe"].sum()
+            _gas_op_fic  = _ibi_fic + _seguro_fic + _com_fic + _rep_fic  # operativos excl. intereses y amort
+            _gas_tot_fic = _gas_op_fic + _int_fic + _amort_fic
+            _ebitda_fic  = _renta_anual_fic - _gas_op_fic
+            _resultado_fic = _renta_anual_fic - _gas_tot_fic
+            _is_fic      = round(max(_resultado_fic * 0.25, 0), 0)
+            # ROI
+            _precio_fic  = safe_float(f.get("Precio_Compra", 0)) + safe_float(f.get("Impuestos_Compra", 0)) + safe_float(f.get("Gastos_Compra", 0))
+            _roi_fic     = round(_resultado_fic / _precio_fic * 100, 1) if _precio_fic > 0 else 0
+            # Cobertura hipoteca: renta anual / cuota anual
+            _df_hip_fic  = st.session_state.get("df_hip", pd.DataFrame())
+            _cuota_fic   = 0
+            if not _df_hip_fic.empty:
+                _match = _df_hip_fic[_df_hip_fic["Inmueble"].str.lower()==str(sel).lower()]
+                if not _match.empty:
+                    _hrow   = _match.iloc[0]
+                    _p_h    = safe_float(_hrow.get("Principal", 0))
+                    _r_h    = safe_float(_hrow.get("Tasa_Inicial", 0)) / 100 / 12
+                    _n_h    = int(safe_float(_hrow.get("Plazo_Años", 20))) * 12
+                    if _r_h > 0 and _n_h > 0:
+                        _cuota_fic = _p_h * (_r_h*(1+_r_h)**_n_h) / ((1+_r_h)**_n_h-1) * 12
+                    elif _n_h > 0:
+                        _cuota_fic = _p_h / _n_h * 12
+            _cobertura_fic = round(_renta_anual_fic / _cuota_fic, 2) if _cuota_fic > 0 else 0
+            _cob_color = RED if 0 < _cobertura_fic < 1.20 else GREEN if _cobertura_fic >= 1.20 else AMBER
+
+            # Badge IS
+            st.markdown(
+                '<div style="display:inline-block;background:#0d1a0d;border:1px solid #059669;'
+                'border-radius:6px;padding:4px 12px;font-size:12px;color:#059669;margin-bottom:10px;">'
+                '🏢 Modo IS · Sociedad Patrimonial · 25%</div>',
+                unsafe_allow_html=True)
+
+            render_kpi_row([
+                {"label": "EBITDA del activo",
+                 "value": f"{_ebitda_fic:,.0f} €",
+                 "color": GREEN if _ebitda_fic >= 0 else RED,
+                 "subtitle": "Renta − gastos operativos"},
+                {"label": "IS estimado 25%",
+                 "value": f"−{_is_fic:,.0f} €",
+                 "color": RED,
+                 "subtitle": "[562] Cuota IS orientativa"},
+                {"label": "ROI del activo",
+                 "value": f"{_roi_fic:.1f}%" if _precio_fic > 0 else "Sin precio",
+                 "color": GREEN if _roi_fic > 5 else AMBER,
+                 "subtitle": "Resultado / inversión"},
+                {"label": f"Cobertura hipoteca {'✅' if _cobertura_fic >= 1.20 else '⚠️' if _cobertura_fic > 0 else ''}",
+                 "value": f"{_cobertura_fic:.2f}×" if _cobertura_fic > 0 else "Sin hipoteca",
+                 "color": _cob_color,
+                 "subtitle": "Renta anual / cuota anual"},
+            ])
+            st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+
+        render_kpi_row([
+            {
+                "label": "Renta Actual",
+                "value": f"{renta_act:,.0f} €",
+                "color": GREEN,
+                "subtitle": "mensual"
+            },
+            {
+                "label": "Renta Tasada",
+                "value": f"{renta_mer:,.0f} €",
+                "color": "#9CA3AF",
+                "subtitle": "motor CP + características"
+            },
+            {
+                "label": "Rentabilidad Bruta",
+                "value": f"{rent_bruta:.1f}%",
+                "color": ACCENT,
+                "subtitle": "sobre valor construcción"
+            },
+            {
+                "label": "Rentabilidad Neta",
+                "value": f"{rent_neta:.1f}%",
+                "color": ACCENT,
+                "subtitle": tipo_arr
+            }
+        ])
+
+        badges=[]
+        if zona_tens: badges.append('<span style="background:#FDECEA;color:#A32D2D;font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">🔒 Zona Tensionada</span>')
+        if cochera_v: badges.append('<span style="background:#EDF7F1;color:#1a7a40;font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">🅿️ Cochera Vinculada</span>')
+        tipo_color={"Larga Duración":"#EAF3DE","Temporada":"#FFF9E6","Vacacional":"#FDECEA"}.get(tipo_arr,"#EAF3DE")
+        tipo_texto={"Larga Duración":"#3B6D11","Temporada":"#854F0B","Vacacional":"#A32D2D"}.get(tipo_arr,"#3B6D11")
+        badges.append(f'<span style="background:{tipo_color};color:{tipo_texto};font-size:0.72rem;padding:3px 10px;border-radius:20px;font-weight:600;">📋 {tipo_arr}</span>')
+        st.markdown("<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem;'>"+"".join(badges)+"</div>",unsafe_allow_html=True)
+
+        if zona_tens: st.markdown(f'<div class="status-red" style="margin-bottom:1rem;"><b>🔒 Zona Tensionada</b><br>No puedes subir la renta por encima del índice legal.</div>',unsafe_allow_html=True)
+        if not cochera_v and str(f.get("Parking","N"))=="S": st.markdown(f'<div class="status-yellow" style="margin-bottom:1rem;"><b>🅿️ Cochera Independiente</b><br>Tributa de forma separada. Revisar en declaración IRPF.</div>',unsafe_allow_html=True)
+        tipo_v,msg_v=alerta_vencimiento(f)
+        if tipo_v:
+            cls_v="status-red" if tipo_v in ("vencido","urgente") else ("status-yellow" if tipo_v=="aviso" else "status-green")
+            st.markdown(f'<div class="{cls_v}" style="margin-bottom:1rem;"><b>📅 Contrato:</b> {msg_v}</div>',unsafe_allow_html=True)
+
+        c1,c2=st.columns(2)
+        # ── DONUT INGRESOS VS GASTOS — AÑO EN CURSO ────────────────
+        _anio_donut = datetime.now().year
+        try:
+            _df_donut = df_mov[
+                (df_mov["Apartamento"] == sel) &
+                (pd.to_datetime(df_mov["Fecha"], errors="coerce").dt.year == _anio_donut)
+            ].copy()
+            # Ingresos: facturas emitidas cobradas (búsqueda flexible por inmueble)
+            _uid_donut  = st.session_state.get("user_id", "")
+            _df_fe_don  = leer_facturas_emitidas(_uid_donut)
+            _ing_facturas_don = 0.0
+            if not _df_fe_don.empty and "inmueble" in _df_fe_don.columns:
+                try:
+                    _fcol_d = "fecha" if "fecha" in _df_fe_don.columns else "fecha_emision"
+                    _df_fe_don[_fcol_d] = pd.to_datetime(_df_fe_don[_fcol_d], errors="coerce")
+                    _sel_low = sel.lower().strip()
+                    _mask_inm = (_df_fe_don["inmueble"].str.lower().str.strip() == _sel_low)
+                    _fe_don_fil = _df_fe_don[
+                        _mask_inm &
+                        (_df_fe_don["estado"] == "cobrada") &
+                        (_df_fe_don[_fcol_d].dt.year == _anio_donut)
+                    ]
+                    _ing_facturas_don = float(_fe_don_fil["total"].sum())
+                except Exception:
+                    pass
+            _ing_mov_don = float(_df_donut[_df_donut["Tipo"]=="Ingreso"]["Importe"].sum())
+            _ing_donut   = _ing_facturas_don + _ing_mov_don
+            _gas_donut   = float(_df_donut[_df_donut["Tipo"]=="Gasto"]["Importe"].sum())
+            _neto_donut = _ing_donut - _gas_donut
+            _neto_color = GREEN if _neto_donut >= 0 else RED
+            _d1, _d2 = st.columns([1, 1])
+            with _d1:
+                st.markdown(f'<div class="nc-section-title">💰 {_anio_donut} — Ingresos vs Gastos</div>', unsafe_allow_html=True)
+                if _ing_donut > 0 or _gas_donut > 0:
+                    _fig_donut = go.Figure(go.Pie(
+                        values=[max(_ing_donut, 0.01), max(_gas_donut, 0.01)],
+                        labels=["Ingresos", "Gastos"],
+                        hole=0.62,
+                        marker_colors=[ACCENT, RED],
+                        textinfo="label+percent",
+                        hovertemplate="%{label}: %{value:,.0f} €<extra></extra>",
+                    ))
+                    _fig_donut.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(l=0, r=0, t=10, b=10),
+                        height=230,
+                        showlegend=False,
+                        annotations=[{"text": f"<b>{_neto_donut:,.0f}€</b><br>neto",
+                                       "x": 0.5, "y": 0.5, "font_size": 14,
+                                       "font_color": _neto_color, "showarrow": False}]
+                    )
+                    st.plotly_chart(_fig_donut, use_container_width=True)
+                else:
+                    st.caption(f"Sin movimientos en {_anio_donut}.")
+            with _d2:
+                st.markdown('<div class="nc-section-title">&nbsp;</div>', unsafe_allow_html=True)
+                _card_ing = f'<div style="background:#EAF3DE;border-radius:10px;padding:14px 18px;margin-bottom:10px;"><div style="font-size:11px;color:#3B6D11;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Ingresos {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:#185FA5;">{_ing_donut:,.0f} €</div></div>'
+                _card_gas = f'<div style="background:#FDECEA;border-radius:10px;padding:14px 18px;margin-bottom:10px;"><div style="font-size:11px;color:#A32D2D;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Gastos {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:{RED};">{_gas_donut:,.0f} €</div></div>'
+                _bg_neto  = '#EAF3DE' if _neto_donut >= 0 else '#FDECEA'
+                _card_net = f'<div style="background:{_bg_neto};border-radius:10px;padding:14px 18px;border:2px solid {_neto_color};"><div style="font-size:11px;color:{_neto_color};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Beneficio neto {_anio_donut}</div><div style="font-size:22px;font-weight:700;color:{_neto_color};">{_neto_donut:+,.0f} €</div></div>'
+                st.markdown(_card_ing + _card_gas + _card_net, unsafe_allow_html=True)
+        except Exception:
+            st.caption("Sin datos para el gráfico.")
 
 
-def subir_archivo_factura_recibida(user_id: str, factura_id: str,
-                                    archivo_bytes: bytes,
-                                    extension: str = "pdf") -> dict:
-    """
-    Sube el archivo de una factura recibida a Supabase Storage.
-    Ruta: facturas/{user_id}/recibidas/{factura_id}.{ext}
-    Devuelve: {'ok': True, 'ruta': ..., 'url': ...} o {'ok': False, 'error': ...}
-    """
-    if not _validar_user_id(user_id, "subir_archivo_factura_recibida"):
-        return {"ok": False, "error": "user_id inválido"}
-    try:
-        ruta = f"{user_id}/recibidas/{factura_id}.{extension}"
-        content_type = "application/pdf" if extension == "pdf" else f"image/{extension}"
-        h_storage = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-            "Content-Type": content_type,
-            "x-upsert": "true",
-        }
-        r_upload = requests.post(
-            f"{SUPABASE_URL}/storage/v1/object/facturas/{ruta}",
-            headers=h_storage, data=archivo_bytes, timeout=30
-        )
-        if r_upload.status_code not in (200, 201):
-            return {"ok": False, "error": f"Storage {r_upload.status_code}: {r_upload.text[:200]}"}
+        # ── 5 TABS ──────────────────────────────────────────────────
+            _col_sc, _col_al = st.columns([1, 2])
+            with _col_sc:
+                st.markdown(
+                    f'<div style="background:#fff;border-radius:12px;padding:16px 18px;' +
+                    f'border:2px solid {_sd["color"]};box-shadow:0 2px 8px rgba(0,0,0,0.07);' +
+                    f'margin-bottom:10px;">' +
+                    f'<div style="font-size:10px;font-weight:700;color:#94A3B8;' +
+                    f'text-transform:uppercase;margin-bottom:6px;">Score Salud Activo</div>' +
+                    render_score_badge(_sd, size="large") +
+                    f'</div>', unsafe_allow_html=True)
+            with _col_al:
+                for _a in _sd["alertas"][:2]:
+                    _ec = "🔴" in _a or "URGENTE" in _a or "FATIGA" in _a
+                    st.markdown(
+                        f'<div style="background:{"#FEE2E2" if _ec else "#FEF3C7"};' +
+                        f'border-left:4px solid {"#DC2626" if _ec else "#D97706"};' +
+                        f'border-radius:6px;padding:7px 12px;margin-bottom:5px;' +
+                        f'font-size:13px;">{_a}</div>', unsafe_allow_html=True)
+                if _sd["suger"]:
+                    _cs = "#DC2626" if _sd["score"]<4 else "#D97706" if _sd["score"]<7 else "#059669"
+                    st.markdown(
+                        f'<div style="border:2px solid {_cs};border-radius:8px;' +
+                        f'padding:8px 12px;font-size:13px;font-weight:700;color:{_cs};">' +
+                        f'💡 {_sd["suger"]}</div>', unsafe_allow_html=True)
+            with st.expander("📊 Desglose del score"):
+                for _comp, _desc, _pts, _max in _sd["detalle"]:
+                    _c1,_c2,_c3 = st.columns([2,4,1])
+                    _c1.markdown(f"**{_comp}**")
+                    _c2.markdown(f"<span style='font-size:12px;'>{_desc}</span>", unsafe_allow_html=True)
+                    _c3.markdown(f"**{_pts:.1f}/{_max:.1f}**")
 
-        # URL firmada temporal (1 hora)
-        r_sign = requests.post(
-            f"{SUPABASE_URL}/storage/v1/object/sign/facturas/{ruta}",
-            headers={**_headers(), "Content-Type": "application/json"},
-            json={"expiresIn": 3600}, timeout=10
-        )
-        if r_sign.status_code == 200:
-            signed = r_sign.json().get("signedURL", "")
-            url = f"{SUPABASE_URL}/storage/v1{signed}" if signed.startswith("/") else signed
+            st.markdown('<div class="nc-section-title">📊 Evolución mensual — real vs estimado</div>', unsafe_allow_html=True)
+            try:
+                _anio_evol   = datetime.now().year
+                _mes_act     = datetime.now().month
+                _mes_act_str = f"{_anio_evol}-{str(_mes_act).zfill(2)}"
+                _uid_evol    = st.session_state.get("user_id", "")
+                _meses_anio  = [f"{_anio_evol}-{str(m).zfill(2)}" for m in range(1, 13)]
+                # ── Gastos reales (movimientos) ───────────────────────────
+                _df_mov_e = df_mov[df_mov["Apartamento"] == sel].copy()
+                _df_mov_e["_mes"] = pd.to_datetime(_df_mov_e["Fecha"], errors="coerce").dt.strftime("%Y-%m")
+                _df_mov_e = _df_mov_e[_df_mov_e["_mes"].notna() & (_df_mov_e["_mes"] != "NaT")]
+                _gas_real_s = _df_mov_e[_df_mov_e["Tipo"]=="Gasto"].groupby("_mes")["Importe"].sum()
+                _ing_mov_s  = _df_mov_e[_df_mov_e["Tipo"]=="Ingreso"].groupby("_mes")["Importe"].sum()
+                # ── Ingresos reales (facturas emitidas cobradas) ──────────
+                _ing_fe_s = pd.Series(dtype=float)
+                _df_fe_e  = leer_facturas_emitidas(_uid_evol)
+                if not _df_fe_e.empty and "inmueble" in _df_fe_e.columns:
+                    try:
+                        _fc = "fecha" if "fecha" in _df_fe_e.columns else "fecha_emision"
+                        _df_fe_e[_fc] = pd.to_datetime(_df_fe_e[_fc], errors="coerce")
+                        _fe_fil = _df_fe_e[
+                            (_df_fe_e["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
+                            (_df_fe_e["estado"] == "cobrada") &
+                            (_df_fe_e[_fc].dt.year == _anio_evol)
+                        ].copy()
+                        if not _fe_fil.empty:
+                            _fe_fil["_mes"] = _fe_fil[_fc].dt.strftime("%Y-%m")
+                            _ing_fe_s = _fe_fil.groupby("_mes")["total"].sum()
+                    except Exception:
+                        pass
+                # ── Forecast: gastos recurrentes + programados ────────────
+                _gas_fijos_mes = 0.0
+                try:
+                    _df_gr = leer_gastos_recurrentes(_uid_evol)
+                    if not _df_gr.empty and "inmueble" in _df_gr.columns:
+                        _gr_inm = _df_gr[_df_gr["inmueble"].str.lower().str.strip() == sel.lower().strip()]
+                        _gas_fijos_mes = float(_gr_inm["importe"].sum())
+                except Exception:
+                    pass
+                _cfp_gas_mes = {}
+                _cfp_ing_mes = {}
+                try:
+                    _df_cfp = leer_cashflow_programado(_uid_evol, inmueble=sel)
+                    if not _df_cfp.empty:
+                        for _, _ev in _df_cfp.iterrows():
+                            _em = f"{_anio_evol}-{str(int(_ev.get('mes',0))).zfill(2)}"
+                            _ei = float(_ev.get("importe", 0))
+                            if _ev.get("tipo") == "gasto":
+                                _cfp_gas_mes[_em] = _cfp_gas_mes.get(_em, 0) + _ei
+                            else:
+                                _cfp_ing_mes[_em] = _cfp_ing_mes.get(_em, 0) + _ei
+                except Exception:
+                    pass
+                # ── Arrays por mes ────────────────────────────────────────
+                _ir_arr = []  # ingresos reales
+                _gr_arr = []  # gastos reales
+                _ie_arr = []  # ingresos estimados
+                _ge_arr = []  # gastos estimados
+                for _m in _meses_anio:
+                    _pasado = _m <= _mes_act_str
+                    _ir_arr.append(float(_ing_fe_s.get(_m, 0) + _ing_mov_s.get(_m, 0)) if _pasado else 0)
+                    _gr_arr.append(float(_gas_real_s.get(_m, 0)) if _pasado else 0)
+                    if not _pasado:
+                        _ie_arr.append(renta_act + _cfp_ing_mes.get(_m, 0))
+                        _ge_arr.append(_gas_fijos_mes + _cfp_gas_mes.get(_m, 0))
+                    else:
+                        _ie_arr.append(0)
+                        _ge_arr.append(0)
+                # ── Gráfico ───────────────────────────────────────────────
+                _fig_e = go.Figure()
+                _fig_e.add_trace(go.Bar(
+                    name="Ingresos cobrados", x=_meses_anio, y=_ir_arr,
+                    marker_color=ACCENT,
+                    text=[f"{v:,.0f}€" if v > 0 else "" for v in _ir_arr],
+                    textposition="outside"))
+                _fig_e.add_trace(go.Bar(
+                    name="Gastos reales", x=_meses_anio, y=_gr_arr,
+                    marker_color=RED,
+                    text=[f"{v:,.0f}€" if v > 0 else "" for v in _gr_arr],
+                    textposition="outside"))
+                _fig_e.add_trace(go.Bar(
+                    name="Ingresos est.", x=_meses_anio, y=_ie_arr,
+                    marker_color="rgba(24,95,165,0.18)",
+                    marker_line_color=ACCENT, marker_line_width=1.5,
+                    text=[f"{v:,.0f}€" if v > 0 else "" for v in _ie_arr],
+                    textposition="outside"))
+                _fig_e.add_trace(go.Bar(
+                    name="Gastos est.", x=_meses_anio, y=_ge_arr,
+                    marker_color="rgba(192,57,43,0.18)",
+                    marker_line_color=RED, marker_line_width=1.5,
+                    text=[f"{v:,.0f}€" if v > 0 else "" for v in _ge_arr],
+                    textposition="outside"))
+                _fig_e.update_layout(
+                    barmode="group",
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    margin=dict(l=10, r=10, t=30, b=10), height=290,
+                    yaxis=dict(showgrid=False, visible=False),
+                    xaxis=dict(showgrid=False, tickangle=-30, type="category"),
+                    font=dict(family="DM Sans", size=12),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                st.plotly_chart(_fig_e, use_container_width=True)
+                st.caption("Barras sólidas: datos reales · Barras con borde: estimación (renta fija + gastos recurrentes + programados)")
+            except Exception:
+                st.caption("Sin datos suficientes para el gráfico.")
+
+            # ── IA ASESORAMIENTO — CONSEJO PATRIMONIAL ───────────────────
+            st.markdown('<div class="nc-section-title">🤖 Consejo patrimonial IA</div>', unsafe_allow_html=True)
+            _key_ia_fic = f"ia_consejo_{sel}"
+            _col_ia_txt, _col_ia_btn = st.columns([5, 1])
+            with _col_ia_btn:
+                _btn_ia = st.button("🤖 Analizar con IA", key=f"btn_ia_{sel}", use_container_width=True)
+            if _btn_ia and _key_ia_fic in st.session_state:
+                del st.session_state[_key_ia_fic]
+
+            if _btn_ia and _key_ia_fic not in st.session_state:
+                with st.spinner("Analizando el activo..."):
+                    try:
+                        from supabase_db import leer_cashflow_programado as _leer_cfp_ia
+                        _uid_ia   = st.session_state.get("user_id", "")
+                        _df_gr_ia = leer_gastos_recurrentes(_uid_ia)
+                        _gas_fijos_ia = 0.0
+                        if not _df_gr_ia.empty and "inmueble" in _df_gr_ia.columns:
+                            _gr_ia_inm = _df_gr_ia[
+                                _df_gr_ia["inmueble"].str.lower().str.strip() == sel.lower().strip()]
+                            _gas_fijos_ia = float(_gr_ia_inm["importe"].sum())
+                        _cf_base_ia = renta_act - _gas_fijos_ia
+                        _df_cfp_ia  = _leer_cfp_ia(_uid_ia, inmueble=sel)
+                        _anio_ia    = datetime.now().year
+                        _mes_ia     = datetime.now().month
+                        _meses_ia   = ["","Ene","Feb","Mar","Abr","May","Jun",
+                                        "Jul","Ago","Sep","Oct","Nov","Dic"]
+                        _cf_meses_ia = []
+                        for _mi in range(1, 13):
+                            if _mi > _mes_ia:
+                                _cpg, _cpi = 0.0, 0.0
+                                if not _df_cfp_ia.empty:
+                                    for _, _ev in _df_cfp_ia.iterrows():
+                                        if int(_ev.get("mes", 0)) == _mi:
+                                            _amt = float(_ev.get("importe", 0))
+                                            if _ev.get("tipo") == "gasto":
+                                                _cpg += _amt
+                                            else:
+                                                _cpi += _amt
+                                _net_mi = _cf_base_ia + _cpi - _cpg
+                                _extra  = f" (var. {_cpg:,.0f}€)" if _cpg > 0 else ""
+                                _cf_meses_ia.append(f"  {_meses_ia[_mi]}: {_net_mi:+,.0f}€{_extra}")
+                        _resumen_meses_ia = "\n".join(_cf_meses_ia) or "Sin forecast disponible"
+                        _eventos_ia = []
+                        if not _df_cfp_ia.empty:
+                            for _, _ev in _df_cfp_ia.iterrows():
+                                _mn = int(_ev.get("mes", 0))
+                                _tip = "GASTO" if _ev.get("tipo") == "gasto" else "INGRESO"
+                                _eventos_ia.append(
+                                    f"  {_tip} {_meses_ia[_mn] if 1<=_mn<=12 else _mn}: "
+                                    f"{_ev.get('descripcion','')} {float(_ev.get('importe',0)):,.0f}€")
+                        _eventos_texto_ia = "\n".join(_eventos_ia) or "  Ninguno registrado"
+                        _prompt_ia = (
+                            f"Eres un asesor patrimonial inmobiliario en España. Analiza este activo.\n\n"
+                            f"ACTIVO: {sel}\n"
+                            f"Renta mensual: {renta_act:,.0f}€ | Gastos fijos/mes: {_gas_fijos_ia:,.0f}€ | "
+                            f"Cashflow base: {_cf_base_ia:+,.0f}€/mes\n\n"
+                            f"PREVISIÓN MESES PENDIENTES {_anio_ia}:\n{_resumen_meses_ia}\n\n"
+                            f"EVENTOS PROGRAMADOS:\n{_eventos_texto_ia}\n\n"
+                            f"Responde en máximo 3 frases. Sé directo, menciona meses y cifras concretas. "
+                            f"Indica: (1) si hay tensión de liquidez y cuándo, "
+                            f"(2) si es buen momento para reformas, "
+                            f"(3) una acción concreta. Responde en español."
+                        )
+                        _resp_ia = anthropic.Anthropic(
+                            api_key=st.secrets.get("ANTHROPIC_API_KEY", "")
+                        ).messages.create(
+                            model="claude-sonnet-4-6",
+                            max_tokens=300,
+                            messages=[{"role": "user", "content": _prompt_ia}]
+                        )
+                        st.session_state[_key_ia_fic] = _resp_ia.content[0].text.strip()
+                    except Exception as _e_ia:
+                        st.session_state[_key_ia_fic] = f"Error: {str(_e_ia)[:200]}"
+
+            if not _btn_ia and _key_ia_fic not in st.session_state:
+                st.caption("Pulsa '🤖 Analizar con IA' para obtener un consejo personalizado sobre este activo.")
+
+            _consejo_txt = st.session_state.get(_key_ia_fic, "")
+            if _consejo_txt:
+                st.markdown(
+                    f'''<div style="background:linear-gradient(135deg,#EBF3FC 0%,#F4F7FB 100%);
+                                border-left:4px solid #185FA5;border-radius:0 10px 10px 0;
+                                padding:16px 20px;margin:8px 0;">
+                      <div style="font-size:12px;color:#185FA5;font-weight:600;
+                                  text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
+                        Asesor patrimonial IA · {sel}
+                      </div>
+                      <div style="font-size:14px;color:#1E293B;line-height:1.6;">{_consejo_txt}</div>
+                    </div>''', unsafe_allow_html=True)
+
+            # ── TABLA DUAL INGRESOS / GASTOS ─────────────────────────────
+                c1,c2=st.columns(2)
+                with c1:
+                    st.markdown('<div class="nc-section-title">Renta Actual vs Tasada</div>',unsafe_allow_html=True)
+                    fig_bar=go.Figure(go.Bar(x=["Renta Actual","Renta Tasada"],y=[renta_act,renta_mer],marker_color=[ACCENT,"#D0DFF0"],text=[f"{renta_act:,.0f} €",f"{renta_mer:,.0f} €"],textposition="outside",width=0.4))
+                    fig_bar.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=240,yaxis=dict(showgrid=False,visible=False),xaxis=dict(showgrid=False),font=dict(family="DM Sans",size=13),showlegend=False)
+                    st.plotly_chart(fig_bar,use_container_width=True)
+                with c2:
+                    st.markdown('<div class="nc-section-title">Estatus de Mercado</div>',unsafe_allow_html=True)
+                    if desv<-15:   clase,msg,icon="status-red","Rentabilidad Crítica","🔴"
+                    elif desv<-5:  clase,msg,icon="status-yellow","Margen de Mejora","🟡"
+                    else:          clase,msg,icon="status-green","Activo en Mercado","🟢"
+                    lucro_html=""
+                    if perdida_a>0: lucro_html=f'<div style="margin-top:12px;padding-top:12px;border-top:1px dashed rgba(0,0,0,0.15);"><span style="font-size:0.88rem;"><b>💸 Lucro Cesante:</b><br>Pérdida mensual: <b>{perdida_m:,.2f} €</b><br>Pérdida anualizada: <b style="color:{RED};font-size:1.15rem;">{perdida_a:,.2f} €/año</b></span></div>'
+                    st.markdown(f'<div class="{clase}"><b style="font-size:1.1rem;">{icon} {msg}</b><br>Desviación: <b>{desv:.1f}%</b>{lucro_html}</div>',unsafe_allow_html=True)
+
+                if _es_soc_fic:
+                    # ── Análisis Fiscal IS — Sociedad Patrimonial ─────────────
+                    st.markdown('<div class="nc-section-title">🏛️ Análisis Fiscal IS — Sociedad Patrimonial</div>', unsafe_allow_html=True)
+                    st.caption("Impuesto de Sociedades 25% · Sin reducción arrendamiento · Doble imposición si distribuyes dividendos")
+
+                    _rto_sin = _renta_anual_fic                          # sin deducir gastos
+                    _rto_con = _renta_anual_fic - _gas_tot_fic           # con todos los gastos
+                    _is_sin  = round(max(_rto_sin * 0.25, 0), 2)
+                    _is_con  = round(max(_rto_con * 0.25, 0), 2)
+                    _neto_sin = round(_rto_sin - _is_sin, 2)
+                    _neto_con = round(_rto_con - _is_con, 2)
+                    _div_sin  = round(max(_neto_sin * 0.19, 0), 2)       # retención dividendos 19%
+                    _div_con  = round(max(_neto_con * 0.19, 0), 2)
+                    _final_sin = round(_neto_sin - _div_sin, 2)
+                    _final_con = round(_neto_con - _div_con, 2)
+                    _ahorro_is = round(_is_sin - _is_con, 2)
+
+                    cf1, cf2, cf3 = st.columns(3)
+                    for _col, _titulo, _rto, _is_v, _neto, _div, _final, _es_actual in [
+                        (cf1, "Sin gastos deducidos", _rto_sin, _is_sin, _neto_sin, _div_sin, _final_sin, False),
+                        (cf2, "Con gastos deducidos", _rto_con, _is_con, _neto_con, _div_con, _final_con, True),
+                    ]:
+                        _borde = f"border:2px solid {ACCENT};" if _es_actual else f"border:1px solid #E5E7EB;"
+                        _col.markdown(f"""
+                        <div style="background:#FAFAFA;{_borde}border-radius:10px;padding:1rem;text-align:center;">
+                          <div style="font-size:0.72rem;font-weight:700;color:#6B7280;text-transform:uppercase;
+                                      letter-spacing:0.06em;margin-bottom:10px;">{_titulo}</div>
+                          <div style="font-size:0.75rem;color:#6B7280;margin-bottom:2px;">[399] Resultado neto</div>
+                          <div style="font-size:1.5rem;font-weight:800;color:{ACCENT};">{_rto:,.0f} €</div>
+                          <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
+                          <div style="font-size:0.75rem;color:#6B7280;">[562] IS 25%</div>
+                          <div style="font-size:1.2rem;font-weight:700;color:{RED};">−{_is_v:,.0f} €</div>
+                          <div style="font-size:0.75rem;color:#6B7280;margin-top:8px;">Neto tras IS</div>
+                          <div style="font-size:1.1rem;font-weight:700;color:#059669;">{_neto:,.0f} €</div>
+                          <div style="height:1px;background:#E5E7EB;margin:10px 0;"></div>
+                          <div style="font-size:0.72rem;color:#6B7280;">Si distribuyes dividendos (19%)</div>
+                          <div style="font-size:0.95rem;font-weight:600;color:{RED};">−{_div:,.0f} €</div>
+                          <div style="font-size:0.75rem;color:#6B7280;margin-top:6px;">Neto final al socio</div>
+                          <div style="font-size:1.3rem;font-weight:800;color:#059669;">{_final:,.0f} €</div>
+                        </div>""", unsafe_allow_html=True)
+
+                    cf3.markdown(f"""
+                    <div style="background:#0d1a0d;border:1px solid #059669;border-radius:10px;
+                                padding:1rem;text-align:center;">
+                      <div style="font-size:0.72rem;font-weight:700;color:#059669;text-transform:uppercase;
+                                  letter-spacing:0.06em;margin-bottom:10px;">💡 Ahorro fiscal</div>
+                      <div style="font-size:0.75rem;color:#6B7280;">Deduciendo gastos ahorras en IS</div>
+                      <div style="font-size:1.8rem;font-weight:900;color:#059669;">{_ahorro_is:,.0f} €</div>
+                      <div style="height:1px;background:#1a3a1a;margin:10px 0;"></div>
+                      <div style="font-size:0.72rem;color:#6B7280;">Tipo efectivo IS</div>
+                      <div style="font-size:1.2rem;font-weight:700;color:#059669;">
+                        {round(_is_con/_rto_con*100,1) if _rto_con>0 else 0:.1f}%
+                      </div>
+                      <div style="font-size:0.72rem;color:#6B7280;margin-top:8px;">
+                        ⚠️ Sin reducción 60% arrendamiento<br>
+                        (Art. 23.2 LIRPF no aplica a sociedades)
+                      </div>
+                    </div>""", unsafe_allow_html=True)
+
+                    st.markdown(f"""
+                    <div style="background:#FFF9E6;border:1px solid #D97706;border-radius:8px;
+                                padding:10px 16px;margin-top:12px;font-size:0.82rem;color:#854F0B;">
+                      <b>⚠️ Doble imposición:</b> El beneficio tributa al 25% en IS y si lo distribuyes como dividendo
+                      tributa de nuevo al 19% (tipo general ahorro IRPF). Tipo efectivo total:
+                      <b>{round((1-(1-0.25)*(1-0.19))*100,1)}%</b>.
+                      Valora si compensa reinvertir en la sociedad vs distribuir.
+                    </div>""", unsafe_allow_html=True)
+
+                else:
+                    st.markdown('<div class="nc-section-title">⚖️ Comparativa Fiscal por Modalidad</div>',unsafe_allow_html=True)
+                    st.caption("Rentabilidad neta real tras aplicar reducción IRPF según tipo de arrendamiento")
+                    rto_neto=(renta_act-gastos_u)*12; tipo_irpf=0.45
+                    modalidades={"Larga Duración":{"reduccion":0.60,"iva":False},"Temporada":{"reduccion":0.00,"iva":False},"Vacacional":{"reduccion":0.00,"iva":True}}
+                    cf1,cf2,cf3=st.columns(3); cols_fiscal=[cf1,cf2,cf3]; mejor_mod,mejor_rn=None,-99999
+                    for idx,(mod,params) in enumerate(modalidades.items()):
+                        red=params["reduccion"]; impuesto=max(0,rto_neto*(1-red)*tipo_irpf)
+                        rn_real=(rto_neto-impuesto)/safe_float(f.get("Valor_Construccion",0))*100 if safe_float(f.get("Valor_Construccion",0))>0 else 0
+                        if rn_real>mejor_rn: mejor_rn=rn_real; mejor_mod=mod
+                        es_actual=(mod==tipo_arr); borde=f"border:2px solid {ACCENT};" if es_actual else f"border:1px solid {BORDER};"
+                        iva_txt="<br><span style='font-size:0.7rem;color:#854F0B;'>⚠️ Puede llevar IVA</span>" if params["iva"] else ""
+                        red_txt=f"Reducción IRPF: <b>{int(red*100)}%</b>" if red>0 else "Sin reducción fiscal"
+                        badge="<div style='margin-top:8px;font-size:0.7rem;background:#EAF3DE;color:#3B6D11;padding:3px 8px;border-radius:20px;'>✅ Modalidad actual</div>" if es_actual else ""
+                        cols_fiscal[idx].markdown(f"""<div style="background:{CARD_BG};{borde}border-radius:10px;padding:1.1rem;text-align:center;"><div style="font-size:0.72rem;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.5rem;">{mod}</div><div style="font-family:'DM Serif Display',serif;font-size:1.8rem;color:{ACCENT if es_actual else TEXT_PRI};">{rn_real:.1f}%</div><div style="font-size:0.7rem;color:{TEXT_SEC};margin-top:4px;">Rent. neta real/año</div><div style="font-size:0.75rem;color:{TEXT_PRI};margin-top:8px;">{red_txt}{iva_txt}</div><div style="font-size:0.7rem;color:{RED};margin-top:4px;">Impuesto est.: {impuesto:,.0f} €/año</div>{badge}</div>""",unsafe_allow_html=True)
+                    if mejor_mod: st.markdown(f'<div class="status-green" style="margin-top:1rem;"><b>💡 Recomendación IA:</b> La modalidad <b>{mejor_mod}</b> ofrece la mayor rentabilidad neta real ({mejor_rn:.1f}%).</div>',unsafe_allow_html=True)
+
+                with st.expander("📐 Simulador de subida de renta", expanded=False):
+                    if zona_tens:
+                        max_renta=int(renta_act*1.03); st.warning(f"🔒 Zona tensionada: subida máxima al IPC (3%). Renta máxima: {max_renta:,.0f} €/mes")
+                        nueva_renta=st.slider("Ajusta la renta (€)",min_value=int(renta_act*0.9),max_value=max_renta,value=int(renta_act),step=10)
+                    else:
+                        _sl_min = max(100, int(renta_act * 0.8))
+                        _sl_max = max(_sl_min + 100, int(max(renta_mer, renta_act) * 1.2))
+                        _sl_val = max(_sl_min, min(int(renta_act), _sl_max))
+                        nueva_renta = st.slider("Ajusta la renta mensual (€)", min_value=_sl_min, max_value=_sl_max, value=_sl_val, step=25)
+                    ganancia_m=nueva_renta-renta_act; ganancia_a=ganancia_m*12
+                    nueva_neta=((nueva_renta-gastos_u)*12/safe_float(f.get("Valor_Construccion",0))*100) if safe_float(f.get("Valor_Construccion",0))>0 else 0
+                    s1,s2,s3=st.columns(3)
+                    s1.metric("Nueva Renta",f"{nueva_renta:,.0f} €/mes",delta=f"{ganancia_m:+.0f} €")
+                    s2.metric("Impacto Anual",f"{ganancia_a:+,.0f} €/año")
+                    s3.metric("Nueva Rent. Neta",f"{nueva_neta:.1f}%",delta=f"{nueva_neta-rent_neta:+.1f}%")
+
+
+
+
+
+    with _ft2:
+        # Solo lectura — la numeración de facturas es correlativa y se gestiona en Ingresos·Rentas
+        _uid_i2   = st.session_state.get("user_id","")
+        _ic1,_ic2 = st.columns([2,1])
+        with _ic1:
+            _anio_i2 = st.selectbox("Año",[2026,2025,2024,2023],key=f"ai2_{sel}")
+        with _ic2:
+            _mn_i2=["Todos","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+            _mes_i2=st.selectbox("Mes",list(range(0,13)),format_func=lambda x:_mn_i2[x],key=f"mi2_{sel}")
+
+        # Facturas emitidas cobradas para este inmueble
+        _rows_i2 = []
+        try:
+            _df_fe_i2 = leer_facturas_emitidas(_uid_i2)
+            if not _df_fe_i2.empty and "inmueble" in _df_fe_i2.columns:
+                _fc_i2 = "fecha" if "fecha" in _df_fe_i2.columns else "fecha_emision"
+                _df_fe_i2[_fc_i2] = pd.to_datetime(_df_fe_i2[_fc_i2], errors="coerce")
+                _fe_fil = _df_fe_i2[
+                    (_df_fe_i2["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
+                    (_df_fe_i2["estado"] == "cobrada") &
+                    (_df_fe_i2[_fc_i2].dt.year == _anio_i2)
+                ].copy()
+                if _mes_i2 > 0:
+                    _fe_fil = _fe_fil[_fe_fil[_fc_i2].dt.month == _mes_i2]
+                for _, _r in _fe_fil.iterrows():
+                    _rows_i2.append({
+                        "fecha":    str(_r[_fc_i2])[:10],
+                        "numero":   str(_r.get("numero","")),
+                        "inquilino":str(_r.get("inquilino","")),
+                        "concepto": str(_r.get("concepto","")),
+                        "total":    float(_r.get("total") or 0),
+                    })
+        except Exception:
+            pass
+
+        _tot_i2 = sum(r["total"] for r in _rows_i2)
+        st.metric("Total cobrado período", f"{_tot_i2:,.0f} €")
+        st.divider()
+
+        if _rows_i2:
+            _ih = st.columns([2, 2, 3, 3, 2])
+            for _htxt, _hc in zip(["Fecha","Nº Factura","Inquilino","Concepto","Importe"], _ih):
+                _hc.markdown(f"<span style='font-size:11px;color:var(--color-text-secondary);font-weight:500;'>{_htxt}</span>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin:4px 0 6px;border-color:var(--color-border-tertiary);'>", unsafe_allow_html=True)
+            for _ri in _rows_i2:
+                _rc = st.columns([2, 2, 3, 3, 2])
+                _rc[0].markdown(f"<span style='font-size:12px;'>{_ri['fecha']}</span>", unsafe_allow_html=True)
+                _rc[1].markdown(f"<span style='font-size:12px;color:#185FA5;font-weight:500;'>{_ri['numero']}</span>", unsafe_allow_html=True)
+                _rc[2].markdown(f"<span style='font-size:12px;'>{_ri['inquilino'][:25]}</span>", unsafe_allow_html=True)
+                _rc[3].markdown(f"<span style='font-size:12px;'>{_ri['concepto'][:30]}</span>", unsafe_allow_html=True)
+                _rc[4].markdown(f"<span style='font-size:12px;font-weight:500;color:#1a7a40;'>{_ri['total']:,.2f} €</span>", unsafe_allow_html=True)
         else:
-            url = f"{SUPABASE_URL}/storage/v1/object/public/facturas/{ruta}"
+            st.caption(f"Sin facturas cobradas en {_anio_i2} para este inmueble.")
+        st.caption("Solo lectura · Gestiona las facturas desde Ingresos · Rentas")
 
-        return {"ok": True, "ruta": ruta, "url": url}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    with _ft3:
+        _uid_t3 = st.session_state.get("user_id","")
+        _t3c1,_t3c2 = st.columns([1,1])
+        with _t3c1:
+            _anio_t3 = st.selectbox("Año",[2026,2025,2024,2023],key=f"at3_{sel}")
+        with _t3c2:
+            _mn3=["Todos","Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+            _mes_t3=st.selectbox("Mes",list(range(0,13)),format_func=lambda x:_mn3[x],key=f"mt3_{sel}")
+        _dfg3=df_mov[(df_mov["Apartamento"]==sel)&(df_mov["Tipo"]=="Gasto")].copy()
+        try:
+            _dfg3["_f"]=pd.to_datetime(_dfg3["Fecha"],errors="coerce")
+            _mg3=_dfg3["_f"].dt.year==_anio_t3
+            if _mes_t3>0: _mg3&=(_dfg3["_f"].dt.month==_mes_t3)
+            _dfg3=_dfg3[_mg3][["id","Fecha","Concepto","Categoría","Importe","Deducible"]].copy().sort_values("Fecha").reset_index(drop=True)
+        except Exception:
+            _dfg3=pd.DataFrame()
+        if not _dfg3.empty:
+            st.metric("Total gastos período",f"{float(_dfg3['Importe'].sum()):,.0f} €")
+            from supabase_db import actualizar_importe_movimiento as _aim
+            _ed3=st.data_editor(
+                _dfg3.drop(columns=["id"]),hide_index=True,use_container_width=True,
+                key=f"ed3_{sel}_{_anio_t3}_{_mes_t3}",
+                column_config={
+                    "Fecha":st.column_config.TextColumn("Fecha",disabled=True),
+                    "Concepto":st.column_config.TextColumn("Concepto",disabled=True),
+                    "Categoría":st.column_config.TextColumn("Categoría",disabled=True),
+                    "Importe":st.column_config.NumberColumn("Importe (€)",format="%.2f",min_value=0.0),
+                    "Deducible":st.column_config.TextColumn("Deducible",disabled=True),
+                })
+            _oi3=_dfg3["Importe"].reset_index(drop=True)
+            _ei3=_ed3["Importe"].reset_index(drop=True)
+            _ch3=_oi3[_oi3!=_ei3].index.tolist()
+            if _ch3:
+                _sv3=sum(1 for i in _ch3 if _aim(_dfg3.iloc[i]["id"],_uid_t3,float(_ei3.iloc[i])))
+                if _sv3: st.success(f"✓ {_sv3} gasto(s) actualizados."); st.rerun()
+        else:
+            st.caption("Sin gastos registrados en este período.")
+
+    with _ft4:
+            from supabase_db import (leer_facturas_recibidas, crear_factura_recibida,
+                                      eliminar_factura_recibida, subir_archivo_factura_recibida,
+                                      actualizar_factura_recibida)
+            _uid_fr = st.session_state.get("user_id", "")
+            _ej_fr  = st.selectbox("Ejercicio fiscal", [2026,2025,2024,2023], key=f"ej_fr_{sel}")
+            _df_fr  = leer_facturas_recibidas(_uid_fr, inmueble=sel, ejercicio=_ej_fr, tipo="gasto")
+
+            if not _df_fr.empty:
+                _total_gas_fr = float(_df_fr["importe_total"].fillna(0).sum())
+                _kf1,_kf2 = st.columns(2)
+                _kf1.metric("Facturas de gasto", len(_df_fr))
+                _kf2.metric("Total gastos", f"{_total_gas_fr:,.0f} €")
+                st.divider()
+                # Cabecera de tabla
+                _hc = st.columns([2, 3, 3, 2, 1, 1, 1])
+                for _htxt, _hcol in zip(["Fecha","Categoría","Concepto / proveedor","Importe","PDF","",""], _hc):
+                    _hcol.markdown(f"<span style='font-size:11px;color:var(--color-text-secondary);font-weight:500;'>{_htxt}</span>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin:4px 0 6px;border-color:var(--color-border-tertiary);'>", unsafe_allow_html=True)
+                _edit_fr = st.session_state.get(f"edit_fr_{sel}")
+                for _, _fr_row in _df_fr.iterrows():
+                    _es_g_fr = _fr_row.get("tipo") == "gasto"
+                    _tc_fr   = "#C0392B" if _es_g_fr else "#1a7a40"
+                    _ai_fr   = " 🤖" if _fr_row.get("interpretado_ia") else ""
+                    _fr_id   = str(_fr_row["id"])
+                    _concepto_fr = _fr_row.get("concepto","") or _fr_row.get("proveedor","—")
+                    _proveedor_fr = _fr_row.get("proveedor","")
+                    _label_fr = f"{_proveedor_fr} · {_concepto_fr}" if _proveedor_fr and _concepto_fr and _proveedor_fr != _concepto_fr else (_proveedor_fr or _concepto_fr or "—")
+                    _arch_ruta = _fr_row.get("archivo_ruta") or ""
+                    _rc = st.columns([2, 3, 3, 2, 1, 1, 1])
+                    _rc[0].markdown(f"<span style='font-size:12px;'>{str(_fr_row.get('fecha',''))[:10]}</span>", unsafe_allow_html=True)
+                    _rc[1].markdown(f"<span style='font-size:12px;'>{_fr_row.get('categoria','')}{_ai_fr}</span>", unsafe_allow_html=True)
+                    _rc[2].markdown(f"<span style='font-size:12px;'>{_label_fr[:40]}</span>", unsafe_allow_html=True)
+                    _rc[3].markdown(f"<span style='font-size:12px;font-weight:500;color:{_tc_fr};'>{float(_fr_row.get('importe_total') or 0):,.2f} €</span>", unsafe_allow_html=True)
+                    with _rc[4]:
+                        if _arch_ruta:
+                            from supabase_db import obtener_url_factura_recibida as _get_pdf_url
+                            _pdf_url = _get_pdf_url(_uid_fr, _arch_ruta)
+                            if _pdf_url:
+                                st.link_button("📄", url=_pdf_url, help="Ver PDF", use_container_width=True)
+                            else:
+                                st.markdown("<span title='PDF no disponible' style='font-size:16px;color:#A32D2D;'>⚠️</span>", unsafe_allow_html=True)
+                        else:
+                            st.markdown("<span style='font-size:14px;color:var(--color-text-secondary);'>—</span>", unsafe_allow_html=True)
+                    with _rc[5]:
+                        if st.button("✏️", key=f"edit_fr_btn_{_fr_id}", help="Editar", use_container_width=True):
+                            st.session_state[f"edit_fr_{sel}"] = None if _edit_fr==_fr_id else _fr_id
+                            st.rerun()
+                    with _rc[6]:
+                        if st.button("🗑", key=f"del_fr_{_fr_id}", help="Eliminar", use_container_width=True):
+                            eliminar_factura_recibida(_fr_id, _uid_fr, _fr_row.get("archivo_ruta"))
+                            st.success("Eliminada ✓"); st.rerun()
+                    if _edit_fr == _fr_id:
+                        with st.form(f"form_edit_fr_{_fr_id}", clear_on_submit=False):
+                            _fe1,_fe2 = st.columns(2)
+                            with _fe1:
+                                _fe_prov = st.text_input("Proveedor/inquilino", value=str(_fr_row.get("proveedor","")), key=f"fep_{_fr_id}")
+                                _fe_conc = st.text_input("Concepto", value=str(_fr_row.get("concepto","")), key=f"fec_{_fr_id}")
+                            with _fe2:
+                                _fe_imp = st.number_input("Importe (€)", value=float(_fr_row.get("importe") or 0), min_value=0.0, key=f"feim_{_fr_id}")
+                                _fe_iva = st.number_input("IVA (€)", value=float(_fr_row.get("iva") or 0), min_value=0.0, key=f"feiv_{_fr_id}")
+                            if st.form_submit_button("💾 Guardar cambios", use_container_width=True):
+                                actualizar_factura_recibida(_fr_id, _uid_fr, {
+                                    "proveedor": _fe_prov, "concepto": _fe_conc,
+                                    "importe": _fe_imp, "iva": _fe_iva,
+                                    "importe_total": _fe_imp + _fe_iva
+                                })
+                                st.session_state[f"edit_fr_{sel}"] = None
+                                st.success("Actualizado ✓"); st.rerun()
+            else:
+                st.caption(f"Sin facturas registradas en {_ej_fr} para este inmueble.")
+
+            st.divider()
+            with st.expander("➕ Registrar nueva factura"):
+                _fr_c1, _fr_c2 = st.columns(2)
+                with _fr_c1:
+                    _fr_tipo = "gasto"  # Tab Facturas = solo gastos
+                    _fr_cat_opts = (["comunidad","mantenimiento","seguro","ibi","suministros","honorarios","otro"]
+                                    if _fr_tipo == "gasto" else ["alquiler","fianza","otro"])
+                    _fr_cat  = st.selectbox("Categoría", _fr_cat_opts, key=f"fr_cat_{sel}")
+                    _fr_fecha = st.date_input("Fecha factura", key=f"fr_fecha_{sel}")
+                    _fr_prov  = st.text_input("Proveedor / inquilino", key=f"fr_prov_{sel}")
+                with _fr_c2:
+                    _fr_conc  = st.text_input("Concepto", key=f"fr_conc_{sel}")
+                    _fr_imp   = st.number_input("Importe sin IVA (€)", min_value=0.0, step=1.0, key=f"fr_imp_{sel}")
+                    _fr_iva   = st.number_input("IVA (€)", min_value=0.0, step=1.0, key=f"fr_iva_{sel}")
+                    _fr_arch  = st.file_uploader("Adjuntar PDF / imagen", type=["pdf","png","jpg","jpeg"], key=f"fr_arch_{sel}")
+                if st.button("💾 Guardar factura", key=f"btn_fr_{sel}", use_container_width=True):
+                    if _fr_imp > 0:
+                        _fr_datos = {
+                            "tipo": _fr_tipo, "categoria": _fr_cat,
+                            "fecha": str(_fr_fecha), "ejercicio": _fr_fecha.year,
+                            "inmueble": sel, "proveedor": _fr_prov,
+                            "concepto": _fr_conc, "importe": _fr_imp,
+                            "iva": _fr_iva, "importe_total": _fr_imp + _fr_iva,
+                        }
+                        _res_fr = crear_factura_recibida(_uid_fr, _fr_datos)
+                        if _res_fr.get("ok") and _fr_arch:
+                            _ext_fr = _fr_arch.name.split(".")[-1].lower()
+                            _up_fr  = subir_archivo_factura_recibida(_uid_fr, _res_fr["id"], _fr_arch.read(), _ext_fr)
+                            if _up_fr.get("ok"):
+                                actualizar_factura_recibida(_res_fr["id"], _uid_fr,
+                                                            {"archivo_ruta": _up_fr["ruta"],
+                                                             "archivo_nombre": _fr_arch.name})
+                        if _res_fr.get("ok"):
+                            # Crear movimiento automático en el diario contable
+                            _cat_map = {
+                                "comunidad":"Comunidad","mantenimiento":"Mantenimiento",
+                                "seguro":"Seguros","ibi":"Tributario",
+                                "suministros":"Suministros","honorarios":"Otros",
+                                "alquiler":"Ingresos","fianza":"Ingresos","otro":"Otros",
+                            }
+                            _mov_tipo = "Gasto" if _fr_tipo=="gasto" else "Ingreso"
+                            _concepto_m = (f"{_fr_prov} — {_fr_conc}".strip(" —") if (_fr_prov or _fr_conc) else _fr_cat)
+                            _ok_mov = agregar_movimientos([{
+                                "Fecha":       str(_fr_fecha),
+                                "Apartamento": sel,
+                                "Concepto":    _concepto_m,
+                                "Categoría":   _cat_map.get(_fr_cat,"Otros"),
+                                "Tipo":        _mov_tipo,
+                                "Importe":     _fr_imp + _fr_iva,
+                                "Deducible":   "S" if _fr_tipo=="gasto" else "N",
+                            }], _uid_fr)
+                            if _ok_mov:
+                                st.success("Factura registrada y movimiento creado ✓")
+                            else:
+                                st.warning("Factura guardada pero movimiento no creado. Revisa el diario.")
+                            st.rerun()
+                        else:
+                            st.error(f"Error: {_res_fr.get('error')}")
+                    else:
+                        st.warning("El importe no puede ser 0.")
+
+        # ── SABIO PATRIMONIAL — Fichas ──────────────────────────────
+
+    with _ft5:
+            from supabase_db import (leer_cashflow_programado, crear_cashflow_programado,
+                                      eliminar_cashflow_programado)
+            _uid_gp   = st.session_state.get("user_id", "")
+            _df_gp    = leer_cashflow_programado(_uid_gp, inmueble=sel)
+            _meses_n  = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+
+            if not _df_gp.empty:
+                for _, _ev in _df_gp.iterrows():
+                    _es_gasto = _ev.get("tipo") == "gasto"
+                    _color_ev = "#FDECEA" if _es_gasto else "#EAF3DE"
+                    _tc_ev    = "#C0392B" if _es_gasto else "#1a7a40"
+                    _icono_ev = "↓" if _es_gasto else "↑"
+                    _mn       = int(_ev.get("mes", 0))
+                    _mes_txt  = _meses_n[_mn] if 1 <= _mn <= 12 else str(_mn)
+                    _rec_txt  = "Anual" if _ev.get("recurrencia") == "anual" else str(_ev.get("anio",""))
+                    _gp_col1, _gp_col2 = st.columns([6, 1])
+                    with _gp_col1:
+                        st.markdown(f"""
+                        <div style="background:{_color_ev};border-radius:8px;padding:8px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">
+                          <div>
+                            <span style="font-size:12px;font-weight:700;color:{_tc_ev};">{_icono_ev} {_ev.get('descripcion','')}</span>
+                            <span style="font-size:11px;color:#6B7280;margin-left:10px;">{_mes_txt} · {_rec_txt}</span>
+                          </div>
+                          <span style="font-size:13px;font-weight:700;color:{_tc_ev};">{float(_ev.get('importe',0)):,.0f} €</span>
+                        </div>""", unsafe_allow_html=True)
+                    with _gp_col2:
+                        if st.button("🗑", key=f"del_gp_{_ev['id']}", help="Eliminar evento"):
+                            eliminar_cashflow_programado(str(_ev["id"]), _uid_gp)
+                            st.rerun()
+            else:
+                st.caption("Sin gastos programados para este inmueble.")
+
+            with st.form(f"form_gp_{sel.replace(' ','_')}", clear_on_submit=True):
+                st.markdown("**Añadir evento programado**")
+                _gp_c1, _gp_c2 = st.columns(2)
+                with _gp_c1:
+                    _gp_tipo = st.selectbox("Tipo", ["gasto","ingreso"], key=f"gp_tipo_{sel}")
+                    _gp_cat  = st.selectbox("Categoría", ["ibi","seguro_anual","derrama","obra","revision_renta","fianza","otro"], key=f"gp_cat_{sel}")
+                    _gp_mes  = st.selectbox("Mes", list(range(1,13)), format_func=lambda x: _meses_n[x], key=f"gp_mes_{sel}")
+                with _gp_c2:
+                    _gp_desc = st.text_input("Descripción", key=f"gp_desc_{sel}")
+                    _gp_imp  = st.number_input("Importe (€)", min_value=0.0, step=10.0, key=f"gp_imp_{sel}")
+                    _gp_rec  = st.selectbox("Recurrencia", ["unico","anual"],
+                                             format_func=lambda x: "Una vez" if x=="unico" else "Anual (cada año)",
+                                             key=f"gp_rec_{sel}")
+                _gp_anio = None if _gp_rec == "anual" else datetime.now().year
+                if st.form_submit_button("💾 Guardar evento", use_container_width=True):
+                    if _gp_imp > 0 and _gp_desc.strip():
+                        _res_gp = crear_cashflow_programado(_uid_gp, {
+                            "tipo": _gp_tipo, "categoria": _gp_cat,
+                            "descripcion": _gp_desc, "importe": _gp_imp,
+                            "mes": _gp_mes, "anio": _gp_anio,
+                            "recurrencia": _gp_rec, "inmueble": sel,
+                        })
+                        if _res_gp.get("ok"):
+                            st.success("Evento guardado ✓"); st.rerun()
+                        else:
+                            st.error(f"Error: {_res_gp.get('error')}")
+                    else:
+                        st.warning("Rellena descripción e importe.")
+
+
+    _tipo_v, _msg_v = alerta_vencimiento(f)
+    contexto_fichas = {
+        "inmueble":             str(f.get("Nombre", "")),
+        "tipo":                 str(f.get("Tipo", "")),
+        "renta_actual":         safe_float(f.get("Renta", 0)),
+        "renta_tasada_mercado": renta_mer,
+        "desviacion_mercado_pct": round(desv, 1),
+        "perdida_mensual":      round(perdida_m, 0),
+        "perdida_anual":        round(perdida_a, 0),
+        "comunidad_mensual":    safe_float(f.get("Comunidad", 0)),
+        "gastos_totales":       round(gastos_u, 0),
+        "rentabilidad_bruta":   round(rent_bruta, 2),
+        "rentabilidad_neta":    round(rent_neta, 2),
+        "fecha_inicio":         str(f.get("Fecha_Inicio_Contrato", "")),
+        "fecha_vencimiento":    str(f.get("Fecha_Vencimiento_Contrato", "")),
+        "tipo_arrendamiento":   tipo_arr,
+        "zona_tensionada":      "Sí" if zona_tens else "No",
+        "inquilino":            str(f.get("Inquilino", "")),
+        "m2":                   safe_float(f.get("M2_Construidos", 0)),
+        "estado":               str(f.get("Estado", "")),
+        "cp":                   str(f.get("CP", "")),
+        "ibi_anual":            safe_float(f.get("IBI_Anual", 0)),
+        "intereses_hipoteca":   safe_float(f.get("Intereses_Hipoteca", 0)),
+        "seguro_anual":         safe_float(f.get("Seguro_Anual", 0)),
+        "alerta_vencimiento":   _msg_v if _tipo_v else "Sin alerta",
+    }
+
+# ================================================================
+# PANTALLA: AUDITORÍA DE MANTENIMIENTO
+# ⚠️  SEPARADA de Fichas — era código huérfano en el original
+# Deps: df_inm, safe_float()
+# ================================================================
+elif menu == "Auditoría Mantenimiento":
+    if _sin_inmuebles:
+        st.info("📭 Sin inmuebles. Ve a **Datos de Cartera**."); st.stop()
+    st.markdown('<div class="nc-brand-header">Auditoría de Mantenimiento</div>',unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Planificación de reformas por inmueble</div>',unsafe_allow_html=True)
+
+    def calcular_costes_reforma(años, vc):
+        if años>=8:   return {"urgente":vc*0.03,"medio":vc*0.08,"largo":vc*0.05}
+        elif años>=5: return {"urgente":vc*0.02,"medio":vc*0.05,"largo":vc*0.04}
+        else:         return {"urgente":vc*0.01,"medio":vc*0.03,"largo":vc*0.02}
+
+    def desc_reforma(años):
+        if años>=8:   return "Pintura exterior + tuberías + electricidad"
+        elif años>=5: return "Pintura + revisión instalaciones"
+        else:         return "Mantenimiento preventivo"
+
+    año_actual=datetime.now().year
+    datos_mant={}
+    for _,row in df_inm.iterrows():
+        nombre=row["Nombre"]; reforma=int(row.get("Año_Reforma",año_actual)); años=año_actual-reforma
+        costes=calcular_costes_reforma(años,safe_float(row.get("Valor_Construccion",0)))
+        datos_mant[nombre]={"urgente":round(costes["urgente"]),"medio":round(costes["medio"]),"largo":round(costes["largo"]),"reforma":reforma,"años":años,"desc":desc_reforma(años)}
+
+    if "auditoria_expandido" not in st.session_state: st.session_state.auditoria_expandido={}
+
+    def get_urgencia(reforma_año):
+        años=datetime.now().year-reforma_año
+        if años>=8: return "🔴 Urgente",RED
+        elif años>=5: return "🟡 Medio",AMBER
+        else: return "🟢 Largo",GREEN
+
+    for nombre,datos in datos_mant.items():
+        if nombre not in df_inm["Nombre"].tolist(): continue
+        urgencia_label,urgencia_color=get_urgencia(datos["reforma"])
+        total=datos["urgente"]+datos["medio"]+datos["largo"]
+        expandido=st.session_state.auditoria_expandido.get(nombre,False)
+        col_header,col_btn=st.columns([5,1])
+        with col_header:
+            st.markdown(f"""<div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:6px;padding:0.7rem 1rem;margin-bottom:0.5rem;">
+                <span style="font-weight:600;color:{TEXT_PRI};font-size:1.1rem;">{nombre}</span>
+                <span style="color:{TEXT_SEC};font-size:0.95rem;margin-left:12px;">{urgencia_label} · {total:,.0f}€</span>
+            </div>""",unsafe_allow_html=True)
+        with col_btn:
+            if st.button("▼" if not expandido else "▲",key=f"toggle_audit_{nombre}",use_container_width=True):
+                st.session_state.auditoria_expandido[nombre]=not expandido; st.rerun()
+        if expandido:
+            st.markdown(f"""<div style="background:{CARD_BG};border:1px solid {BORDER};border-left:3px solid {urgencia_color};border-radius:6px;padding:1rem;margin-bottom:1rem;">
+                <div><b>Reforma:</b> {datos["reforma"]} ({datos["años"]} años) · <b>Descripción:</b> {datos["desc"]}</div>
+                <div style="margin-top:12px;padding-top:12px;border-top:1px dashed {BORDER};display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                    <div><div style="color:{TEXT_SEC};font-size:0.9rem;">Urgente (0-6m)</div><div style="font-weight:600;color:{RED};">{datos["urgente"]:,.0f}€</div></div>
+                    <div><div style="color:{TEXT_SEC};font-size:0.9rem;">Medio (6-18m)</div><div style="font-weight:600;color:{AMBER};">{datos["medio"]:,.0f}€</div></div>
+                    <div><div style="color:{TEXT_SEC};font-size:0.9rem;">Largo (18+m)</div><div style="font-weight:600;color:{GREEN};">{datos["largo"]:,.0f}€</div></div>
+                </div>
+                <div style="margin-top:10px;color:{TEXT_SEC};font-size:0.85rem;">
+                    <b>Recomendación:</b> {"Actuar en próximos 3 meses" if datos["años"]>=8 else ("Planifica presupuesto a medio plazo" if datos["años"]>=5 else "Inmueble en buen estado — mantenimiento preventivo")}
+                </div>
+            </div>""",unsafe_allow_html=True)
+
+# ================================================================
+# PANTALLA: DIARIO CONTABLE
+# Registro de ingresos y gastos, parseo inteligente de texto
+# Deps: df_inm, df_mov, guardar_movimientos(), parsear_ingresos()
+# ================================================================
+elif menu == "Gastos":
+    st.markdown('<div class="nc-brand-header">Gastos</div>',unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Registro de gastos · Facturas recibidas</div>',unsafe_allow_html=True)
+    tab1,tab2,tab3,tab4=st.tabs(["📋 Registro de Gastos","📤 Registrar Gasto","💳 Gastos Fijos","📅 Gastos Programados"])
+
+    with tab1:
+        # Filtro tipo por defecto = Gasto
+        if "dc_tipo" not in st.session_state:
+            st.session_state["dc_tipo"] = "Gasto"
+        # ── IMPORTS LOCALES ────────────────────────────────────────────
+        uid_dc = st.session_state.get("user_id", "")
+
+        # ── LISTAS GLOBALES ────────────────────────────────────────────
+        l_inm  = df_inm["Nombre"].tolist() + ["Global"]
+        l_cat  = ["Ingresos","Financiero","Tributario","Suministros","Seguros",
+                  "Mantenimiento","Estructura","Comunidad","Otros"]
+        meses_nombres = ["Todos","Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                         "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+
+        # ── ESTILOS TARJETAS ───────────────────────────────────────────
+        st.markdown("""
+<style>
+.dc-card{background:#fff;border:1px solid #D0DFF0;border-radius:12px 12px 0 0;
+         padding:14px 18px;margin-bottom:0;transition:border-color .15s;
+         border-bottom:none;}
+.dc-card:hover{border-color:#185FA5;}
+.dc-tag-ing{background:#EAF3DE;color:#27500A;font-size:11px;padding:2px 8px;
+            border-radius:20px;font-weight:600;}
+.dc-tag-gas{background:#FDECEA;color:#7F1D1D;font-size:11px;padding:2px 8px;
+            border-radius:20px;font-weight:600;}
+.dc-tag-ok {background:#EAF3DE;color:#27500A;font-size:11px;padding:2px 7px;border-radius:20px;}
+.dc-tag-warn{background:#FFF9E6;color:#854F0B;font-size:11px;padding:2px 7px;border-radius:20px;}
+.dc-tag-val{background:#E6F1FB;color:#0C447C;font-size:11px;padding:2px 7px;border-radius:20px;}
+.dc-importe-ing{font-size:1.15rem;font-weight:700;color:#1a7a40;}
+.dc-importe-gas{font-size:1.15rem;font-weight:700;color:#C0392B;}
+.dc-label{font-size:0.68rem;color:#5A7A9A;text-transform:uppercase;letter-spacing:.06em;}
+
+/* Expander pegado a la tarjeta — aspecto acordeón */
+.dc-card + div [data-testid="stExpander"] {
+    border:1px solid #D0DFF0 !important;
+    border-top:none !important;
+    border-radius:0 0 12px 12px !important;
+    margin-bottom:12px !important;
+    margin-top:0 !important;
+}
+.dc-card + div [data-testid="stExpander"] > div:first-child {
+    border-radius:0 0 12px 12px !important;
+    padding:6px 18px !important;
+    background:#F8FAFC !important;
+    border-top:1px dashed #D0DFF0 !important;
+}
+/* Ocultar el label vacío del expander */
+.dc-card + div [data-testid="stExpander"] summary p {display:none !important;}
+/* Flecha centrada */
+.dc-card + div [data-testid="stExpander"] summary {
+    justify-content:center !important;
+    min-height:28px !important;
+}
+</style>""", unsafe_allow_html=True)
+
+        # ── FILTROS ────────────────────────────────────────────────────
+        col_titulo, col_modo = st.columns([5, 1])
+        with col_titulo:
+            st.markdown(
+                "<div style='font-size:0.72rem;font-weight:600;letter-spacing:0.08em;"
+                "text-transform:uppercase;color:#9CA3AF;margin-bottom:4px;'>"
+                "Vista de operaciones</div>", unsafe_allow_html=True)
+        with col_modo:
+            modo_diario = st.radio("Modo", ["📋 Tarjetas","⚙️ Tabla"],
+                                   horizontal=True, key="modo_diario",
+                                   label_visibility="collapsed")
+
+        # Fila de filtros
+        ff1,ff2,ff3,ff4,ff5,ff6 = st.columns([1.2,1.2,2,2,1.5,0.7])
+        with ff1:
+            años_disp = sorted(pd.to_datetime(df_mov["Fecha"],errors="coerce")
+                               .dt.year.dropna().unique(), reverse=True)
+            f_año = st.selectbox("Año",["Todos"]+[int(a) for a in años_disp], key="dc_año")
+        with ff2:
+            f_mes = st.selectbox("Mes", meses_nombres, key="dc_mes")
+        with ff3:
+            f_inm = st.selectbox("Inmueble",["Todos"]+df_inm["Nombre"].tolist(), key="dc_inm")
+        with ff4:
+            f_buscar = st.text_input("Buscar", placeholder="Reparación, comunidad...",
+                                     key="dc_buscar", label_visibility="visible")
+        with ff5:
+            f_tipo = st.selectbox("Tipo",["Todos","Ingreso","Gasto"], key="dc_tipo")
+        with ff6:
+            st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
+            if st.button("🔄", use_container_width=True, key="dc_limpiar", help="Limpiar filtros"):
+                for k in ["dc_año","dc_mes","dc_inm","dc_buscar","dc_tipo"]:
+                    if k in st.session_state: del st.session_state[k]
+                st.rerun()
+
+        # ── APLICAR FILTROS ────────────────────────────────────────────
+        df_f = df_mov.copy()
+        df_f["Fecha"] = pd.to_datetime(df_f["Fecha"], errors="coerce")
+        if f_año  != "Todos": df_f = df_f[df_f["Fecha"].dt.year == int(f_año)]
+        if f_mes  != "Todos": df_f = df_f[df_f["Fecha"].dt.month == meses_nombres.index(f_mes)]
+        if f_inm  != "Todos": df_f = df_f[df_f["Apartamento"] == f_inm]
+        if f_tipo != "Todos": df_f = df_f[df_f["Tipo"] == f_tipo]
+        if f_buscar.strip():
+            df_f = df_f[df_f["Concepto"].str.contains(f_buscar.strip(),case=False,na=False)]
+        df_f = df_f.sort_values("Fecha", ascending=False).reset_index(drop=True)
+
+        # ── RESUMEN 3 CARDS ────────────────────────────────────────────
+        t_ing = df_f[df_f["Tipo"]=="Ingreso"]["Importe"].sum()
+        t_gas = df_f[df_f["Tipo"]=="Gasto"]["Importe"].sum()
+        bal   = t_ing - t_gas
+        bal_c = GREEN if bal >= 0 else RED
+        rc1,rc2,rc3,rc4 = st.columns(4)
+        rc1.markdown(f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                     f"border-top:3px solid {GREEN};border-radius:10px;padding:.7rem;"
+                     f"text-align:center;margin:8px 0;'>"
+                     f"<div class='dc-label'>Ingresos</div>"
+                     f"<div style='font-size:1.1rem;font-weight:700;color:{GREEN};'>+{t_ing:,.0f} €</div>"
+                     f"</div>", unsafe_allow_html=True)
+        rc2.markdown(f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                     f"border-top:3px solid {RED};border-radius:10px;padding:.7rem;"
+                     f"text-align:center;margin:8px 0;'>"
+                     f"<div class='dc-label'>Gastos</div>"
+                     f"<div style='font-size:1.1rem;font-weight:700;color:{RED};'>−{t_gas:,.0f} €</div>"
+                     f"</div>", unsafe_allow_html=True)
+        rc3.markdown(f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                     f"border-top:3px solid {bal_c};border-radius:10px;padding:.7rem;"
+                     f"text-align:center;margin:8px 0;'>"
+                     f"<div class='dc-label'>Balance</div>"
+                     f"<div style='font-size:1.1rem;font-weight:700;color:{bal_c};'>{bal:+,.0f} €</div>"
+                     f"</div>", unsafe_allow_html=True)
+        n_sf = len(df_f[df_f.get("tiene_factura", pd.Series([False]*len(df_f),dtype=bool)) == False]) if "tiene_factura" in df_f.columns else 0
+        rc4.markdown(f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                     f"border-top:3px solid {AMBER};border-radius:10px;padding:.7rem;"
+                     f"text-align:center;margin:8px 0;'>"
+                     f"<div class='dc-label'>Sin factura</div>"
+                     f"<div style='font-size:1.1rem;font-weight:700;color:{AMBER};'>{n_sf}</div>"
+                     f"</div>", unsafe_allow_html=True)
+
+        st.caption(f"📊 {len(df_f)} operaciones" +
+                   (f" de {len(df_mov)} totales" if len(df_f) != len(df_mov) else ""))
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+
+        # ==============================================================
+        # MODO TARJETAS
+        # ==============================================================
+        # ── VISTA COMPACTA (lista con paginación) ─────────────────────
+        _PG_SIZE = 15
+        if "gs_pag" not in st.session_state: st.session_state["gs_pag"] = 0
+        _n_total = len(df_f)
+        _n_pag   = max(1, (_n_total + _PG_SIZE - 1) // _PG_SIZE)
+        _pg      = min(st.session_state["gs_pag"], _n_pag - 1)
+        _df_pag  = df_f.iloc[_pg*_PG_SIZE:(_pg+1)*_PG_SIZE].reset_index(drop=True)
+
+        # Cabecera tabla
+        _gh = st.columns([1.5, 2, 3, 2, 1.5, 0.8])
+        for _ht, _hc in zip(["Fecha","Inmueble","Concepto","Categoría","Importe","PDF"], _gh):
+            _hc.markdown(f"<span style='font-size:11px;font-weight:500;color:var(--color-text-secondary);'>{_ht}</span>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin:3px 0 5px;border-color:var(--color-border-secondary);'>", unsafe_allow_html=True)
+
+        for _, _gr in _df_pag.iterrows():
+            _gc = st.columns([1.5, 2, 3, 2, 1.5, 0.8])
+            _imp = float(_gr.get("Importe", 0) or 0)
+            _tipo_g = str(_gr.get("Tipo",""))
+            _imp_col = "#A32D2D" if _tipo_g=="Gasto" else "#3B6D11"
+            _imp_sgn = f'−{_imp:,.0f} €' if _tipo_g=="Gasto" else f'+{_imp:,.0f} €'
+            _fecha_g = str(_gr.get("Fecha",""))[:10] if _gr.get("Fecha") else "—"
+            _arch_g  = str(_gr.get("factura_url","") or "")
+            _gc[0].markdown(f"<span style='font-size:13px;color:var(--color-text-secondary);'>{_fecha_g}</span>", unsafe_allow_html=True)
+            _gc[1].markdown(f"<span style='font-size:13px;'>{str(_gr.get('Apartamento',''))[:20]}</span>", unsafe_allow_html=True)
+            _gc[2].markdown(f"<span style='font-size:13px;'>{str(_gr.get('Concepto',''))[:35]}</span>", unsafe_allow_html=True)
+            _gc[3].markdown(f"<span style='font-size:12px;background:#F0F5FF;color:#0C447C;padding:2px 8px;border-radius:20px;'>{str(_gr.get('Categoría',''))}</span>", unsafe_allow_html=True)
+            _gc[4].markdown(f"<span style='font-size:13px;font-weight:500;color:{_imp_col};'>{_imp_sgn}</span>", unsafe_allow_html=True)
+            with _gc[5]:
+                if _arch_g and _arch_g != "nan":
+                    st.link_button("📄", url=_arch_g, help="Ver factura", use_container_width=True)
+                else:
+                    st.markdown("<span style='font-size:13px;color:var(--color-text-secondary);'>—</span>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin:1px 0;border-color:var(--color-border-tertiary);'>", unsafe_allow_html=True)
+
+        # Paginación
+        if _n_pag > 1:
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+            _pa, _pb, _pc = st.columns([2, 3, 2])
+            with _pa:
+                if st.button("← Anterior", disabled=_pg==0, use_container_width=True, key="gs_prev"):
+                    st.session_state["gs_pag"] = _pg - 1; st.rerun()
+            with _pb:
+                st.markdown(f"<div style='text-align:center;font-size:13px;color:var(--color-text-secondary);padding:6px 0;'>Página {_pg+1} de {_n_pag} · {_n_total} gastos</div>", unsafe_allow_html=True)
+            with _pc:
+                if st.button("Siguiente →", disabled=_pg>=_n_pag-1, use_container_width=True, key="gs_next"):
+                    st.session_state["gs_pag"] = _pg + 1; st.rerun()
+
+    with tab2:
+        if "gasto_guardado" not in st.session_state: st.session_state.gasto_guardado=False
+        if st.session_state.gasto_guardado:
+            st.success("✅ Gasto guardado correctamente.")
+            if st.button("➕ Registrar otro gasto",key="nuevo_gasto"):
+                st.session_state.gasto_guardado=False; st.rerun()
+        else:
+            st.markdown("### 📤 Registrar Gasto")
+            archivo=st.file_uploader("Adjunta factura PDF o foto",type=["pdf","jpg","png","jpeg"])
+            if archivo: st.info("📝 Lectura automática de facturas — próximamente disponible.")
+            concepto_gasto=st.text_input("Concepto",placeholder="Reparación lavadora Huerto 1...")
+            col_g1,col_g2=st.columns(2)
+            with col_g1:
+                inmueble_g=st.selectbox("Inmueble",["— Selecciona —"]+df_inm["Nombre"].tolist(),key="inmg")
+                importe_g=st.number_input("Importe (€)",min_value=0.0,step=0.01,format="%.2f")
+            with col_g2:
+                categoria_g=st.selectbox("Categoría",["Mantenimiento","Suministros","Comunidad","Seguros","Tributario","Financiero","Otros"])
+                deducible_g=st.selectbox("¿Es deducible?",["S","N"])
+            if st.button("💾 Guardar Gasto",type="primary",key="guardar_gasto"):
+                if inmueble_g=="— Selecciona —": st.error("Selecciona un inmueble")
+                elif importe_g<=0: st.error("El importe debe ser mayor que 0")
+                elif not concepto_gasto.strip(): st.error("Escribe un concepto")
+                else:
+                    nuevo=[{"Fecha":datetime.now().strftime("%Y-%m-%d"),"Apartamento":inmueble_g,"Concepto":concepto_gasto,"Categoría":categoria_g,"Tipo":"Gasto","Importe":importe_g,"Deducible":deducible_g}]
+                    guardar_movimientos(nuevo)
+                    st.session_state.df_mov_persistent=leer_movimientos(st.session_state.get("user_id",""))
+                    st.session_state.gasto_guardado=True; st.rerun()
+
+    with tab3:
+        st.markdown('<div class="nc-section-title">💳 Gastos Fijos Mensuales</div>',unsafe_allow_html=True)
+        uid=st.session_state.get("user_id","")
+        if "df_gf" not in st.session_state or st.session_state.get("reload_gf",False):
+            st.session_state.df_gf=leer_gastos_recurrentes(uid); st.session_state.reload_gf=False
+        df_gf=st.session_state.df_gf
+        df_gf_activos=df_gf[df_gf["activo"]==True].reset_index(drop=True) if not df_gf.empty else pd.DataFrame()
+        sub1,sub2=st.tabs(["📋 Registrar este mes","⚙️ Gestionar gastos fijos"])
+
+        with sub1:
+            st.caption("Marca los gastos que quieres registrar este mes y pulsa Registrar.")
+            if df_gf_activos.empty:
+                st.info("No tienes gastos fijos configurados. Ve a ⚙️ Gestionar para añadirlos.")
+            else:
+                mes_actual=datetime.now().month; año_actual=datetime.now().year
+                df_mes=df_mov[(pd.to_datetime(df_mov["Fecha"],errors="coerce").dt.month==mes_actual)&(pd.to_datetime(df_mov["Fecha"],errors="coerce").dt.year==año_actual)&(df_mov["Tipo"]=="Gasto")]
+                col_apt="Inmueble" if "Inmueble" in df_mes.columns else "Apartamento"
+                conceptos_mes=set(df_mes[col_apt].astype(str)+"|"+df_mes["Concepto"].astype(str))
+                seleccionados=[]; total_sel=0.0
+                for i,row in df_gf_activos.iterrows():
+                    clave=f"{row['inmueble']}|{row['concepto']}"; ya_registrado=clave in conceptos_mes
+                    c_check,c_info,c_imp,c_est=st.columns([0.5,4,1.5,1.5])
+                    with c_check:
+                        if ya_registrado: st.checkbox("",value=False,disabled=True,key=f"gf_reg_{i}")
+                        else:
+                            if st.checkbox("",value=True,key=f"gf_reg_{i}"): seleccionados.append(row); total_sel+=float(row["importe"])
+                    with c_info: st.markdown(f"**{row['concepto']}** — *{row['inmueble']}* · {row['categoria']}")
+                    with c_imp: st.markdown(f"<div style='text-align:right;font-weight:600;padding-top:0.5rem;'>{float(row['importe']):,.2f} €</div>",unsafe_allow_html=True)
+                    with c_est:
+                        if ya_registrado: st.markdown("<div style='color:#1a7a40;font-size:0.8rem;padding-top:0.6rem;'>✅ Registrado</div>",unsafe_allow_html=True)
+                        else: st.markdown("<div style='color:#5A7A9A;font-size:0.8rem;padding-top:0.6rem;'>Pendiente</div>",unsafe_allow_html=True)
+                st.divider()
+                cr1,cr2=st.columns([3,1])
+                with cr1: st.markdown(f"**{len(seleccionados)} seleccionados** · Total: **{total_sel:,.2f} €**")
+                with cr2:
+                    if st.button("💾 Registrar seleccionados",type="primary",use_container_width=True,disabled=len(seleccionados)==0,key="btn_reg_gf"):
+                        nuevos=[{"Fecha":datetime.now().strftime("%Y-%m-%d"),"Apartamento":r["inmueble"],"Concepto":r["concepto"],"Categoría":r["categoria"],"Tipo":"Gasto","Importe":float(r["importe"]),"Deducible":r.get("deducible","S")} for r in seleccionados]
+                        guardar_movimientos(nuevos); st.session_state.df_mov_persistent=leer_movimientos(uid)
+                        st.success(f"✅ {len(nuevos)} gastos registrados por {total_sel:,.2f} €"); st.rerun()
+
+        with sub2:
+            st.caption("Añade, edita o desactiva tus gastos fijos.")
+            with st.expander("➕ Añadir nuevo gasto fijo"):
+                na1,na2=st.columns(2)
+                with na1:
+                    nv_inm=st.selectbox("Inmueble",df_inm["Nombre"].tolist(),key="nv_inm")
+                    nv_con=st.text_input("Concepto",placeholder="Ej: Seguro hogar",key="nv_con")
+                with na2:
+                    nv_cat=st.selectbox("Categoría",["Comunidad","Financiero","Seguros","Mantenimiento","Suministros","Tributario","Otros"],key="nv_cat")
+                    nv_imp=st.number_input("Importe (€/mes)",min_value=0.01,step=0.01,format="%.2f",key="nv_imp")
+                nv_ded=st.selectbox("¿Deducible?",["S","N"],key="nv_ded")
+                if st.button("💾 Guardar nuevo gasto fijo",key="btn_add_gf"):
+                    if nv_con.strip() and nv_imp>0:
+                        ok=guardar_gasto_recurrente(uid,nv_inm,nv_con.strip(),nv_cat,nv_imp,nv_ded)
+                        if ok: st.success(f"✅ Añadido: {nv_con} — {nv_imp:.2f} €/mes"); st.session_state.reload_gf=True; st.rerun()
+                        else: st.error("❌ Error al guardar.")
+                    else: st.warning("⚠️ Completa concepto e importe.")
+            if df_gf.empty:
+                st.info("No hay gastos fijos configurados.")
+            else:
+                st.markdown("**Gastos configurados:**")
+                for _,row in df_gf.iterrows():
+                    gid=int(row["id"]); activo=bool(row["activo"])
+                    g1,g2,g3,g4,g5=st.columns([2.5,2,1.2,1,1])
+                    with g1: nuevo_concepto=st.text_input("",value=row["concepto"],key=f"gf_con_{gid}",label_visibility="collapsed")
+                    with g2: st.markdown(f"<div style='padding-top:0.55rem;color:#5A7A9A;font-size:0.85rem;'>{row['inmueble']}</div>",unsafe_allow_html=True)
+                    with g3: nuevo_imp=st.number_input("",value=float(row["importe"]),min_value=0.01,step=0.01,format="%.2f",key=f"gf_imp_{gid}",label_visibility="collapsed")
+                    with g4:
+                        if st.button("💾" if activo else "🔄",key=f"gf_upd_{gid}"):
+                            actualizar_gasto_recurrente(gid,importe=nuevo_imp,concepto=nuevo_concepto,activo=True)
+                            st.session_state.reload_gf=True; st.rerun()
+                    with g5:
+                        if activo:
+                            if st.button("⏸️",key=f"gf_des_{gid}"):
+                                actualizar_gasto_recurrente(gid,activo=False); st.session_state.reload_gf=True; st.rerun()
+                        else:
+                            st.markdown("<div style='color:#C0392B;font-size:0.75rem;padding-top:0.6rem;'>Inactivo</div>",unsafe_allow_html=True)
+                            if st.button("🗑️",key=f"gf_del_{gid}"):
+                                eliminar_gasto_recurrente(gid); st.session_state.reload_gf=True; st.rerun()
+
+
+    with tab4:
+        from supabase_db import (leer_cashflow_programado, crear_cashflow_programado,
+                                  actualizar_cashflow_programado, eliminar_cashflow_programado)
+        st.markdown('<div class="nc-section-title">📅 Gastos e ingresos programados</div>', unsafe_allow_html=True)
+        st.caption('Eventos financieros que no son mensuales fijos: IBI, derramas, obras, revisiones de renta, fianzas.')
+
+        _uid_gp4    = st.session_state.get('user_id', '')
+        _inm_lista4 = ['Todos'] + df_inm['Nombre'].tolist()
+        _meses_n4   = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+        _meses_f4   = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+        _cat_gas4   = ['ibi','seguro_anual','derrama','obra','otro']
+        _cat_ing4   = ['revision_renta','fianza','otro']
+
+        # ── Filtros ───────────────────────────────────────────────
+        _gp4_c1, _gp4_c2, _gp4_c3 = st.columns([2, 1, 1])
+        with _gp4_c1:
+            _gp4_inm = st.selectbox('Inmueble', _inm_lista4, key='gp4_inm')
+        with _gp4_c2:
+            _gp4_tipo = st.selectbox('Tipo', ['Todos','gasto','ingreso'], key='gp4_tipo')
+        with _gp4_c3:
+            _gp4_est  = st.selectbox('Estado', ['Todos','programado','realizado'], key='gp4_estado')
+
+        # ── Leer datos ────────────────────────────────────────────
+        _df_gp4 = leer_cashflow_programado(
+            _uid_gp4,
+            inmueble=None if _gp4_inm=='Todos' else _gp4_inm
+        )
+        if not _df_gp4.empty:
+            if _gp4_tipo != 'Todos':
+                _df_gp4 = _df_gp4[_df_gp4['tipo'] == _gp4_tipo]
+            if _gp4_est != 'Todos':
+                _df_gp4 = _df_gp4[_df_gp4['estado'] == _gp4_est]
+
+        # ── KPIs resumen ──────────────────────────────────────────
+        if not _df_gp4.empty:
+            _tot_gas4 = float(_df_gp4[_df_gp4['tipo']=='gasto']['importe'].sum())
+            _tot_ing4 = float(_df_gp4[_df_gp4['tipo']=='ingreso']['importe'].sum())
+            _k41,_k42,_k43 = st.columns(3)
+            _k41.metric('Eventos programados', len(_df_gp4))
+            _k42.metric('Total gastos previstos', f'{_tot_gas4:,.0f} €')
+            _k43.metric('Total ingresos previstos', f'{_tot_ing4:,.0f} €')
+            st.divider()
+
+            # ── Lista de eventos ──────────────────────────────────
+            for _, _ev4 in _df_gp4.iterrows():
+                _es_g4  = _ev4.get('tipo') == 'gasto'
+                _c4bg   = '#FDECEA' if _es_g4 else '#EAF3DE'
+                _c4tc   = '#C0392B' if _es_g4 else '#1a7a40'
+                _ico4   = '↓' if _es_g4 else '↑'
+                _mn4    = int(_ev4.get('mes', 0))
+                _mes4   = _meses_f4[_mn4] if 1 <= _mn4 <= 12 else str(_mn4)
+                _rec4   = 'Anual' if _ev4.get('recurrencia') == 'anual' else str(_ev4.get('anio', ''))
+                _est4   = _ev4.get('estado', 'programado')
+                _est4_badge = '✅' if _est4 == 'realizado' else '🕐'
+                _ev4_c1, _ev4_c2 = st.columns([6, 1])
+                with _ev4_c1:
+                    st.markdown(f'''
+                    <div style="background:{_c4bg};border-radius:8px;padding:10px 16px;margin-bottom:6px;
+                                display:flex;justify-content:space-between;align-items:center;">
+                      <div>
+                        <span style="font-size:13px;font-weight:600;color:{_c4tc};"
+                        >{_ico4} {_ev4.get('descripcion','')} <span style="font-size:11px;">{_est4_badge}</span></span>
+                        <br><span style="font-size:11px;color:#6B7280;">{_ev4.get('inmueble','Cartera')} · {_mes4} · {_rec4} · {_ev4.get('categoria','')}</span>
+                      </div>
+                      <span style="font-size:15px;font-weight:700;color:{_c4tc};">{float(_ev4.get('importe',0)):,.0f} €</span>
+                    </div>''', unsafe_allow_html=True)
+                with _ev4_c2:
+                    if st.button('🗑', key=f'del_gp4_{_ev4["id"]}', help='Eliminar'):
+                        eliminar_cashflow_programado(str(_ev4['id']), _uid_gp4)
+                        st.rerun()
+        else:
+            st.info('No hay eventos programados con estos filtros.')
+
+        st.divider()
+
+        # ── Formulario nuevo evento ───────────────────────────────
+        with st.expander('➕ Añadir nuevo evento programado', expanded=False):
+            with st.form('form_gp4_global', clear_on_submit=True):
+                st.markdown('**Nuevo evento financiero programado**')
+                _f41, _f42 = st.columns(2)
+                with _f41:
+                    _gp4_f_tipo = st.selectbox('Tipo', ['gasto','ingreso'], key='gp4_f_tipo')
+                    _gp4_f_inm  = st.selectbox('Inmueble', df_inm['Nombre'].tolist() + ['Cartera general'], key='gp4_f_inm')
+                    _gp4_f_cat  = st.selectbox('Categoría',
+                                               _cat_gas4 if _gp4_f_tipo == 'gasto' else _cat_ing4,
+                                               key='gp4_f_cat')
+                    _gp4_f_mes  = st.selectbox('Mes', list(range(1,13)),
+                                               format_func=lambda x: _meses_f4[x], key='gp4_f_mes')
+                with _f42:
+                    _gp4_f_desc = st.text_input('Descripción', key='gp4_f_desc')
+                    _gp4_f_imp  = st.number_input('Importe (€)', min_value=0.0, step=10.0, key='gp4_f_imp')
+                    _gp4_f_rec  = st.selectbox('Recurrencia', ['unico','anual'],
+                                               format_func=lambda x: 'Una vez' if x=='unico' else 'Anual (cada año)',
+                                               key='gp4_f_rec')
+                    _gp4_f_anio = None if _gp4_f_rec == 'anual' else datetime.now().year
+                if st.form_submit_button('💾 Guardar evento', use_container_width=True):
+                    if _gp4_f_imp > 0 and _gp4_f_desc.strip():
+                        _r4 = crear_cashflow_programado(_uid_gp4, {
+                            'tipo': _gp4_f_tipo, 'categoria': _gp4_f_cat,
+                            'descripcion': _gp4_f_desc, 'importe': _gp4_f_imp,
+                            'mes': _gp4_f_mes, 'anio': _gp4_f_anio,
+                            'recurrencia': _gp4_f_rec,
+                            'inmueble': None if _gp4_f_inm == 'Cartera general' else _gp4_f_inm,
+                        })
+                        if _r4.get('ok'):
+                            st.success('Evento guardado ✓'); st.rerun()
+                        else:
+                            st.error(f'Error: {_r4.get("error")}')
+                    else:
+                        st.warning('Rellena descripción e importe.')
+
+# ================================================================
+# PANTALLA: CASH FLOW — Forecast anual + Calendario mensual
+# ================================================================
+elif menu == "Cash Flow":
+    from supabase_db import (leer_cashflow_programado, crear_cashflow_programado,
+                              eliminar_cashflow_programado, leer_gastos_recurrentes)
+
+    _uid_cf     = st.session_state.get("user_id","")
+    _anio_cf    = datetime.now().year
+    _mes_act_cf = datetime.now().month - 1
+    _MN         = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+
+    # ── Datos ──────────────────────────────────────────────────────
+    _df_gr = leer_gastos_recurrentes(_uid_cf)
+    _recurrentes, _rec_total = [], 0.0
+    if not _df_gr.empty:
+        for _, _r in _df_gr.iterrows():
+            _imp = float(_r.get("importe",0) or 0)
+            _recurrentes.append({
+                "label": f"{str(_r.get('inmueble',''))[:16]} · {str(_r.get('concepto',''))[:18]}",
+                "importe": _imp
+            })
+            _rec_total += _imp
+
+    _df_cfp = leer_cashflow_programado(_uid_cf)
+    _ingresos_inm, _ing_est = [], 0.0
+    if not df_inm.empty:
+        for _, _inm in df_inm.iterrows():
+            _r = safe_float(_inm.get("Renta",0))
+            _ingresos_inm.append({"label": str(_inm.get("Nombre",""))[:22], "importe": _r})
+            _ing_est += _r
+
+    def _prog_mes(m):
+        if _df_cfp.empty or "mes" not in _df_cfp.columns: return [], 0.0
+        _f = _df_cfp[(_df_cfp["mes"]==(m+1)) & (_df_cfp["tipo"]=="gasto")]
+        items = [{"label": str(r.get("descripcion",r.get("concepto","")))[:30],
+                  "importe": float(r.get("importe",0) or 0)} for _, r in _f.iterrows()]
+        return items, sum(i["importe"] for i in items)
+
+    def _punt_mes(m):
+        if m >= _mes_act_cf: return 0.0
+        try:
+            _f = df_mov[df_mov["Tipo"]=="Gasto"]
+            _f = _f[pd.to_datetime(_f["Fecha"],errors="coerce").dt.month == m+1]
+            return float(_f["Importe"].sum())
+        except Exception: return 0.0
+
+    def _neto(m):
+        _, _pt = _prog_mes(m)
+        return _ing_est - _rec_total - _pt - _punt_mes(m)
+
+    if "cf_mes_sel" not in st.session_state:
+        st.session_state["cf_mes_sel"] = _mes_act_cf
+    _m = st.session_state["cf_mes_sel"]
+    _n = _neto(_m)
+    _net_col = "#3B6D11" if _n >= 0 else "#A32D2D"
+    _net_bg  = "#EAF3DE" if _n >= 0 else "#FCEBEB"
+    _etiq    = "mes actual" if _m==_mes_act_cf else "estimado" if _m>_mes_act_cf else "real"
+    _prog_items, _prog_total = _prog_mes(_m)
+    _punt_total = _punt_mes(_m)
+    _gas_total  = _rec_total + _prog_total + _punt_total
+
+    # ── Header navy ─────────────────────────────────────────────────
+    st.markdown(
+        f"<div style='padding:20px 28px;background:#0F2744;border-radius:12px;"
+        f"display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;'>"
+        f"<div>"
+        f"<div style='font-size:22px;font-weight:500;color:#E6F1FB;margin-bottom:14px;'>"
+        f"{_MN[_m]} {_anio_cf}"
+        f"<span style='font-size:13px;color:#85B7EB;margin-left:10px;'>{_etiq}</span></div>"
+        f"<div style='display:flex;gap:40px;'>"
+        f"<div><div style='font-size:11px;color:#85B7EB;text-transform:uppercase;"
+        f"letter-spacing:.07em;margin-bottom:4px;'>Ingresos</div>"
+        f"<div style='font-size:26px;font-weight:500;color:#E6F1FB;'>+{_ing_est:,.0f} €</div></div>"
+        f"<div><div style='font-size:11px;color:#85B7EB;text-transform:uppercase;"
+        f"letter-spacing:.07em;margin-bottom:4px;'>Gastos</div>"
+        f"<div style='font-size:26px;font-weight:500;color:#E6F1FB;'>−{_gas_total:,.0f} €</div></div>"
+        f"</div></div>"
+        f"<div style='background:{_net_bg};border-radius:12px;padding:16px 28px;text-align:center;'>"
+        f"<div style='font-size:11px;font-weight:500;color:{_net_col};text-transform:uppercase;"
+        f"letter-spacing:.07em;margin-bottom:6px;'>Neto del mes</div>"
+        f"<div style='font-size:40px;font-weight:500;color:{_net_col};line-height:1;'>"
+        f"{('+' if _n>=0 else '')}{_n:,.0f} €</div>"
+        f"</div></div>",
+        unsafe_allow_html=True
+    )
+
+    # ── Carrusel semáforo ────────────────────────────────────────────
+    _sem = ""
+    for _mi, _mn in enumerate(_MN):
+        _ni = _neto(_mi)
+        _bg  = "#EAF3DE" if _ni>300 else "#FAEEDA" if _ni>=0 else "#FCEBEB"
+        _tc  = "#3B6D11" if _ni>300 else "#854F0B" if _ni>=0 else "#A32D2D"
+        _brd = f"2px solid #185FA5" if _mi==_m else f"1px solid {_bg}"
+        _fw  = "600" if _mi==_m else "400"
+        _sem += (
+            f"<div onclick=\"\" style='flex:1;background:{_bg};border:{_brd};"
+            f"border-radius:8px;padding:7px 2px;text-align:center;'>"
+            f"<div style='font-size:12px;font-weight:{_fw};color:{_tc};'>{_mn}</div>"
+            f"<div style='font-size:12px;font-weight:500;color:{_tc};'>{_ni/1000:+.1f}k</div>"
+            f"</div>"
+        )
+    _cols_cf = st.columns(12)
+    for _mi, _col in enumerate(_cols_cf):
+        _ni  = _neto(_mi)
+        _dot = "🟢" if _ni>300 else "🟡" if _ni>=0 else "🔴"
+        _val = f"{_ni/1000:+.1f}k"
+        with _col:
+            if st.button(
+                f"{_dot}\n{_MN[_mi]}\n{_val}",
+                key=f"cf_mes_{_mi}",
+                use_container_width=True,
+                type="primary" if _mi==_m else "secondary"
+            ):
+                st.session_state["cf_mes_sel"] = _mi; st.rerun()
+
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+
+    # ── Panel detalle ────────────────────────────────────────────────
+    def _fila(label, imp, color):
+        return (
+            f"<div style='display:flex;justify-content:space-between;align-items:center;"
+            f"padding:8px 0;border-bottom:0.5px solid var(--color-border-tertiary);'>"
+            f"<span style='font-size:14px;color:var(--color-text-secondary);'>{label}</span>"
+            f"<span style='font-size:15px;font-weight:500;color:{color};'>{imp}</span></div>"
+        )
+    def _sublabel(txt):
+        return f"<div style='font-size:12px;color:var(--color-text-secondary);margin:12px 0 5px;'>{txt}</div>"
+    def _total_fila(label, imp, color):
+        return (
+            f"<div style='display:flex;justify-content:space-between;align-items:center;"
+            f"padding:10px 0 4px;border-top:1.5px solid var(--color-border-secondary);margin-top:6px;'>"
+            f"<span style='font-size:15px;font-weight:500;'>{label}</span>"
+            f"<span style='font-size:20px;font-weight:500;color:{color};'>{imp}</span></div>"
+        )
+
+    _html_ing  = "".join(_fila(i["label"], f'+{i["importe"]:,.0f} €', "#3B6D11") for i in _ingresos_inm)
+    _html_ing += _total_fila("Total", f'+{_ing_est:,.0f} €', "#3B6D11")
+
+    _html_gas  = _sublabel("🔄 Recurrentes")
+    _html_gas += "".join(_fila(g["label"], f'−{g["importe"]:,.0f} €', "#A32D2D") for g in _recurrentes)
+    if _prog_items:
+        _html_gas += _sublabel("📅 Programados")
+        _html_gas += "".join(_fila(p["label"], f'−{p["importe"]:,.0f} €', "#A32D2D") for p in _prog_items)
+    if _punt_total > 0:
+        _html_gas += _sublabel("⚡ Puntuales")
+        _html_gas += _fila("Gastos reales del mes", f'−{_punt_total:,.0f} €', "#A32D2D")
+    _html_gas += _total_fila("Total", f'−{_gas_total:,.0f} €', "#A32D2D")
+
+    st.markdown(
+        f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:0;"
+        f"border:0.5px solid var(--color-border-tertiary);border-radius:12px 12px 0 0;overflow:hidden;'>"
+        f"<div style='padding:18px 22px;border-right:0.5px solid var(--color-border-tertiary);'>"
+        f"<div style='font-size:14px;font-weight:500;color:#185FA5;"
+        f"border-left:3px solid #185FA5;padding-left:10px;margin-bottom:14px;'>Ingresos</div>"
+        f"{_html_ing}</div>"
+        f"<div style='padding:18px 22px;'>"
+        f"<div style='font-size:14px;font-weight:500;color:#A32D2D;"
+        f"border-left:3px solid #A32D2D;padding-left:10px;margin-bottom:14px;'>Gastos</div>"
+        f"{_html_gas}</div></div>",
+        unsafe_allow_html=True
+    )
+
+    # ── Tira beneficio neto ──────────────────────────────────────────
+    _strip_col = "#C0DD97" if _n >= 0 else "#F09595"
+    st.markdown(
+        f"<div style='background:#0F2744;border-radius:0 0 12px 12px;padding:14px 22px;"
+        f"display:flex;justify-content:space-between;align-items:center;"
+        f"margin-top:-1px;'>"
+        f"<span style='font-size:13px;font-weight:500;color:#85B7EB;"
+        f"text-transform:uppercase;letter-spacing:.07em;'>Beneficio neto del mes</span>"
+        f"<span style='font-size:32px;font-weight:500;color:{_strip_col};'>"
+        f"{('+' if _n>=0 else '')}{_n:,.0f} €</span>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # ── Añadir gasto programado ─────────────────────────────────────
+    with st.expander("➕ Añadir gasto programado / periodificado"):
+        _gf1, _gf2 = st.columns(2)
+        with _gf1:
+            _gp_inm  = st.selectbox("Inmueble", ["(General)"] + df_inm["Nombre"].tolist(), key="gp_inm_cf")
+            _gp_desc = st.text_input("Descripción", key="gp_desc_cf")
+            _gp_cat  = st.selectbox("Categoría", ["ibi","mantenimiento","seguro","comunidad","suministros","otro"], key="gp_cat_cf")
+        with _gf2:
+            _gp_modo = st.radio("Modo", ["Pago único", "Periodificar en meses"], horizontal=True, key="gp_modo_cf")
+            _gp_imp  = st.number_input("Importe total (€)", min_value=0.0, step=10.0, key="gp_imp_cf")
+            if _gp_modo == "Pago único":
+                _gp_mes_u     = st.selectbox("Mes", list(range(1,13)), format_func=lambda x: _MN[x-1], key="gp_mes_u_cf")
+                _gp_meses_sel = [_gp_mes_u]; _gp_cuota = _gp_imp
+            else:
+                _gp_mm        = st.multiselect("Meses donde aplica", list(range(1,13)), format_func=lambda x: _MN[x-1], key="gp_mm_cf")
+                _gp_meses_sel = _gp_mm
+                _gp_cuota     = _gp_imp/len(_gp_mm) if _gp_mm else 0
+                if _gp_mm:
+                    st.caption(f"Cuota: {_gp_cuota:,.2f} € × {len(_gp_mm)} meses = {_gp_imp:,.0f} €")
+        if st.button("💾 Guardar", key="btn_gp_cf", use_container_width=True, type="primary"):
+            if _gp_imp > 0 and _gp_desc and _gp_meses_sel:
+                _inm_gp = "" if _gp_inm=="(General)" else _gp_inm
+                _ok = sum(1 for _mg in _gp_meses_sel if crear_cashflow_programado(_uid_cf, {
+                    "inmueble": _inm_gp, "tipo": "gasto", "categoria": _gp_cat,
+                    "descripcion": _gp_desc, "importe": _gp_cuota,
+                    "mes": _mg, "anio": _anio_cf, "recurrencia": "una_vez", "estado": "pendiente"
+                }).get("ok"))
+                if _ok: st.success(f"✓ {_ok} entrada(s) · {_gp_cuota:,.2f} €/mes"); st.rerun()
+            else:
+                st.warning("Completa descripción, importe y mes(es).")
+
+    if not _df_cfp.empty and "mes" in _df_cfp.columns:
+        _pa = _df_cfp[_df_cfp["mes"]==(_m+1)]
+        if not _pa.empty:
+            st.markdown(f"**Programados — {_MN[_m]} {_anio_cf}**")
+            for _, _pg in _pa.iterrows():
+                _pc1,_pc2 = st.columns([9,1])
+                _lbl = str(_pg.get("descripcion",_pg.get("concepto","")))
+                _pc1.markdown(
+                    f"<span style='font-size:14px;'>{_lbl} · <strong>{safe_float(_pg.get('importe',0)):,.0f} €</strong></span>",
+                    unsafe_allow_html=True
+                )
+                with _pc2:
+                    if st.button("🗑", key=f"del_gp_{_pg['id']}", help="Eliminar"):
+                        eliminar_cashflow_programado(str(_pg["id"]), _uid_cf)
+                        st.success("Eliminado ✓"); st.rerun()
+
+elif menu == "Fiscalidad":
+    if _sin_inmuebles:
+        st.info("📭 Sin inmuebles registrados. Ve a **Datos de Cartera** para añadir el primero."); st.stop()
+    # Cargar perfil desde Supabase si no está en session_state
+    if "perfil_datos" not in st.session_state or not st.session_state.perfil_datos:
+        st.session_state.perfil_datos = leer_perfil_usuario(st.session_state.get("user_id", ""))
+    _perfil_fiscal = st.session_state.perfil_datos or {}
+    _tipo_cuenta   = _perfil_fiscal.get("tipo_cuenta", "particular")
+
+    if _tipo_cuenta == "sociedad":
+        _nom_soc = _perfil_fiscal.get("nombre_sociedad", "Sociedad Patrimonial")
+        st.markdown(f'<div class="nc-brand-header">💰 Fiscalidad IS — Sociedad Patrimonial</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="nc-brand-sub">IS al 25% · Modelo 200 · {_nom_soc}</div>', unsafe_allow_html=True)
+
+        _tab_m200, _tab_bss = st.tabs(["📊 Modelo 200", "📥 Importar BSS desde A3"])
+
+        with _tab_m200:
+            from fiscal_export import render_seccion_modelo_200
+            render_seccion_modelo_200(df_inm, df_mov, safe_float, calcular_modelo_100,
+                                       perfil=_perfil_fiscal)
+
+        with _tab_bss:
+            st.markdown('<div class="nc-section-title">📥 Importar Balance de Sumas y Saldos</div>',
+                        unsafe_allow_html=True)
+            st.markdown("""
+            <div style="background:#0d1a0d;border:1px solid #059669;border-radius:8px;
+                        padding:12px 16px;margin-bottom:1rem;font-size:13px;color:#a7f3d0;">
+            <b>🔗 Compatible con A3 Asesor Eco, Holded, Sage y ContaPlus.</b><br>
+            Exporta el BSS de tu programa contable en Excel y súbelo aquí.
+            La app detecta automáticamente las cuentas del grupo 6 (gastos)
+            y 7 (ingresos) y rellena las casillas del Modelo 200.
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Descarga plantilla
+            _col_dl, _col_info = st.columns([1, 2])
+            with _col_dl:
+                try:
+                    with open("/mnt/user-data/outputs/Nolasco_BSS_Importador_Modelo200.xlsx", "rb") as _f:
+                        st.download_button(
+                            "⬇️ Descargar plantilla BSS Nolasco",
+                            data=_f.read(),
+                            file_name="Nolasco_BSS_Importador_Modelo200.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True,
+                            type="secondary"
+                        )
+                except FileNotFoundError:
+                    st.caption("Plantilla no disponible en este entorno.")
+            with _col_info:
+                st.caption(
+                    "La plantilla incluye instrucciones, datos de ejemplo y la hoja "
+                    "Resumen IS que calcula automáticamente las casillas [318]/[319]/[320]/[399]/[562]."
+                )
+
+            st.markdown("---")
+
+            # Drop zone para el Excel del cliente
+            _bss_file = st.file_uploader(
+                "Arrastra aquí el Excel BSS exportado de A3 / Holded / Sage",
+                type=["xlsx", "xls"],
+                key="bss_uploader",
+                help="El archivo debe contener columnas: Código Cuenta, Descripción, Debe, Haber, Saldo"
+            )
+
+            if _bss_file:
+                try:
+                    import openpyxl
+                    import io as _io
+
+                    _wb_bss = openpyxl.load_workbook(_io.BytesIO(_bss_file.read()), data_only=True)
+
+                    # Detectar hoja con datos BSS
+                    _hoja_datos = None
+                    for _sh in _wb_bss.sheetnames:
+                        if any(k in _sh.lower() for k in ["bss", "datos", "sumas", "saldos", "data"]):
+                            _hoja_datos = _wb_bss[_sh]
+                            break
+                    if not _hoja_datos:
+                        _hoja_datos = _wb_bss.active  # fallback primera hoja
+
+                    # Leer filas
+                    _filas_raw = []
+                    for _row in _hoja_datos.iter_rows(min_row=1, values_only=True):
+                        if _row[0] is not None:
+                            _filas_raw.append(_row)
+
+                    # Detectar fila cabecera (donde empieza con "Código" o similar)
+                    _header_row = 0
+                    for _idx, _row in enumerate(_filas_raw):
+                        _primer = str(_row[0]).lower()
+                        if any(k in _primer for k in ["código", "cuenta", "cod", "code"]):
+                            _header_row = _idx
+                            break
+
+                    _datos_bss = _filas_raw[_header_row + 1:]
+
+                    # Parser: extraer cuentas 6xx y 7xx
+                    _gastos   = {}  # cuenta → importe
+                    _ingresos = {}
+                    _mapeo_cuentas = []
+
+                    for _row in _datos_bss:
+                        if not _row or not _row[0]:
+                            continue
+                        _cod = str(_row[0]).strip().replace(".", "").replace(" ", "")
+                        if not _cod or not _cod[0].isdigit():
+                            continue
+                        # Solo grupos 6 y 7
+                        _grupo = _cod[0]
+                        if _grupo not in ("6", "7"):
+                            continue
+
+                        _desc  = str(_row[1]).strip() if len(_row) > 1 and _row[1] else ""
+                        _debe  = float(_row[2]) if len(_row) > 2 and _row[2] and str(_row[2]).replace(".","").replace(",","").replace("-","").isdigit() else 0
+                        _haber = float(_row[3]) if len(_row) > 3 and _row[3] and str(_row[3]).replace(".","").replace(",","").replace("-","").isdigit() else 0
+                        try:
+                            _debe  = float(str(_row[2]).replace(",", ".")) if len(_row) > 2 and _row[2] else 0
+                            _haber = float(str(_row[3]).replace(",", ".")) if len(_row) > 3 and _row[3] else 0
+                        except:
+                            pass
+                        _saldo = _debe - _haber
+
+                        # Subcódigo = últimos 3-4 dígitos
+                        _subcod = _cod[-4:] if len(_cod) >= 7 else ""
+                        _cuenta_base = _cod[:3]
+
+                        if _grupo == "6":
+                            _gastos[_cod] = {"desc": _desc, "debe": _debe,
+                                             "subcod": _subcod, "base": _cuenta_base}
+                        else:
+                            _ingresos[_cod] = {"desc": _desc, "haber": _haber,
+                                               "subcod": _subcod, "base": _cuenta_base}
+
+                        _mapeo_cuentas.append({
+                            "Cuenta": _cod, "Descripción": _desc,
+                            "Grupo": "Gasto" if _grupo == "6" else "Ingreso",
+                            "Debe": _debe, "Haber": _haber,
+                            "Subcódigo": _subcod
+                        })
+
+                    # Calcular casillas IS automáticamente
+                    def _sum_grupo(d, prefijos):
+                        return sum(v["debe"] for k, v in d.items()
+                                   if any(k.startswith(p) for p in prefijos))
+
+                    _318 = sum(v["haber"] for v in _ingresos.values()
+                               if v["base"].startswith("71") or v["base"].startswith("70"))
+                    _662 = _sum_grupo(_gastos, ["662"])
+                    _621 = _sum_grupo(_gastos, ["621"])
+                    _628 = _sum_grupo(_gastos, ["628"])
+                    _631 = _sum_grupo(_gastos, ["631"])
+                    _625 = _sum_grupo(_gastos, ["625"])
+                    _681 = _sum_grupo(_gastos, ["681"])
+                    _otros_g = _sum_grupo(_gastos, ["622","623","624","626","627","629","630","632","633","634","636","638","639"])
+                    _319 = _662 + _621 + _628 + _631 + _625 + _681 + _otros_g
+                    _320 = _681
+                    _399 = round(_318 - _319, 2)
+                    _562 = round(max(_399 * 0.25, 0), 2)
+
+                    # Mostrar resultado
+                    st.success(f"✅ Detectadas {len(_mapeo_cuentas)} cuentas de grupos 6 y 7")
+
+                    # KPIs resumen IS
+                    _c1, _c2, _c3, _c4 = st.columns(4)
+                    _c1.metric("[318] Ingresos",     f"{_318:,.2f} €")
+                    _c2.metric("[319] Gastos IS",    f"{_319:,.2f} €")
+                    _c3.metric("[399] Resultado",    f"{_399:,.2f} €")
+                    _c4.metric("[562] Cuota IS 25%", f"{_562:,.2f} €",
+                               delta_color="inverse",
+                               delta=f"A ingresar: {_562:,.0f} €")
+
+                    st.markdown("---")
+
+                    # Desglose gastos por tipo
+                    st.markdown("**📋 Desglose gastos detectados**")
+                    _gas_df = pd.DataFrame([
+                        {"Casilla IS": "[662]", "Concepto": "Intereses hipoteca",          "Importe (€)": f"{_662:,.2f}"},
+                        {"Casilla IS": "[621]", "Concepto": "Reparaciones y conservación", "Importe (€)": f"{_621:,.2f}"},
+                        {"Casilla IS": "[628]", "Concepto": "Suministros",                 "Importe (€)": f"{_628:,.2f}"},
+                        {"Casilla IS": "[631]", "Concepto": "IBI y otros tributos",        "Importe (€)": f"{_631:,.2f}"},
+                        {"Casilla IS": "[625]", "Concepto": "Seguros",                     "Importe (€)": f"{_625:,.2f}"},
+                        {"Casilla IS": "[681]", "Concepto": "Amortización 3% (cta. 681)",  "Importe (€)": f"{_320:,.2f}"},
+                        {"Casilla IS": "Otros", "Concepto": "Otros gastos deducibles",     "Importe (€)": f"{_otros_g:,.2f}"},
+                    ])
+                    st.dataframe(_gas_df, use_container_width=True, hide_index=True)
+
+                    # Tabla cuentas detectadas
+                    with st.expander("🔍 Ver todas las cuentas detectadas"):
+                        _df_mc = pd.DataFrame(_mapeo_cuentas)
+                        st.dataframe(
+                            _df_mc.style.format({"Debe": "{:,.2f} €", "Haber": "{:,.2f} €"}),
+                            use_container_width=True, hide_index=True
+                        )
+
+                    st.markdown("---")
+
+                    # Mapeo inmueble por subcódigo
+                    st.markdown("**🏠 Asignar subcódigos a inmuebles**")
+                    st.caption("La app detectó estos subcódigos. Asigna cada uno al inmueble correspondiente.")
+
+                    _subcods_detectados = sorted(set(
+                        list(v["subcod"] for v in _gastos.values() if v["subcod"]) +
+                        list(v["subcod"] for v in _ingresos.values() if v["subcod"])
+                    ))
+                    _nombres_inm = list(df_inm["Nombre"].dropna()) if not df_inm.empty else []
+                    _mapeo_final = {}
+
+                    if _subcods_detectados:
+                        # Un selector por fila para evitar problemas de estado en columnas dinámicas
+                        for _sc in _subcods_detectados:
+                            _col_a, _col_b = st.columns([1, 3])
+                            _col_a.markdown(f"**Subcódigo `{_sc}`**")
+                            _sel_inm = _col_b.selectbox(
+                                f"Inmueble para subcódigo {_sc}",
+                                ["— Sin asignar —"] + _nombres_inm,
+                                key=f"bss_map_{_sc}",
+                                label_visibility="collapsed"
+                            )
+                            if _sel_inm != "— Sin asignar —":
+                                _mapeo_final[_sc] = _sel_inm
+
+                    # Guardar en Supabase
+                    if st.button("💾 Guardar datos BSS en Nolasco Capital",
+                                 type="primary", use_container_width=True,
+                                 key="btn_guardar_bss"):
+                        _uid_bss = st.session_state.get("user_id", "")
+                        _ok_count = 0
+
+                        # Guardar como movimientos contables con fuente BSS
+                        _lote_movs = []
+                        for _cod, _v in {**_gastos}.items():
+                            _sc = _v["subcod"]
+                            _inm_nombre = _mapeo_final.get(_sc, "")
+                            if not _inm_nombre:
+                                continue
+                            _lote_movs.append({
+                                "Fecha":       pd.Timestamp.now().strftime("%Y-%m-%d"),
+                                "Concepto":    f"[BSS][{_cod}] {_v['desc'][:60]}",
+                                "Importe":     round(_v["debe"], 2),
+                                "Tipo":        "Gasto",
+                                "Categoria":   "Contabilidad IS",
+                                "Apartamento": _inm_nombre,
+                            })
+                        if _lote_movs:
+                            try:
+                                _ok = agregar_movimientos(_lote_movs, _uid_bss)
+                                _ok_count = len(_lote_movs) if _ok else 0
+                            except Exception as _ex:
+                                st.error(f"Error al guardar: {_ex}")
+
+                        if _ok_count > 0:
+                            st.success(f"✅ {_ok_count} apuntes contables guardados. "
+                                       f"Recarga la sección Modelo 200 para ver los datos actualizados.")
+                            st.session_state["df_mov_persistent"] = leer_movimientos(
+                                user_id=_uid_bss)
+                        else:
+                            st.warning("Asigna al menos un subcódigo a un inmueble antes de guardar.")
+
+                except Exception as _e_bss:
+                    st.error(f"Error al procesar el archivo: {_e_bss}")
+                    st.caption("Asegúrate de que el Excel tiene las columnas: Código, Descripción, Debe, Haber")
+    else:
+        st.markdown('<div class="nc-brand-header">💰 Fiscalidad</div>', unsafe_allow_html=True)
+        st.markdown('<div class="nc-brand-sub">Escudo fiscal · Modelo 100 IRPF · Deducciones optimizadas</div>', unsafe_allow_html=True)
+        from fiscal_export import render_seccion_fiscal
+        render_seccion_fiscal(df_inm, df_mov, safe_float, calcular_modelo_100)
+
+# ================================================================
+# PANTALLA: MACROFINANZAS
+# Simulador amortización, stress test Euríbor, sensibilidad renta
+# Deps: df_inm, df_mov, df_hip, calcular_amortizacion(), stress_test_euribor()
+# ================================================================
+elif menu == "Macrofinanzas":
+    from supabase_db import guardar_hipoteca, eliminar_hipoteca
+    st.markdown('<div class="nc-brand-header">Macrofinanzas</div>',unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Simulador hipoteca · Stress test Euríbor · Análisis sensibilidad</div>',unsafe_allow_html=True)
+
+    # ── Recargar hipotecas del usuario ──────────────────────────
+    df_hip = _cargar_hipotecas_supabase()
+    st.session_state.df_hip = df_hip
+
+    # ── Gestión de hipotecas ─────────────────────────────────────
+    with st.expander("➕ Gestionar hipotecas", expanded=df_hip.empty):
+        _uid_hip = st.session_state.get("user_id","")
+        _nombres_inm = list(df_inm["Nombre"].dropna()) if not df_inm.empty else []
+
+        st.markdown("**Añadir / editar hipoteca**")
+        _hcol1, _hcol2, _hcol3 = st.columns(3)
+        with _hcol1:
+            _h_inm   = st.selectbox("Inmueble", _nombres_inm, key="h_inm_sel") if _nombres_inm else st.text_input("Inmueble", key="h_inm_txt")
+            _h_pri   = st.number_input("Principal (€)", min_value=0.0, step=1000.0, key="h_pri")
+            _h_tasa  = st.number_input("Tasa inicial (%)", min_value=0.0, max_value=20.0, step=0.01, key="h_tasa")
+        with _hcol2:
+            _h_plazo = st.number_input("Plazo (años)", min_value=1, max_value=40, value=20, key="h_plazo")
+            _h_fecha = st.date_input("Fecha inicio", key="h_fecha")
+            _h_var   = st.radio("Tipo", ["Fija","Variable"], horizontal=True, key="h_var")
+        with _hcol3:
+            _h_idx   = st.selectbox("Índice", ["","Euríbor","IRPH"], key="h_idx") if _h_var=="Variable" else st.empty()
+            _h_mrg   = st.number_input("Margen (%)", min_value=0.0, step=0.01, key="h_mrg") if _h_var=="Variable" else 0.0
+            _h_saldo = st.number_input("Saldo actual (€)", min_value=0.0, step=1000.0, key="h_saldo")
+
+        if st.button("💾 Guardar hipoteca", type="primary", key="btn_save_hip"):
+            _ok = guardar_hipoteca(_uid_hip, {
+                "inmueble": _h_inm, "principal": _h_pri, "tasa_inicial": _h_tasa,
+                "plazo_años": _h_plazo, "fecha_inicio": str(_h_fecha),
+                "es_variable": "S" if _h_var=="Variable" else "N",
+                "indice_variable": _h_idx if _h_var=="Variable" else "",
+                "margen": _h_mrg, "saldo_actual": _h_saldo
+            })
+            if _ok:
+                st.success("✓ Hipoteca guardada")
+                st.session_state.df_hip = _cargar_hipotecas_supabase()
+                st.rerun()
+            else:
+                st.error("Error al guardar")
+
+        if not df_hip.empty:
+            st.markdown("**Hipotecas registradas**")
+            st.dataframe(df_hip[["Inmueble","Principal","Tasa_Inicial","Plazo_Años","Saldo_Actual"]].style.format({
+                "Principal": "{:,.0f} €", "Tasa_Inicial": "{:.2f}%",
+                "Saldo_Actual": "{:,.0f} €"
+            }), use_container_width=True, hide_index=True)
+            _del_opts = list(df_hip["Inmueble"])
+            _del_sel  = st.selectbox("Eliminar hipoteca:", _del_opts, key="del_hip_sel")
+            if st.button("🗑️ Eliminar", type="secondary", key="btn_del_hip"):
+                _fila_del = df_hip[df_hip["Inmueble"]==_del_sel]
+                if not _fila_del.empty and "id" in _fila_del.columns:
+                    eliminar_hipoteca(_uid_hip, int(_fila_del.iloc[0]["id"]))
+                    st.session_state.df_hip = _cargar_hipotecas_supabase()
+                    st.rerun()
+
+    df_hip = st.session_state.df_hip
+    tab1,tab2,tab3=st.tabs(["📊 Simulador Amortización","⚠️ Stress Test Euríbor","📈 Sensibilidad Rentabilidad"])
+
+    with tab1:
+        st.markdown('<div class="nc-section-title">Simulador de Amortización</div>',unsafe_allow_html=True)
+        st.caption("Compara modalidades: cuota fija (francés) vs capital fijo (alemán)")
+        inmuebles_con_hip=df_hip[df_hip["Principal"]>0]["Inmueble"].tolist()
+        if not inmuebles_con_hip:
+            st.warning("⚠️ No hay hipotecas cargadas.")
+        else:
+            sel_hip=st.selectbox("Selecciona inmueble:",inmuebles_con_hip,key="hip_sel")
+            hip_row=df_hip[df_hip["Inmueble"]==sel_hip].iloc[0]
+            col1,col2,col3,col4=st.columns(4)
+            with col1: principal=st.number_input("Principal (€)",value=int(hip_row["Principal"]),min_value=0)
+            with col2: tasa=st.number_input("Tasa (%)",value=float(hip_row["Tasa_Inicial"]),min_value=0.0,max_value=10.0,step=0.1)
+            with col3: plazo=st.number_input("Plazo (años)",value=int(hip_row["Plazo_Años"]) if int(hip_row["Plazo_Años"])>0 else 20,min_value=1,max_value=50)
+            with col4: modo=st.selectbox("Modalidad",["Cuota Fija","Capital Fijo"],key="modo_amort")
+            modo_code="cuota_fija" if modo=="Cuota Fija" else "capital_fijo"
+            resultado=calcular_amortizacion(principal,tasa,plazo,modo_code)
+            k1,k2,k3=st.columns(3); cuota_val=resultado["cuota_mensual"]
+            k1.metric("Cuota Mensual",f"{cuota_val:,.2f} €" if isinstance(cuota_val,float) else "Variable")
+            k2.metric("Total Intereses",f"{resultado['total_intereses']:,.0f} €")
+            k3.metric("Total Pagado",f"{resultado['total_pagado']:,.0f} €")
+            tabla=resultado["tabla"].copy(); tabla["Año"]=tabla["Mes"]//12
+            fig_amort=go.Figure()
+            fig_amort.add_trace(go.Scatter(x=tabla["Año"],y=tabla["Pendiente"],mode="lines",name="Capital Pendiente",fill="tozeroy",line=dict(color=ACCENT)))
+            fig_amort.add_trace(go.Scatter(x=tabla["Año"],y=tabla["Intereses"].cumsum(),mode="lines",name="Intereses Acumulados",line=dict(color=RED,dash="dash")))
+            fig_amort.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=300,font=dict(family="DM Sans",size=12),hovermode="x unified")
+            st.plotly_chart(fig_amort,use_container_width=True)
+            col_t1,col_t2=st.columns(2)
+            with col_t1:
+                st.caption("Primeros 12 meses")
+                st.dataframe(tabla.head(12)[["Mes","Cuota","Capital","Intereses","Pendiente"]].style.format({"Cuota":"{:,.2f} €","Capital":"{:,.2f} €","Intereses":"{:,.2f} €","Pendiente":"{:,.2f} €"}),use_container_width=True,hide_index=True)
+            with col_t2:
+                st.caption("Últimos 12 meses")
+                st.dataframe(tabla.tail(12)[["Mes","Cuota","Capital","Intereses","Pendiente"]].style.format({"Cuota":"{:,.2f} €","Capital":"{:,.2f} €","Intereses":"{:,.2f} €","Pendiente":"{:,.2f} €"}),use_container_width=True,hide_index=True)
+
+    with tab2:
+        st.markdown('<div class="nc-section-title">Stress Test Euríbor</div>',unsafe_allow_html=True)
+        st.caption("¿Cuánto sube tu cuota si el Euríbor sube 1%, 2% o 3%?")
+        hips_variable=df_hip[(df_hip["Es_Variable"]=="S")&(df_hip["Principal"]>0)]
+        if hips_variable.empty:
+            st.warning("⚠️ No hay hipotecas variables.")
+        else:
+            sel_var=st.selectbox("Hipoteca variable:",hips_variable["Inmueble"].tolist(),key="hip_var")
+            hip_var=hips_variable[hips_variable["Inmueble"]==sel_var].iloc[0]
+            col_s1,col_s2,col_s3,col_s4=st.columns(4)
+            with col_s1: saldo=st.number_input("Saldo Actual (€)",value=int(hip_var["Saldo_Actual"]),min_value=0)
+            with col_s2: margen=st.number_input("Margen (%)",value=float(hip_var["Margen"]),min_value=0.0,max_value=3.0,step=0.05)
+            with col_s3: euribor_ahora=st.number_input("Euríbor Actual (%)",value=3.5,min_value=0.0,max_value=10.0,step=0.1)
+            with col_s4: plazo_rest=st.number_input("Años Restantes",value=20,min_value=1,max_value=40)
+            stress_results=stress_test_euribor(saldo,margen,euribor_ahora,plazo_rest)
+            tabla_stress=[{"Escenario":k,"Tasa Total":f"{v['tasa_total']:.2f}%","Cuota Mensual":f"{v['cuota_mensual']:,.2f} €","Cuota Anual":f"{v['cuota_anual']:,.2f} €"} for k,v in stress_results.items()]
+            st.dataframe(pd.DataFrame(tabla_stress),use_container_width=True,hide_index=True)
+            fig_stress=go.Figure(go.Bar(x=list(stress_results.keys()),y=[v["cuota_mensual"] for v in stress_results.values()],marker_color=[RED if k!="Euríbor actual" else ACCENT for k in stress_results.keys()],text=[f"{v['cuota_mensual']:,.0f} €" for v in stress_results.values()],textposition="outside"))
+            fig_stress.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=300,font=dict(family="DM Sans",size=12),showlegend=False)
+            st.plotly_chart(fig_stress,use_container_width=True)
+            cuota_base=stress_results["Euríbor actual"]["cuota_mensual"]
+            cuota_peligro=stress_results["Euríbor +2%"]["cuota_mensual"]; impacto=cuota_peligro-cuota_base
+            if impacto>500: cls_r,msg_r="status-red",f"🔴 RIESGO ALTO: Subida +2% = +{impacto:,.0f} €/mes. Considera pasar a tipo fijo."
+            elif impacto>200: cls_r,msg_r="status-yellow",f"🟡 RIESGO MEDIO: Subida +2% = +{impacto:,.0f} €/mes. Monitorear."
+            else: cls_r,msg_r="status-green",f"🟢 RIESGO BAJO: Subida +2% = +{impacto:,.0f} €/mes. Asumible."
+            st.markdown(f'<div class="{cls_r}">{msg_r}</div>',unsafe_allow_html=True)
+
+    with tab3:
+        st.markdown('<div class="nc-section-title">Análisis de Sensibilidad</div>',unsafe_allow_html=True)
+        st.caption("Cómo cambia la rentabilidad si subes o bajas la renta")
+        sel_sens=st.selectbox("Inmueble:",df_inm["Nombre"].tolist(),key="sens_inmueble")
+        row_sens=df_inm[df_inm["Nombre"]==sel_sens].iloc[0]
+        gastos_esp=df_mov[(df_mov["Apartamento"]==sel_sens)&(df_mov["Tipo"]=="Gasto")]["Importe"].sum()
+        comunidad_esp=float(row_sens.get("Comunidad",0))*12
+        gastos_anuales_sens=gastos_esp+comunidad_esp
+        col_var1,col_var2=st.columns(2)
+        with col_var1: renta_sens=st.number_input("Renta Mensual (€)",value=float(row_sens["Renta"]),min_value=0.0)
+        with col_var2: variaciones=st.multiselect("Variaciones a analizar (%)",options=[-15,-10,-5,0,5,10,15],default=[-10,-5,0,5,10])
+        if variaciones:
+            tabla_sens=analisis_sensibilidad_renta(renta_sens,gastos_anuales_sens,float(row_sens["Valor_Construccion"]),variaciones)
+            st.dataframe(tabla_sens,use_container_width=True,hide_index=True)
+            datos_graf=[{"var":v,"rent":(renta_sens*(1+v/100)*12-gastos_anuales_sens)/float(row_sens["Valor_Construccion"])*100 if float(row_sens["Valor_Construccion"])>0 else 0} for v in sorted(variaciones)]
+            df_graf=pd.DataFrame(datos_graf)
+            fig_sens=go.Figure(go.Scatter(x=df_graf["var"],y=df_graf["rent"],mode="lines+markers",line=dict(color=ACCENT,width=3),marker=dict(size=10),fill="tozeroy"))
+            fig_sens.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=10),height=300,xaxis_title="Variación Renta (%)",yaxis_title="Rentabilidad Neta (%)",font=dict(family="DM Sans",size=12))
+            st.plotly_chart(fig_sens,use_container_width=True)
+
+# ================================================================
+# PANTALLA: ASESOR PATRIMONIAL IA (B2B2C)
+# Deps: df_inm, asesoramiento_ia.py, nolasco_styles.py
+# ================================================================
+elif menu == "Asesor Patrimonial IA":
+    st.markdown(f"""
+    <div style='background:{SIDEBAR_BG};padding:20px 24px 16px;border-radius:12px;margin-bottom:24px;border-left:4px solid {ACCENT};'>
+        <h2 style='color:white;margin:0;font-size:22px'>🧠 Asesor Patrimonial IA</h2>
+        <p style='color:#8899AA;margin:6px 0 0;font-size:14px'>Analizamos tu cartera y te conectamos con inmobiliarias cuando lo necesitas. Tú controlas tus datos en todo momento.</p>
+    </div>""",unsafe_allow_html=True)
+    if df_inm.empty:
+        st.info("📭 Añade inmuebles en 'Datos de la Cartera' para usar el Asesor.")
+    else:
+        def _safe_float(v):
+            try: return float(str(v).replace(",","").replace("€","").strip())
+            except: return 0.0
+        renta_total   = df_inm["Renta"].apply(_safe_float).sum()
+        mercado_total = df_inm["Renta_Mercado"].apply(_safe_float).sum()
+        rent_pct      = round(renta_total/mercado_total*100,1) if mercado_total>0 else 0
+        contexto_ia = {
+            "num_inmuebles":       len(df_inm),
+            "rentabilidad_media":  rent_pct,
+            "rentabilidad_mercado":100,
+            "perdida_mensual":     round(mercado_total-renta_total,0),
+            "inmuebles": [{"nombre":row.get("Nombre",""),"renta":_safe_float(row.get("Renta",0)),"mercado":_safe_float(row.get("Renta_Mercado",0)),"vencimiento":str(row.get("Fecha_Vencimiento_Contrato",""))} for _,row in df_inm.iterrows()],
+            "email": st.session_state.user_email or "",
+        }
+        st.markdown("<hr style='border:0;border-top:1px solid #D0DFF0;margin:1.5rem 0;'>",unsafe_allow_html=True)
+        datos_propietario={"nombre":st.session_state.get("user_nombre",""),"email":st.session_state.get("user_email",st.session_state.user_email or ""),"telefono":st.session_state.get("user_telefono",""),}
+        render_asesor_ia(user_id=st.session_state.user_id,df_inmuebles=df_inm,datos_propietario=datos_propietario)
+        # ── SABIO PATRIMONIAL — Asesor ──────────────────────────
+        render_sabio("asesor", contexto_ia)
+
+# ================================================================
+# PANTALLA: PRIVACIDAD Y CONSENTIMIENTOS (RGPD)
+# Deps: asesoramiento_ia.render_privacidad()
+# ================================================================
+elif menu == "Privacidad y Consentimientos":
+    st.markdown(f"""
+    <div style='background:{SIDEBAR_BG};padding:20px 24px 16px;border-radius:12px;margin-bottom:24px;border-left:4px solid #0F6E56;'>
+        <h2 style='color:white;margin:0;font-size:22px'>🔒 Privacidad y Consentimientos</h2>
+        <p style='color:#8899AA;margin:6px 0 0;font-size:14px'>Gestiona quién tiene acceso a tus datos y revoca permisos en cualquier momento.</p>
+    </div>""",unsafe_allow_html=True)
+    render_privacidad(user_id=st.session_state.user_id)
+
+# ================================================================
+# PANTALLA: COMPARTIR CON ASESOR
+# Deps: generar_codigo_acceso(), obtener_codigo_activo(), revocar_codigo_acceso()
+# ================================================================
+elif menu == "Compartir con Asesor":
+    st.markdown('<div class="nc-brand-header">🔗 Compartir con Asesor</div>',unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Permite a tu asesor fiscal o inmobiliaria ver tu patrimonio</div>',unsafe_allow_html=True)
+    user_id=st.session_state.user_id; codigo_activo=obtener_codigo_activo(user_id)
+    st.markdown("### ¿Cómo funciona?")
+    st.info("1. Genera un código de 6 dígitos\n2. Compártelo con tu asesor por WhatsApp o email\n3. Ellos acceden a tu Torre de Control y Fichas (solo lectura)\n4. Puedes revocar el acceso en cualquier momento")
+    st.markdown("---")
+    if codigo_activo:
+        st.markdown("### ✅ Tu código de acceso activo")
+        st.markdown(f"""<div style='background:#0F2744;border:2px solid #185FA5;border-radius:12px;padding:2rem;text-align:center;margin:1rem 0;'>
+            <div style='font-size:0.85rem;color:#8899AA;margin-bottom:0.5rem;'>Comparte este código con tu asesor</div>
+            <div style='font-size:3rem;font-weight:700;color:#60B4FF;letter-spacing:0.5rem;font-family:monospace;'>{codigo_activo}</div>
+        </div>""",unsafe_allow_html=True)
+        col1,col2=st.columns(2)
+        with col1:
+            if st.button("🔄 Regenerar código",use_container_width=True):
+                result=generar_codigo_acceso(user_id)
+                if result["success"]: st.success(f"Nuevo código: {result['codigo']}"); st.rerun()
+                else: st.error("Error al generar código")
+        with col2:
+            if st.button("❌ Revocar acceso",use_container_width=True,type="secondary"):
+                if revocar_codigo_acceso(user_id): st.success("Acceso revocado."); st.rerun()
+                else: st.error("Error al revocar acceso")
+    else:
+        st.warning("No tienes ningún código de acceso activo. Tu patrimonio no es visible para ningún asesor.")
+        if st.button("🔗 Generar código de acceso",use_container_width=True,type="primary"):
+            result=generar_codigo_acceso(user_id)
+            if result["success"]: st.success(f"✅ Código generado: **{result['codigo']}**"); st.rerun()
+            else: st.error(f"Error: {result.get('error','desconocido')}")
+    st.markdown("---")
+    st.markdown("""<div style='font-size:0.8rem;color:#8899AA;'>🔒 <strong>Privacidad:</strong> Solo lectura — Torre de Control y Fichas. Sin acceso al Diario Contable ni datos fiscales sensibles. Revocar en cualquier momento.</div>""",unsafe_allow_html=True)
+
+# ================================================================
+# PANTALLA: LEGAL — GENERADOR DE CONTRATOS + CALCULADORAS
+# Deps: df_inm, generar_contrato_*(), safe_float(), REPORTLAB_OK
+# ================================================================
+elif menu == "Legal":
+    st.markdown('<div class="nc-brand-header">⚖️ HERRAMIENTAS LEGALES</div>',unsafe_allow_html=True)
+    st.markdown("""<style>
+    .legal-card{background:linear-gradient(135deg,#1a3a5c 0%,#2d5a8c 100%);border:2px solid #c9a85c;border-radius:12px;padding:2rem;margin-bottom:2rem;}
+    .legal-title{color:#c9a85c;font-size:1.3rem;font-weight:700;margin-bottom:0.5rem;}
+    .legal-subtitle{color:#e8f2ff;font-size:0.95rem;margin-bottom:1.5rem;}
+    .legal-section{background:#f8fafb;border-left:4px solid #1a3a5c;padding:1.2rem;border-radius:8px;margin:1.5rem 0;}
+    .disclaimer{background:#fff3cd;border:1px solid #ffc107;border-left:4px solid #ff9800;border-radius:8px;padding:1rem;margin-top:2rem;color:#856404;font-size:0.85rem;line-height:1.5;}
+    </style>""",unsafe_allow_html=True)
+
+    st.markdown("""<div class="legal-card"><div class="legal-title">📋 GENERADOR DE CONTRATOS DE ARRENDAMIENTO</div>
+    <div class="legal-subtitle">Genera contratos conformes a LAU 29/1994 con tus datos precargados</div></div>""",unsafe_allow_html=True)
+
+    if "tipo_contrato_seleccionado" not in st.session_state:
+        st.session_state.tipo_contrato_seleccionado=None
+
+    col1,col2,col3=st.columns(3)
+    with col1:
+        if st.button("📜  LARGA DURACIÓN\nVivienda habitual · LAU Art. 9",key="btn_larga",use_container_width=True,type="primary" if st.session_state.tipo_contrato_seleccionado=="larga" else "secondary"):
+            st.session_state.tipo_contrato_seleccionado="larga"; st.rerun()
+    with col2:
+        if st.button("⏰  TEMPORADA\nTurístico o estudios · ≤12 meses",key="btn_temp",use_container_width=True,type="primary" if st.session_state.tipo_contrato_seleccionado=="temporada" else "secondary"):
+            st.session_state.tipo_contrato_seleccionado="temporada"; st.rerun()
+    with col3:
+        if st.button("🛏️  HABITACIÓN\nSubarrienda habitación · LAU parcial",key="btn_hab",use_container_width=True,type="primary" if st.session_state.tipo_contrato_seleccionado=="habitacion" else "secondary"):
+            st.session_state.tipo_contrato_seleccionado="habitacion"; st.rerun()
+
+    if st.session_state.tipo_contrato_seleccionado:
+        tipo=st.session_state.tipo_contrato_seleccionado
+        st.markdown("<br>",unsafe_allow_html=True)
+        inmueble_seleccionado=st.selectbox("Selecciona el inmueble",options=df_inm["Nombre"].tolist(),key="inmueble_legal")
+        inm_data=df_inm[df_inm["Nombre"]==inmueble_seleccionado].iloc[0]
+        st.caption(f"📍 Ref. Catastral: {inm_data.get('Ref_Catastral','N/A')} | {inm_data.get('M2_Construidos',0)}m²")
+        col_dur1,col_dur2=st.columns(2)
+        with col_dur1:
+            if tipo=="larga":
+                duracion_anos=st.selectbox("Años",options=[1,2,3,4,5],index=2,key="dur_anos"); duracion_meses=0
+            else:
+                duracion_meses=st.selectbox("Meses",options=list(range(1,13)),index=5,key="dur_meses"); duracion_anos=0
+        renta=inm_data.get("Renta",0); st.write(f"**Renta mensual:** {renta:,.0f}€")
+        tipo_fianza=st.radio("Fianza",options=["1 mes","2 meses","Sin fianza"],index=1 if tipo=="larga" else 0,horizontal=True,key="fianza_tipo")
+        importe_fianza=0 if "Sin" in tipo_fianza else (renta if "1 mes" in tipo_fianza else renta*2)
+        st.caption(f"💵 Importe fianza: {importe_fianza:,.0f}€")
+        col_sum1,col_sum2=st.columns(2)
+        with col_sum1:
+            incluye_luz=st.checkbox("⚡ Incluye electricidad",key="sum_luz"); incluye_gas=st.checkbox("🔥 Incluye gas",key="sum_gas")
+        with col_sum2:
+            incluye_internet=st.checkbox("📡 Incluye internet",key="sum_int"); incluye_agua=st.checkbox("💧 Incluye agua",key="sum_agua")
+        ipc_anual=st.checkbox("✓ Actualización anual según IPC",value=True,key="ipc")
+        mascotas=st.radio("🐕 Mascotas",options=["Permitidas","No permitidas","A consultar"],index=1,horizontal=True,key="mascotas")
+
+        if st.button("⚖️ GENERAR CONTRATO",type="primary",use_container_width=True,key="generar_contrato"):
+            contrato_data={"tipo":tipo,"inmueble":inmueble_seleccionado,"direccion":"Calle ejemplo, 1","ref_catastral":inm_data.get("Ref_Catastral","N/A"),"m2":inm_data.get("M2_Construidos",0),"renta":renta,"duracion_anos":duracion_anos,"duracion_meses":duracion_meses,"fianza_meses":0 if "Sin" in tipo_fianza else (1 if "1 mes" in tipo_fianza else 2),"importe_fianza":importe_fianza,"incluye_luz":incluye_luz,"incluye_gas":incluye_gas,"incluye_internet":incluye_internet,"incluye_agua":incluye_agua,"ipc":ipc_anual,"mascotas":mascotas}
+            if tipo=="larga": contrato_texto=generar_contrato_larga_duracion(contrato_data)
+            elif tipo=="temporada": contrato_texto=generar_contrato_temporada(contrato_data)
+            else: contrato_texto=generar_contrato_habitacion(contrato_data)
+            st.success("✅ Contrato generado correctamente")
+            with st.expander("📄 PREVIEW DEL CONTRATO",expanded=True): st.text(contrato_texto)
+            st.download_button("📥 Descargar TXT",data=contrato_texto,file_name=f"contrato_{tipo}_{inmueble_seleccionado.replace(' ','_')}.txt",mime="text/plain")
+
+    st.markdown("""<div class="disclaimer"><strong>⚠️ AVISO LEGAL</strong><br>Contratos orientativos basados en LAU 29/1994. <strong>NO sustituye asesoramiento legal profesional.</strong> Consulte con un abogado antes de firmar.</div>""",unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown('<div class="nc-brand-header">🧮 Calculadoras de Renta</div>',unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Herramientas de negociación y actualización · Basadas en LAU y datos reales</div>',unsafe_allow_html=True)
+    calc1,calc2=st.tabs(["📉 Renegociación (inquilino pide bajar)","📈 Actualización al alza"])
+
+    with calc1:
+        st.markdown('<div class="nc-section-title">¿Cuánto puedo bajar la renta sin perder dinero?</div>',unsafe_allow_html=True)
+        inm_reneg=st.selectbox("Inmueble",df_inm["Nombre"].tolist(),key="reneg_inm")
+        f_reneg=df_inm[df_inm["Nombre"]==inm_reneg].iloc[0]; renta_actual_reneg=safe_float(f_reneg.get("Renta",0))
+        st.markdown(f"**Renta actual:** {renta_actual_reneg:,.2f} €/mes")
+        c1a,c1b,c1c=st.columns(3)
+        with c1a: renta_pedida=st.number_input("Renta que pide el inquilino (€/mes)",min_value=0.0,max_value=float(renta_actual_reneg),value=float(max(0,renta_actual_reneg-60)),step=10.0,format="%.2f",key="reneg_pedida")
+        with c1b: meses_vacio=st.slider("Meses estimados que estaría vacío",min_value=0,max_value=12,value=2,key="reneg_meses")
+        with c1c: meses_comision=st.slider("Meses de comisión inmobiliaria",min_value=0,max_value=3,value=1,key="reneg_comision")
+        if st.button("🧮 Calcular",type="primary",key="btn_reneg"):
+            bajada_mensual=renta_actual_reneg-renta_pedida
+            coste_comision=renta_actual_reneg*meses_comision
+            coste_total_si_se_va=renta_actual_reneg*meses_vacio+coste_comision
+            cobro_nuevo_12m=renta_actual_reneg*(12-meses_vacio)-coste_comision
+            renta_min_equilibrio=cobro_nuevo_12m/12
+            es_aceptable=renta_pedida>=renta_min_equilibrio
+            diferencia_12m=renta_pedida*12-cobro_nuevo_12m
+            r1,r2,r3=st.columns(3)
+            r1.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Bajada solicitada</div><div class="nc-kpi__value" style="color:{RED};">−{bajada_mensual:,.0f} €/mes</div></div>',unsafe_allow_html=True)
+            r2.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Coste si se va</div><div class="nc-kpi__value" style="color:{RED};">−{coste_total_si_se_va:,.0f} €</div></div>',unsafe_allow_html=True)
+            r3.markdown(f'<div class="nc-kpi is-highlight"><div class="nc-kpi__label">Renta mínima aceptable</div><div class="nc-kpi__value">{renta_min_equilibrio:,.0f} €/mes</div></div>',unsafe_allow_html=True)
+            if bajada_mensual<=0: cls_rec,rec="nc-status nc-status--green","✅ El inquilino no pide bajada. No hay nada que negociar."
+            elif es_aceptable: cls_rec,rec="nc-status nc-status--green",f"✅ ACEPTA — Renta pedida ({renta_pedida:,.0f} €) sobre el mínimo ({renta_min_equilibrio:,.0f} €). En 12 meses ganas {diferencia_12m:,.0f} € más."
+            else: cls_rec,rec="nc-status nc-status--red",f"🔴 NO ACEPTES — Contraoferta recomendada: {renta_min_equilibrio:,.0f} €/mes."
+            st.markdown(f'<div class="{cls_rec}">{rec}</div>',unsafe_allow_html=True)
+
+    with calc2:
+        st.markdown('<div class="nc-section-title">¿Cuánto puedo subir la renta?</div>',unsafe_allow_html=True)
+        inm_sube=st.selectbox("Inmueble",df_inm["Nombre"].tolist(),key="sube_inm")
+        f_sube=df_inm[df_inm["Nombre"]==inm_sube].iloc[0]
+        renta_actual_sube=safe_float(f_sube.get("Renta",0))
+        tipo_contrato_sube=str(f_sube.get("Tipo_Arrendamiento","Larga Duración"))
+        zona_tens_sube=str(f_sube.get("Zona_Tensionada","N"))=="S"
+        inquilino_sube=str(f_sube.get("Inquilino","El inquilino"))
+        IRAV_ACTUAL=2.47; TOPE_RDL=2.0
+        st.markdown(f"""<div class="nc-status nc-status--amber"><strong>📊 Índices oficiales 2026 (INE)</strong><br>
+        IRAV enero: 2,14% · IRAV febrero: 2,16% · <strong>IRAV marzo (último): 2,47%</strong><br>
+        ⚠️ Tope RDL 8/2026: <strong>máximo 2%</strong> hasta dic 2027</div>""",unsafe_allow_html=True)
+        s1,s2=st.columns(2)
+        with s1:
+            ipc_aplicar=st.number_input("IPC a aplicar (%)",min_value=0.0,max_value=20.0,value=2.47,step=0.1,format="%.1f",key="sube_ipc")
+            fecha_ultima_actualizacion=st.date_input("Fecha última actualización",key="sube_fecha")
+        with s2:
+            if tipo_contrato_sube=="Larga Duración":
+                try:
+                    fi2=pd.to_datetime(str(f_sube.get("Fecha_Inicio_Contrato","2022-01-01"))).date()
+                    post_ley2=fi2>=date(2023,5,26)
+                except: post_ley2=False
+                if post_ley2: st.success(f"✅ Contrato post Ley Vivienda → IRAV {IRAV_ACTUAL}% (tope 2%)")
+                else: st.info(f"📋 Contrato anterior → IPC topado al {TOPE_RDL}% (RDL 8/2026)")
+            elif tipo_contrato_sube=="Temporada": st.info("📋 Temporada: renta libre al vencimiento. Sin tope IRAV.")
+            else: st.info("📋 Habitaciones: renta libre. Sin tope IRAV.")
+            if zona_tens_sube: st.warning("⚠️ Zona tensionada: no puedes superar la renta del contrato anterior.")
+
+        if st.button("🧮 Calcular subida",type="primary",key="btn_sube"):
+            try:
+                fi=pd.to_datetime(str(f_sube.get("Fecha_Inicio_Contrato","2022-01-01"))).date()
+                contrato_post_ley=fi>=date(2023,5,26)
+            except: contrato_post_ley=False
+            if tipo_contrato_sube=="Larga Duración":
+                indice_aplicado=min(IRAV_ACTUAL if contrato_post_ley else ipc_aplicar,TOPE_RDL)
+                nota_legal=f"{'IRAV' if contrato_post_ley else 'IPC'} topado al {TOPE_RDL}% por RDL 8/2026"
+            else:
+                indice_aplicado=ipc_aplicar; nota_legal="Contrato no sujeto a topes IRAV."
+            subida_euros=renta_actual_sube*(indice_aplicado/100)
+            nueva_renta=renta_actual_sube+subida_euros; subida_anual=subida_euros*12
+            st.markdown(f'<div class="nc-status nc-status--amber">📋 {nota_legal}</div>',unsafe_allow_html=True)
+            sk1,sk2,sk3=st.columns(3)
+            sk1.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Subida mensual</div><div class="nc-kpi__value" style="color:{GREEN};">+{subida_euros:,.2f} €</div></div>',unsafe_allow_html=True)
+            sk2.markdown(f'<div class="nc-kpi"><div class="nc-kpi__label">Nueva renta</div><div class="nc-kpi__value">{nueva_renta:,.2f} €</div></div>',unsafe_allow_html=True)
+            sk3.markdown(f'<div class="nc-kpi is-highlight"><div class="nc-kpi__label">Extra anual</div><div class="nc-kpi__value">+{subida_anual:,.0f} €</div></div>',unsafe_allow_html=True)
+            fecha_hoy=datetime.now().strftime("%d de %B de %Y")
+            carta=f"""Granada, {fecha_hoy}\n\nEstimado/a {inquilino_sube}:\n\nLe comunicamos la actualización anual de la renta conforme al artículo 18 de la LAU 29/1994.\n\nRenta actual: {renta_actual_sube:,.2f} €/mes\nÍndice aplicado: {indice_aplicado}%\nIncremento mensual: {subida_euros:,.2f} €\nNueva renta mensual: {nueva_renta:,.2f} €\n\nEfectiva a partir del próximo periodo de pago.\n\nAtentamente,\nPedro Nolasco — Propietario"""
+            st.text_area("Carta lista para enviar:",value=carta,height=300,key="carta_notif")
+            st.download_button("📥 Descargar carta (.txt)",data=carta,file_name=f"notificacion_{inm_sube.replace(' ','_')}.txt",mime="text/plain")
+
+    st.markdown("""<div class="disclaimer"><strong>⚠️ AVISO LEGAL</strong><br>Calculadoras orientativas. <strong>Consulte siempre con un abogado especializado en arrendamientos antes de tomar decisiones.</strong></div>""",unsafe_allow_html=True)
+
+# ================================================================
+# PANTALLA: DATOS DE LA CARTERA
+# Gestión de inmuebles, backups, importación Excel
+# Deps: df_inm, guardar_inmuebles(), upsert_inmueble()
+# ================================================================
+elif menu == "Datos de la Cartera":
+    st.markdown('<div class="nc-brand-header">Datos de la Cartera</div>',unsafe_allow_html=True)
+
+    # ── Mostrar errores persistentes de guardado (sobreviven al rerun) ──
+    if "_errores_guardar_inm" in st.session_state:
+        ok = st.session_state.get("_ok_guardar_inm", 0)
+        errores = st.session_state["_errores_guardar_inm"]
+        st.error(f"⚠️ {len(errores)} inmueble(s) fallaron al guardar en Supabase ({ok} guardados correctamente). Copia estos errores:")
+        for e in errores:
+            st.code(e, language=None)
+        if st.button("🗑️ Limpiar errores", key="limpiar_err_inm"):
+            st.session_state.pop("_errores_guardar_inm", None)
+            st.rerun()
+    st.markdown('<div class="nc-brand-sub">Gestión de inmuebles · Backups · Configuración</div>',unsafe_allow_html=True)
+
+    if "modo_cartera" not in st.session_state: st.session_state.modo_cartera="lista"
+    if "inmueble_editando" not in st.session_state: st.session_state.inmueble_editando=None
+
+    col_btn1,col_btn2,col_btn3,col_btn4=st.columns(4)
+    with col_btn1:
+        if st.button("📋 Ver Lista",key="btn_lista",use_container_width=True): st.session_state.modo_cartera="lista"; st.rerun()
+    with col_btn2:
+        if st.button("➕ Añadir Inmueble",key="btn_nuevo",use_container_width=True): st.session_state.modo_cartera="nuevo"; st.session_state.inmueble_editando=None; st.rerun()
+    with col_btn3:
+        if st.button("📊 Ver Tabla Completa",key="btn_tabla",use_container_width=True): st.session_state.modo_cartera="tabla"; st.rerun()
+    with col_btn4:
+        if st.button("💾 Backups",key="btn_backup",use_container_width=True): st.session_state.modo_cartera="backup"; st.rerun()
+    st.markdown("---")
+
+    # ── LISTA ──────────────────────────────────────────────────
+    if st.session_state.modo_cartera=="lista":
+        st.markdown(f'<div class="nc-section-title">🏠 Mis Inmuebles ({len(df_inm)})</div>',unsafe_allow_html=True)
+        for idx,row in df_inm.iterrows():
+            col_info,col_btn=st.columns([4,1])
+            with col_info:
+                st.markdown(f"""<div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;padding:1rem;margin-bottom:0.8rem;">
+                    <div style="font-size:1.1rem;font-weight:600;color:{TEXT_PRI};margin-bottom:4px;">🏠 {row['Nombre']}</div>
+                    <div style="font-size:0.85rem;color:{TEXT_SEC};">👤 {row.get('Inquilino','Sin inquilino')} · 📍 CP {row.get('CP','N/A')}</div>
+                    <div style="margin-top:8px;font-size:0.82rem;">
+                        <span style="background:#EDF7F1;color:#3B6D11;padding:3px 8px;border-radius:4px;margin-right:4px;">💰 {row['Renta']:,.0f} €/mes</span>
+                        <span style="background:#F0F6FF;color:{ACCENT};padding:3px 8px;border-radius:4px;margin-right:4px;">📐 {row.get('M2_Construidos','N/A')} m²</span>
+                        <span style="background:#FFF9E6;color:#854F0B;padding:3px 8px;border-radius:4px;">🛏️ {row.get('Habitaciones','N/A')} hab</span>
+                    </div>
+                </div>""",unsafe_allow_html=True)
+            with col_btn:
+                if st.button("✏️ Editar",key=f"edit_{idx}",use_container_width=True):
+                    st.session_state.modo_cartera="editar"; st.session_state.inmueble_editando=idx; st.rerun()
+                if st.button("🗑️",key=f"del_{idx}",use_container_width=True):
+                    if len(st.session_state.df_inm_persistent)>1:
+                        nombre_borrar = row['Nombre']
+                        ok_delete = eliminar_inmueble(nombre_borrar, user_id=st.session_state.user_id)
+                        if ok_delete:
+                            df_nuevo=st.session_state.df_inm_persistent.drop(idx).reset_index(drop=True)
+                            st.session_state.df_inm_persistent=df_nuevo
+                            st.success(f"✅ '{nombre_borrar}' eliminado de Supabase"); st.rerun()
+                        else:
+                            st.error(f"❌ No se pudo eliminar '{nombre_borrar}' de Supabase")
+                    else: st.error("No puedes eliminar el último inmueble")
+
+    # ── FORMULARIO EDITAR / NUEVO ──────────────────────────────
+    elif st.session_state.modo_cartera in ["editar","nuevo"]:
+        es_nuevo=st.session_state.modo_cartera=="nuevo"
+        titulo="➕ Añadir Inmueble Nuevo" if es_nuevo else f"✏️ Editar: {df_inm.iloc[st.session_state.inmueble_editando]['Nombre']}"
+        st.markdown(f'<div class="nc-section-title">{titulo}</div>',unsafe_allow_html=True)
+        datos={col: DEFAULTS_FISCAL.get(col,"") for col in COLS_INM} if es_nuevo else df_inm.iloc[st.session_state.inmueble_editando].to_dict()
+
+        with st.form("form_inmueble"):
+            st.markdown("### 📋 Datos Básicos")
+            col1,col2=st.columns(2)
+            with col1:
+                nombre=st.text_input("Nombre del Inmueble *",value=datos.get("Nombre",""))
+                inquilino=st.text_input("Inquilino",value=datos.get("Inquilino",""))
+                renta=st.number_input("Renta Mensual (€) *",value=safe_float(datos.get("Renta"),0.0),min_value=0.0,step=50.0)
+            with col2:
+                renta_mercado=st.number_input("Renta de Mercado (€)",value=safe_float(datos.get("Renta_Mercado"),0.0),min_value=0.0,step=50.0)
+                comunidad=st.number_input("Comunidad Mensual (€)",value=safe_float(datos.get("Comunidad"),0.0),min_value=0.0,step=10.0)
+                valor_construccion=st.number_input("Valor Construcción (€) *",value=safe_float(datos.get("Valor_Construccion"),0.0),min_value=0.0,step=1000.0)
+            st.markdown("### 🏠 Características")
+            col3,col4,col5=st.columns(3)
+            with col3:
+                _m2_val=max(10.0,safe_float(datos.get("M2_Construidos"),80.0))
+                m2=st.number_input("M² Construidos *",value=_m2_val,min_value=0.0,step=5.0)
+                habitaciones=st.number_input("Habitaciones *",value=max(1,safe_int(datos.get("Habitaciones"),2)),min_value=1,max_value=10)
+                planta=st.number_input("Planta",value=safe_int(datos.get("Planta"),1),min_value=0,max_value=20)
+            with col4:
+                cp=st.text_input("Código Postal *",value=str(datos.get("CP","18005")),max_chars=5)
+                tipo=st.selectbox("Tipo",["Piso","Casa","Estudio","Local"],index=safe_index(["Piso","Casa","Estudio","Local"],datos.get("Tipo"),0))
+                estado=st.selectbox("Estado",["Reformado","Bueno","Regular"],index=safe_index(["Reformado","Bueno","Regular"],datos.get("Estado"),1))
+            with col5:
+                mobiliario=st.selectbox("Mobiliario",["S","N"],index=0 if datos.get("Mobiliario")=="S" else 1)
+                parking=st.selectbox("Parking",["S","N"],index=0 if datos.get("Parking")=="S" else 1)
+                año_construccion=st.number_input("Año Construcción",value=max(1900,safe_int(datos.get("Año_Construccion"),2000)),min_value=1900,max_value=2030)
+            st.markdown("### 📝 Información Adicional")
+            col6,col7=st.columns(2)
+            with col6:
+                ref_catastral=st.text_input("Ref. Catastral",value=datos.get("Ref_Catastral",""))
+                titular=st.text_input("Titular",value=datos.get("Titular",""))
+                año_reforma=st.number_input("Año Última Reforma",value=max(1900,safe_int(datos.get("Año_Reforma"),2020)),min_value=1900,max_value=2030)
+            with col7:
+                tipo_arrendamiento=st.selectbox("Tipo Arrendamiento",["Larga Duración","Temporada","Vacacional"],index=safe_index(["Larga Duración","Temporada","Vacacional"],datos.get("Tipo_Arrendamiento"),0))
+                cochera_vinculada=st.selectbox("Cochera Vinculada",["N","S"],index=0 if datos.get("Cochera_Vinculada")=="N" else 1)
+                zona_tensionada=st.selectbox("Zona Tensionada",["N","S"],index=0 if datos.get("Zona_Tensionada")=="N" else 1)
+            # ── Campos nuevos: inmueble no arrendado + cochera incluida ──
+            col_flags1, col_flags2 = st.columns(2)
+            with col_flags1:
+                inmueble_no_arrendado = st.checkbox(
+                    "🏚️ Inmueble NO arrendado (imputación 2% IRPF)",
+                    value=bool(datos.get("Inmueble_No_Arrendado", False)),
+                    help="Si el inmueble no está alquilado, Hacienda imputa una renta del 2% del valor catastral (o 1,1% si fue revisado después de 1994). No genera renta real — renta = 0."
+                )
+            with col_flags2:
+                cochera_incluida_arrendamiento = st.checkbox(
+                    "🚗 Cochera incluida en el arrendamiento",
+                    value=bool(datos.get("Cochera_Incluida_Arrendamiento", False)),
+                    help="La cochera se arrienda junto con el inmueble, sin contrato separado. Los gastos de la cochera (IBI, comunidad) son deducibles en el mismo contrato."
+                )
+            if inmueble_no_arrendado:
+                st.info("ℹ️ Al marcar inmueble no arrendado, la renta se considera 0. La imputación fiscal del 2% se calculará automáticamente en el Escudo Fiscal.")
+            st.markdown("### 📅 Contrato e Inquilino")
+            col11,col12,col13=st.columns(3)
+            with col11:
+                nif_inquilino=st.text_input("NIF Inquilino",value=datos.get("NIF_Inquilino",""))
+                fecha_inicio=st.date_input("Fecha Inicio Contrato",value=pd.to_datetime(datos.get("Fecha_Inicio_Contrato","2024-01-01")).date() if pd.notna(datos.get("Fecha_Inicio_Contrato")) else date(2024,1,1))
+            with col12:
+                iva_aplicable=st.checkbox("¿Arrendamiento a empresa (IVA)?",value=bool(datos.get("IVA_Aplicable",False)))
+                fecha_vencimiento=st.date_input("Fecha Vencimiento Contrato",value=pd.to_datetime(datos.get("Fecha_Vencimiento_Contrato","2025-12-31")).date() if pd.notna(datos.get("Fecha_Vencimiento_Contrato")) else date(2025,12,31))
+            with col13:
+                retencion_irpf_pct=st.number_input("Retención IRPF (%)",value=safe_float(datos.get("Retencion_IRPF_Pct"),0.0),min_value=0.0,max_value=25.0,step=1.0)
+                tipo_iva=st.number_input("Tipo IVA (%)",value=safe_float(datos.get("Tipo_IVA"),21.0),min_value=0.0,max_value=21.0,step=1.0,disabled=not iva_aplicable)
+            col_dias1,col_dias2=st.columns(2)
+            with col_dias1: dias_arrendados=st.number_input("Días arrendados año fiscal (cas. 0101)",value=safe_float(datos.get("Dias_Arrendados_Anio"),365.0),min_value=0.0,max_value=366.0,step=1.0)
+            with col_dias2: gastos_formalizacion=st.number_input("Gastos Formalización (€)",value=safe_float(datos.get("Gastos_Formalizacion"),0.0),min_value=0.0,step=10.0)
+            st.markdown("### 💰 Gastos Deducibles IRPF")
+            col8,col9,col10=st.columns(3)
+            with col8:
+                ibi_anual=st.number_input("IBI Anual (€)",value=safe_float(datos.get("IBI_Anual"),0.0),min_value=0.0,step=10.0)
+                seguro_anual=st.number_input("Seguro Hogar Anual (€)",value=safe_float(datos.get("Seguro_Anual"),0.0),min_value=0.0,step=10.0)
+                seguro_vida=st.number_input("Seguro Vida Anual (€)",value=safe_float(datos.get("Seguro_Vida"),0.0),min_value=0.0,step=10.0)
+            with col9:
+                intereses_hipoteca=st.number_input("Intereses Hipoteca (€)",value=safe_float(datos.get("Intereses_Hipoteca"),0.0),min_value=0.0,step=100.0)
+                gastos_juridicos=st.number_input("Gastos Jurídicos (€)",value=safe_float(datos.get("Gastos_Juridicos"),0.0),min_value=0.0,step=10.0)
+                gasto_ascensor=st.number_input("Ascensor / Comunidad extra (€)",value=safe_float(datos.get("Gasto_Ascensor"),0.0),min_value=0.0,step=10.0)
+            with col10:
+                retenciones_irpf=st.number_input("Retenciones IRPF año (€)",value=safe_float(datos.get("Retenciones_IRPF"),0.0),min_value=0.0,step=10.0)
+                gastos_pend_años_ant=st.number_input("Gastos Pend. Años Ant. (€)",value=safe_float(datos.get("Gastos_Pendientes_Años_Ant"),0.0),min_value=0.0,step=10.0)
+                servicios_suministros=st.number_input("Servicios y Suministros (€)",value=safe_float(datos.get("Servicios_Suministros"),0.0),min_value=0.0,step=10.0)
+            st.markdown("### 🏛️ Datos para Amortización Fiscal")
+            st.info("Amortización = MAX(precio compra total, valor catastral) × % construcción × 3% × % titularidad")
+            col_am1,col_am2,col_am3=st.columns(3)
+            with col_am1:
+                try:
+                    fecha_adq_raw=datos.get("Fecha_Adquisicion")
+                    fecha_adq_val=pd.to_datetime(fecha_adq_raw).date() if fecha_adq_raw and str(fecha_adq_raw) not in ["nan","None",""] else date(2010,1,1)
+                except: fecha_adq_val=date(2010,1,1)
+                fecha_adquisicion=st.date_input("Fecha Adquisición Inmueble",value=fecha_adq_val)
+                precio_compra=st.number_input("Precio Compra (€)",value=safe_float(datos.get("Precio_Compra"),0.0),min_value=0.0,step=1000.0)
+            with col_am2:
+                impuestos_compra=st.number_input("Impuestos Compra ITP/IVA (€)",value=safe_float(datos.get("Impuestos_Compra"),0.0),min_value=0.0,step=100.0)
+                gastos_compra=st.number_input("Gastos Notaría/Registro (€)",value=safe_float(datos.get("Gastos_Compra"),0.0),min_value=0.0,step=100.0)
+            with col_am3:
+                valor_catastral=st.number_input("Valor Catastral Total (€)",value=safe_float(datos.get("Valor_Catastral"),0.0),min_value=0.0,step=100.0)
+                valor_catastral_piso=st.number_input("Valor Catastral Construcción (€)",value=safe_float(datos.get("Valor_Catastral_Piso"),0.0),min_value=0.0,step=100.0)
+            col_pct1,col_pct2=st.columns(2)
+            with col_pct1: pct_suelo=st.slider("% Suelo (catastral)",min_value=0.0,max_value=1.0,value=safe_float(datos.get("Pct_Suelo"),0.25),step=0.01,format="%.2f")
+            with col_pct2: pct_construccion=round(1.0-pct_suelo,2); st.metric("% Construcción (calculado)",f"{pct_construccion*100:.0f}%")
+            import re as _re
+            base_compra=precio_compra+impuestos_compra+gastos_compra
+            base_amortizacion=max(base_compra,valor_catastral)*pct_construccion
+            titular_str=str(datos.get("Titular","100"))
+            _match=_re.search(r'(\d+(?:\.\d+)?)',titular_str)
+            pct_titular=float(_match.group(1))/100 if _match else 1.0
+            if pct_titular>1: pct_titular=pct_titular/100
+            amortizacion_fiscal=round(base_amortizacion*0.03*pct_titular,2)
+            valor_real_construccion=round(max(base_compra,valor_catastral)*pct_construccion,2)
+            st.success(f"📊 **Amortización Fiscal Calculada**\nBase compra: **{base_compra:,.0f} €** · Catastral: **{valor_catastral:,.0f} €**\n✅ Amortización anual (3% × {pct_titular*100:.0f}%): **{amortizacion_fiscal:,.0f} €/año**")
+            st.markdown("### 🅿️ Cochera / Garaje")
+            col_coch1,col_coch2,col_coch3=st.columns(3)
+            with col_coch1: ref_catastral_cochera=st.text_input("Ref. Catastral Cochera",value=datos.get("Ref_Catastral_Cochera",""))
+            with col_coch2: ibi_cocheras=st.number_input("IBI Cochera (€)",value=safe_float(datos.get("IBI_Cocheras"),0.0),min_value=0.0,step=10.0)
+            with col_coch3: comunidad_cocheras=st.number_input("Comunidad Cochera (€)",value=safe_float(datos.get("Comunidad_Cocheras"),0.0),min_value=0.0,step=10.0)
+            st.markdown("---")
+            col_submit,col_cancel=st.columns(2)
+            with col_submit: submitted=st.form_submit_button("💾 Guardar Inmueble",type="primary",use_container_width=True)
+            with col_cancel: cancelled=st.form_submit_button("❌ Cancelar",use_container_width=True)
+
+            if submitted:
+                if not nombre.strip(): st.error("El nombre del inmueble es obligatorio")
+                elif renta<=0: st.error("La renta debe ser mayor que 0")
+                elif valor_construccion<=0: st.error("El valor de construcción debe ser mayor que 0")
+                else:
+                    nuevo_inmueble={"Nombre":nombre,"Inquilino":inquilino,"Renta":renta,"Renta_Mercado":renta_mercado,"Comunidad":comunidad,"Valor_Construccion":valor_construccion,"Año_Reforma":año_reforma,"Año_Construccion":año_construccion,"Mobiliario":mobiliario,"Tipo":tipo,"Ref_Catastral":ref_catastral,"Titular":titular,"M2_Construidos":m2,"Habitaciones":habitaciones,"CP":cp,"Planta":planta,"Parking":parking,"Estado":estado,"Tipo_Arrendamiento":tipo_arrendamiento,"Cochera_Vinculada":cochera_vinculada,"Zona_Tensionada":zona_tensionada,"Fecha_Inicio_Contrato":fecha_inicio.strftime("%Y-%m-%d"),"Fecha_Vencimiento_Contrato":fecha_vencimiento.strftime("%Y-%m-%d"),"Fecha_Adquisicion":fecha_adquisicion.strftime("%Y-%m-%d"),"Dias_Arrendados_Anio":int(dias_arrendados),"NIF_Inquilino":nif_inquilino,"IBI_Anual":ibi_anual,"Seguro_Anual":seguro_anual,"Seguro_Vida":seguro_vida,"Intereses_Hipoteca":intereses_hipoteca,"Gasto_Ascensor":gasto_ascensor,"Gastos_Juridicos":gastos_juridicos,"Retenciones_IRPF":retenciones_irpf,"Retencion_IRPF_Pct":retencion_irpf_pct,"IVA_Aplicable":iva_aplicable,"Tipo_IVA":tipo_iva,"Gastos_Formalizacion":gastos_formalizacion,"Gastos_Pendientes_Años_Ant":gastos_pend_años_ant,"Servicios_Suministros":servicios_suministros,"Precio_Compra":precio_compra,"Impuestos_Compra":impuestos_compra,"Gastos_Compra":gastos_compra,"Valor_Catastral":valor_catastral,"Valor_Catastral_Piso":valor_catastral_piso,"Pct_Suelo":pct_suelo,"Pct_Construccion":pct_construccion,"Valor_Real_Construccion":valor_real_construccion,"Amortizacion_Fiscal":amortizacion_fiscal,"Ref_Catastral_Cochera":ref_catastral_cochera,"IBI_Cocheras":ibi_cocheras,"Comunidad_Cocheras":comunidad_cocheras,"Inmueble_No_Arrendado":inmueble_no_arrendado,"Cochera_Incluida_Arrendamiento":cochera_incluida_arrendamiento}
+                    if es_nuevo:
+                        df_nuevo=pd.concat([st.session_state.df_inm_persistent,pd.DataFrame([nuevo_inmueble])],ignore_index=True)
+                        st.session_state.df_inm_persistent=df_nuevo
+                        try:
+                            guardar_inmuebles(df_nuevo,user_id=st.session_state.user_id)
+                            st.success(f"✅ '{nombre}' guardado en Supabase correctamente")
+                        except Exception as e:
+                            st.error(f"❌ Error al guardar en Supabase: {e}")
+                    else:
+                        for col,val in nuevo_inmueble.items():
+                            st.session_state.df_inm_persistent.at[st.session_state.inmueble_editando,col]=val
+                        try:
+                            guardar_inmuebles(st.session_state.df_inm_persistent,user_id=st.session_state.user_id)
+                            st.success(f"✅ '{nombre}' actualizado en Supabase correctamente")
+                        except Exception as e:
+                            st.error(f"❌ Error al actualizar en Supabase: {e}")
+                    import time; time.sleep(1); st.session_state.modo_cartera="lista"; st.rerun()
+            if cancelled:
+                st.session_state.modo_cartera="lista"; st.rerun()
+
+    # ── TABLA COMPLETA ─────────────────────────────────────────
+    elif st.session_state.modo_cartera=="tabla":
+        st.markdown('<div class="nc-section-title">📊 Tabla Completa de Datos</div>',unsafe_allow_html=True)
+        st.warning("⚠️ Vista avanzada — solo para usuarios experimentados")
+        col_cfg={"Tipo_Arrendamiento":st.column_config.SelectboxColumn("Tipo Arrend.",options=["Larga Duración","Temporada","Vacacional"],required=True),"Estado":st.column_config.SelectboxColumn("Estado",options=["Reformado","Bueno","Regular"],required=True),"Mobiliario":st.column_config.SelectboxColumn("Mobiliario",options=["S","N"],required=True),"Parking":st.column_config.SelectboxColumn("Parking",options=["S","N"],required=True)}
+        df_ed=st.data_editor(df_inm,num_rows="dynamic",use_container_width=True,hide_index=True,column_config=col_cfg)
+        if st.button("✅ Guardar Cambios de Tabla",type="primary"):
+            nombres_antes = set(st.session_state.df_inm_persistent["Nombre"].dropna().astype(str))
+            nombres_despues = set(df_ed["Nombre"].dropna().astype(str)) if "Nombre" in df_ed.columns else nombres_antes
+            borrados = nombres_antes - nombres_despues
+            errores_borrado = []
+            for nombre_borrado in borrados:
+                if not eliminar_inmueble(nombre_borrado, user_id=st.session_state.user_id):
+                    errores_borrado.append(nombre_borrado)
+            st.session_state.df_inm_persistent = df_ed
+            guardado_ok = guardar_inmuebles(df_ed, user_id=st.session_state.user_id)
+            if guardado_ok and not errores_borrado:
+                st.session_state["_tabla_guardada_ok"] = True
+            st.rerun()
+        if st.session_state.pop("_tabla_guardada_ok", False):
+            st.success("✅ Cambios guardados correctamente en Supabase")
+
+    # ── BACKUPS ────────────────────────────────────────────────
+    elif st.session_state.modo_cartera=="backup":
+        st.markdown('<div class="nc-section-title">💾 Copias de Seguridad</div>',unsafe_allow_html=True)
+        st.info("💡 Descarga tus datos regularmente para no perder información")
+        col_b1,col_b2=st.columns(2)
+        with col_b1: st.download_button("📥 Descargar Inmuebles (CSV)",generar_csv_backup(st.session_state.df_inm_persistent,"inmuebles"),"nolasco_inmuebles_backup.csv","text/csv",use_container_width=True)
+        with col_b2: st.download_button("📥 Descargar Movimientos (CSV)",generar_csv_backup(st.session_state.df_mov_persistent,"movimientos"),"nolasco_movimientos_backup.csv","text/csv",use_container_width=True)
+        st.markdown("---")
+        st.markdown("### 📥 Importar Excel Asesor Fiscal")
+        uploaded_excel=st.file_uploader("Sube el Excel de Nolasco Capital (.xlsx)",type=["xlsx"],key="upload_excel_asesor")
+        if uploaded_excel:
+            st.info(f"📄 Archivo: **{uploaded_excel.name}** — listo para importar")
+            if st.button("📥 Importar inmuebles del Excel",type="primary",use_container_width=True,key="btn_import_excel"):
+                from fiscal_export import importar_excel_asesor
+                with st.spinner("Importando datos del Excel..."):
+                    resultado=importar_excel_asesor(archivo_excel=uploaded_excel,user_id=st.session_state.user_id,upsert_inmueble_fn=upsert_inmueble,agregar_movimientos_fn=agregar_movimientos,leer_inmuebles_fn=leer_inmuebles)
+                if "error" in resultado:
+                    st.error(f"❌ {resultado['error']}")
+                else:
+                    n_ok = len(resultado["creados"]) + len(resultado["actualizados"])
+                    n_err = len(resultado.get("errores", []))
+                    if n_ok > 0:
+                        st.success(f"✅ Import completado — {n_ok} inmuebles procesados")
+                    if n_err > 0:
+                        st.warning(f"⚠️ {n_err} inmueble(s) fallaron al guardar en Supabase:")
+                        for err in resultado.get("errores", []):
+                            st.code(err, language=None)
+                    col_r1,col_r2,col_r3=st.columns(3)
+                    col_r1.metric("Creados nuevos", len(resultado["creados"]))
+                    col_r2.metric("Actualizados", len(resultado["actualizados"]))
+                    col_r3.metric("Movimientos añadidos", resultado["movimientos"])
+                    if n_ok > 0:
+                        st.session_state.df_inm_persistent=leer_inmuebles(user_id=st.session_state.user_id)
+                        st.rerun()
+
+# ================================================================
+# PANTALLA: MI PERFIL
+# Datos fiscales del emisor + logo + cambio contraseña/email
+# ================================================================
+elif menu == "Mi Perfil":
+    st.markdown('<div class="nc-brand-header">👤 Mi Perfil</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Datos personales · Datos fiscales · Seguridad</div>', unsafe_allow_html=True)
+
+    uid_perfil = st.session_state.user_id
+
+    # Cargar perfil actual
+    if "perfil_datos" not in st.session_state:
+        st.session_state.perfil_datos = leer_perfil_usuario(uid_perfil)
+    # Sanitizar — convertir None a defaults seguros
+    _p_raw = st.session_state.perfil_datos
+    p = {
+        "nombre_fiscal":   str(_p_raw.get("nombre_fiscal")   or ""),
+        "nif":             str(_p_raw.get("nif")             or ""),
+        "telefono":        str(_p_raw.get("telefono")        or ""),
+        "direccion":       str(_p_raw.get("direccion")       or ""),
+        "ciudad":          str(_p_raw.get("ciudad")          or "Granada"),
+        "cp":              str(_p_raw.get("cp")              or ""),
+        "iban":            str(_p_raw.get("iban")            or ""),
+        "prefijo_factura": str(_p_raw.get("prefijo_factura") or "F"),
+        "siguiente_numero": int(_p_raw.get("siguiente_numero") or 1),
+        "tipo_cuenta":     str(_p_raw.get("tipo_cuenta")     or "particular"),
+        "nombre_sociedad": str(_p_raw.get("nombre_sociedad") or ""),
+        "cif_sociedad":    str(_p_raw.get("cif_sociedad")    or ""),
+    }
+
+    tab_fiscal, tab_logo, tab_seguridad = st.tabs([
+        "🏛️ Datos Fiscales", "🖼️ Logo", "🔐 Seguridad"
+    ])
+
+    # ── TAB 1: DATOS FISCALES ──────────────────────────────────
+    with tab_fiscal:
+        st.markdown('<div class="nc-section-title">Datos del emisor de facturas</div>', unsafe_allow_html=True)
+        st.caption("Estos datos aparecerán en todas las facturas que generes.")
+
+        # ── Tipo de cuenta FUERA del form (para recargar en tiempo real) ──
+        tipo_actual = p.get("tipo_cuenta", "particular")
+        tipo_cuenta = st.radio(
+            "¿Cómo tributas?",
+            options=["particular", "sociedad"],
+            format_func=lambda x: "👤 Particular (IRPF — Modelo 100)" if x == "particular"
+                                  else "🏢 Sociedad Patrimonial (IS — Modelo 200)",
+            index=0 if tipo_actual == "particular" else 1,
+            horizontal=True,
+            key="radio_tipo_cuenta"
+        )
+        # Guardar selección en session_state para leerla dentro del form
+        st.session_state["_tipo_cuenta_form"] = tipo_cuenta
+
+        if tipo_cuenta == "sociedad":
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                nombre_sociedad = st.text_input("Nombre de la sociedad *",
+                    value=p.get("nombre_sociedad",""),
+                    placeholder="Inmuebles Nolasco SL",
+                    key="input_nombre_sociedad")
+            with col_s2:
+                cif_sociedad = st.text_input("CIF de la sociedad *",
+                    value=p.get("cif_sociedad",""),
+                    placeholder="B12345678",
+                    key="input_cif_sociedad")
+            st.info("🏢 Modo Sociedad Patrimonial activado — IS al 25% sin reducción por arrendamiento.")
+        else:
+            nombre_sociedad = p.get("nombre_sociedad","")
+            cif_sociedad    = p.get("cif_sociedad","")
+
+        st.markdown("---")
+
+        with st.form("form_perfil_fiscal"):
+            st.markdown("---")
+            col1, col2 = st.columns(2)
+            with col1:
+                nombre_fiscal = st.text_input("Nombre fiscal completo *",
+                    value=p.get("nombre_fiscal",""), placeholder="Pedro Campos Godoy")
+                nif = st.text_input("NIF / DNI *",
+                    value=p.get("nif",""), placeholder="24237110D")
+                telefono = st.text_input("Teléfono",
+                    value=p.get("telefono",""), placeholder="600 000 000")
+            with col2:
+                direccion = st.text_input("Dirección completa *",
+                    value=p.get("direccion",""), placeholder="Calle Mayor, 1")
+                ciudad = st.text_input("Ciudad",
+                    value=p.get("ciudad","Granada"), placeholder="Granada")
+                cp = st.text_input("Código Postal",
+                    value=p.get("cp",""), placeholder="18001")
+
+            iban = st.text_input("IBAN (cuenta bancaria para transferencias)",
+                value=p.get("iban",""),
+                placeholder="ES76 2100 2673 6202 1018 4323")
+
+            col_pref1, col_pref2 = st.columns(2)
+            with col_pref1:
+                prefijo = st.text_input("Prefijo facturas",
+                    value=p.get("prefijo_factura","F"),
+                    help="Ej: F → F260001. Ej: NC → NC260001")
+            with col_pref2:
+                sig_num = st.number_input("Siguiente número de factura",
+                    value=int(p.get("siguiente_numero",1)),
+                    min_value=1, step=1,
+                    help="Se incrementa automáticamente al generar cada factura")
+
+            submitted = st.form_submit_button("💾 Guardar datos fiscales",
+                                               type="primary", use_container_width=True)
+            if submitted:
+                # Leer tipo_cuenta y campos sociedad del session_state (están fuera del form)
+                _tc  = st.session_state.get("_tipo_cuenta_form", "particular")
+                _ns  = st.session_state.get("input_nombre_sociedad", nombre_sociedad)
+                _cif = st.session_state.get("input_cif_sociedad", cif_sociedad)
+                if not nombre_fiscal.strip() or not nif.strip():
+                    st.warning("⚠️ Nombre fiscal y NIF son obligatorios.")
+                elif _tc == "sociedad" and (not _ns.strip() or not _cif.strip()):
+                    st.warning("⚠️ Nombre y CIF de la sociedad son obligatorios en modo Sociedad Patrimonial.")
+                else:
+                    ok = guardar_perfil_usuario(uid_perfil, {
+                        "nombre_fiscal":   nombre_fiscal.strip(),
+                        "nif":             nif.strip().upper(),
+                        "direccion":       direccion.strip(),
+                        "ciudad":          ciudad.strip(),
+                        "cp":              cp.strip(),
+                        "telefono":        telefono.strip(),
+                        "iban":            iban.strip(),
+                        "prefijo_factura": prefijo.strip() or "F",
+                        "siguiente_numero": int(sig_num),
+                        "tipo_cuenta":     _tc,
+                        "nombre_sociedad": _ns.strip(),
+                        "cif_sociedad":    _cif.strip().upper(),
+                    })
+                    if ok:
+                        st.success("✅ Datos fiscales guardados correctamente")
+                        st.session_state.perfil_datos = leer_perfil_usuario(uid_perfil)
+                    else:
+                        st.error("❌ Error al guardar. Inténtalo de nuevo.")
+
+    # ── TAB 2: LOGO ────────────────────────────────────────────
+    with tab_logo:
+        st.markdown('<div class="nc-section-title">Logo de empresa</div>', unsafe_allow_html=True)
+        st.caption("Aparece en el sidebar y en las facturas generadas.")
+
+        logo_actual = st.session_state.get("sidebar_logo_bytes")
+        if logo_actual:
+            col_img, col_btn = st.columns([1, 3])
+            with col_img:
+                st.image(logo_actual, width=150)
+            with col_btn:
+                st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+                if st.button("🗑️ Eliminar logo", key="btn_del_logo"):
+                    guardar_logo_usuario(uid_perfil, b"", "png")
+                    st.session_state.pop("sidebar_logo_bytes", None)
+                    st.success("✅ Logo eliminado")
+                    st.rerun()
+
+        st.markdown("---")
+        logo_file = st.file_uploader(
+            "Subir nuevo logo (PNG o JPG, max 2MB)",
+            type=["png","jpg","jpeg"],
+            key="upload_logo_perfil"
+        )
+        if logo_file:
+            if logo_file.size > 2_000_000:
+                st.warning("⚠️ El archivo supera 2MB. Usa una imagen más pequeña.")
+            else:
+                ext = logo_file.name.split(".")[-1].lower()
+                b = logo_file.read()
+                if st.button("📤 Subir logo", type="primary", key="btn_up_logo"):
+                    ok = guardar_logo_usuario(uid_perfil, b, ext)
+                    if ok:
+                        st.session_state["sidebar_logo_bytes"] = b
+                        st.success("✅ Logo actualizado")
+                        st.rerun()
+                    else:
+                        st.error("❌ Error al subir el logo.")
+
+    # ── TAB 3: SEGURIDAD ───────────────────────────────────────
+    with tab_seguridad:
+        st.markdown('<div class="nc-section-title">Acceso y seguridad</div>', unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div style='background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;
+                    padding:1rem 1.2rem;margin-bottom:1.5rem;'>
+            <div style='font-size:0.72rem;color:{TEXT_SEC};text-transform:uppercase;
+                        letter-spacing:.06em;margin-bottom:4px;'>Email actual</div>
+            <div style='font-size:1rem;font-weight:600;color:{TEXT_PRI};'>
+                {st.session_state.user_email}
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+        col_s1, col_s2 = st.columns(2)
+
+        with col_s1:
+            st.markdown("**Cambiar contraseña**")
+            nueva_pass = st.text_input("Nueva contraseña",
+                type="password", key="nueva_pass",
+                placeholder="Mínimo 6 caracteres")
+            nueva_pass2 = st.text_input("Repetir contraseña",
+                type="password", key="nueva_pass2",
+                placeholder="Repite la contraseña")
+            if st.button("🔐 Cambiar contraseña", use_container_width=True,
+                          key="btn_change_pass"):
+                if not nueva_pass or len(nueva_pass) < 6:
+                    st.warning("⚠️ Mínimo 6 caracteres.")
+                elif nueva_pass != nueva_pass2:
+                    st.warning("⚠️ Las contraseñas no coinciden.")
+                else:
+                    token = st.session_state.get("access_token","")
+                    res = cambiar_contrasena(token, nueva_pass)
+                    if res["ok"]:
+                        st.success("✅ Contraseña actualizada")
+                    else:
+                        st.error(f"❌ {res.get('error','Error desconocido')}")
+
+        with col_s2:
+            st.markdown("**Cambiar email**")
+            nuevo_email = st.text_input("Nuevo email",
+                key="nuevo_email", placeholder="nuevo@email.com")
+            if st.button("✉️ Cambiar email", use_container_width=True,
+                          key="btn_change_email"):
+                if not nuevo_email.strip() or "@" not in nuevo_email:
+                    st.warning("⚠️ Introduce un email válido.")
+                else:
+                    token = st.session_state.get("access_token","")
+                    res = cambiar_email(token, nuevo_email.strip())
+                    if res["ok"]:
+                        st.success("✅ Email actualizado. Revisa tu bandeja para confirmar.")
+                    else:
+                        st.error(f"❌ {res.get('error','Error desconocido')}")
 
 
 # ================================================================
-# EDICIÓN INLINE DE MOVIMIENTOS
+# PANTALLA: INGRESOS · RENTAS
+# Plantillas por inmueble + generación de facturas + PDF
+# ================================================================
+elif menu == "Ingresos · Rentas":
+    st.markdown('<div class="nc-brand-header">📥 Ingresos · Rentas</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Facturas de arrendamiento · Numeración correlativa · PDF</div>', unsafe_allow_html=True)
+
+    uid_ing = st.session_state.user_id
+
+    # Verificar datos del emisor
+    perfil_ing = leer_perfil_usuario(uid_ing)
+    if not perfil_ing.get("nombre_fiscal") or not perfil_ing.get("nif"):
+        st.warning("⚠️ Antes de generar facturas, completa tus datos fiscales en **👤 Mi Perfil**.")
+        if st.button("→ Ir a Mi Perfil", type="primary"):
+            st.session_state.menu = "Mi Perfil"; st.rerun()
+        st.stop()
+
+    tab_generar, tab_historial, tab_plantillas = st.tabs([
+        "🧾 Generar Factura", "📋 Diario de Ingresos", "⚙️ Plantillas"
+    ])
+
+    # ── TAB 1: GENERAR FACTURA ─────────────────────────────────
+    with tab_generar:
+        st.markdown('<div class="nc-section-title">Nueva factura de renta</div>', unsafe_allow_html=True)
+
+        # Cargar plantillas
+        df_plantillas = leer_plantillas_factura(uid_ing)
+        if df_plantillas.empty:
+            st.info("📋 Aún no tienes plantillas configuradas. Ve a **⚙️ Plantillas** para crearlas.")
+        else:
+            # Selector de inmueble — pre-seleccionar si viene desde la ficha
+            inmuebles_con_plantilla = df_plantillas["inmueble"].tolist()
+            _goto_inm = st.session_state.pop("ficha_goto_ingresos_inm", None)
+            _default_ing = (inmuebles_con_plantilla.index(_goto_inm)
+                            if _goto_inm and _goto_inm in inmuebles_con_plantilla else 0)
+            inm_sel = st.selectbox("Selecciona inmueble", inmuebles_con_plantilla,
+                                    index=_default_ing, key="ing_inm_sel")
+            plantilla = df_plantillas[df_plantillas["inmueble"] == inm_sel].iloc[0]
+
+            # Key única por inmueble — fuerza re-render al cambiar inmueble
+            _k = inm_sel.replace(" ","_").replace(".","")[:20]
+
+            # Datos pre-rellenados de la plantilla
+            col_f1, col_f2, col_f3 = st.columns(3)
+            with col_f1:
+                meses_es = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                             "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+                mes_fac = st.selectbox("Mes de la renta", meses_es,
+                                        index=datetime.now().month - 1,
+                                        key=f"ing_mes_{_k}")
+                año_fac = st.number_input("Año", value=datetime.now().year,
+                                           min_value=2020, max_value=2030,
+                                           key=f"ing_año_{_k}")
+            with col_f2:
+                fecha_fac = st.date_input("Fecha factura",
+                                           value=date.today(), key=f"ing_fecha_{_k}")
+            with col_f3:
+                fecha_venc = st.date_input("Fecha vencimiento",
+                                            value=date.today(), key=f"ing_venc_{_k}")
+
+            st.markdown("---")
+
+            # Datos editables (pre-rellenados de plantilla)
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                st.markdown("**Inquilino**")
+                inquilino = st.text_input("Nombre", value=str(plantilla.get("inquilino","") or ""),
+                                           key=f"ing_inq_{_k}")
+                nif_inq = st.text_input("NIF", value=str(plantilla.get("nif_inquilino","") or ""),
+                                         key=f"ing_nif_{_k}")
+                dir_inq = st.text_area("Dirección", value=str(plantilla.get("direccion_inquilino","") or ""),
+                                        key=f"ing_dir_{_k}", height=80)
+            with col_d2:
+                st.markdown("**Importes**")
+                base = st.number_input("Base imponible (€)",
+                    value=float(plantilla.get("base_imponible",0) or 0),
+                    min_value=0.0, step=10.0, format="%.2f", key=f"ing_base_{_k}")
+                pct_iva = st.number_input("IVA (%)",
+                    value=float(plantilla.get("pct_iva",0) or 0),
+                    min_value=0.0, max_value=21.0, step=1.0, key=f"ing_iva_{_k}")
+                pct_ret = st.number_input("Retención IRPF (%)",
+                    value=float(plantilla.get("pct_retencion",0) or 0),
+                    min_value=0.0, max_value=25.0, step=1.0, key=f"ing_ret_{_k}")
+
+                imp_iva = round(base * pct_iva / 100, 2)
+                imp_ret = round(base * pct_ret / 100, 2)
+                total   = round(base + imp_iva - imp_ret, 2)
+
+                st.markdown(f"""
+                <div style='background:{CARD_BG};border:1px solid {BORDER};
+                            border-radius:10px;padding:1rem;margin-top:8px;'>
+                    <div style='display:flex;justify-content:space-between;margin-bottom:4px;'>
+                        <span style='font-size:0.82rem;color:{TEXT_SEC};'>Base imponible</span>
+                        <span style='font-size:0.9rem;'>{base:,.2f} €</span>
+                    </div>
+                    <div style='display:flex;justify-content:space-between;margin-bottom:4px;'>
+                        <span style='font-size:0.82rem;color:{TEXT_SEC};'>IVA {pct_iva:.0f}%</span>
+                        <span style='font-size:0.9rem;'>+{imp_iva:,.2f} €</span>
+                    </div>
+                    <div style='display:flex;justify-content:space-between;margin-bottom:8px;'>
+                        <span style='font-size:0.82rem;color:{TEXT_SEC};'>Retención {pct_ret:.0f}%</span>
+                        <span style='font-size:0.9rem;color:{RED};'>−{imp_ret:,.2f} €</span>
+                    </div>
+                    <div style='border-top:1px solid {BORDER};padding-top:8px;
+                                display:flex;justify-content:space-between;'>
+                        <span style='font-weight:700;'>TOTAL</span>
+                        <span style='font-size:1.2rem;font-weight:700;color:{ACCENT};'>
+                            {total:,.2f} €</span>
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+            # Número de factura
+            prefijo_p = perfil_ing.get("prefijo_factura","F")
+            sig_n     = int(perfil_ing.get("siguiente_numero",1))
+            año_2d    = str(año_fac)[2:]
+            num_fac   = f"{prefijo_p}{año_2d}{sig_n:04d}"
+            concepto  = f"RENTA {inm_sel.upper()} · {mes_fac.upper()} {año_fac}"
+
+            st.markdown(f"""
+            <div style='background:#EAF3DE;border:1px solid #B5D4A0;border-radius:8px;
+                        padding:10px 14px;margin:12px 0;'>
+                <span style='font-size:0.8rem;color:#27500A;font-weight:600;'>
+                    📄 Número de factura: <strong>{num_fac}</strong> · Concepto: {concepto}
+                </span>
+            </div>""", unsafe_allow_html=True)
+
+            if st.button("🧾 Generar factura PDF", type="primary",
+                          use_container_width=True, key="btn_generar_fac"):
+                if not inquilino.strip():
+                    st.warning("⚠️ El nombre del inquilino es obligatorio.")
+                else:
+                    # Crear registro en Supabase
+                    datos_fac = {
+                        "numero": num_fac,
+                        "fecha": fecha_fac.strftime("%Y-%m-%d"),
+                        "vencimiento": fecha_venc.strftime("%Y-%m-%d"),
+                        "inmueble": inm_sel,
+                        "inquilino": inquilino.strip(),
+                        "nif_inquilino": nif_inq.strip(),
+                        "direccion_inquilino": dir_inq.strip(),
+                        "concepto": concepto,
+                        "base_imponible": base,
+                        "pct_iva": pct_iva,
+                        "importe_iva": imp_iva,
+                        "pct_retencion": pct_ret,
+                        "importe_retencion": imp_ret,
+                        "total": total,
+                        "estado": "emitida"
+                    }
+                    res_fac = crear_factura_emitida(uid_ing, datos_fac)
+
+                    if not res_fac["ok"]:
+                        st.error(f"❌ Error creando factura: {res_fac['error']}")
+                    else:
+                        fac_id = res_fac["id"]
+                        # Generar PDF con ReportLab
+                        if REPORTLAB_OK:
+                            pdf_buf = _generar_pdf_factura(
+                                perfil_ing, datos_fac, num_fac
+                            )
+                            if pdf_buf:
+                                pdf_bytes = pdf_buf.getvalue()
+                                guardar_pdf_factura(uid_ing, fac_id, num_fac, pdf_bytes)
+                                st.success(f"✅ Factura {num_fac} generada correctamente")
+                                st.download_button(
+                                    label=f"📥 Descargar {num_fac}.pdf",
+                                    data=pdf_bytes,
+                                    file_name=f"{num_fac}.pdf",
+                                    mime="application/pdf",
+                                    use_container_width=True
+                                )
+                                # Actualizar perfil en session_state
+                                st.session_state.pop("perfil_datos", None)
+                            else:
+                                st.warning("⚠️ Factura registrada pero el PDF falló. Descarga disponible en historial.")
+                        else:
+                            st.success(f"✅ Factura {num_fac} registrada (ReportLab no disponible para PDF)")
+
+    # ── TAB 2: HISTORIAL ───────────────────────────────────────
+    with tab_historial:
+        st.markdown('<div class="nc-section-title">Facturas emitidas</div>', unsafe_allow_html=True)
+
+        df_facs = leer_facturas_emitidas(uid_ing)
+        if df_facs.empty:
+            st.info("Aún no has generado ninguna factura.")
+        else:
+            # Asegurar columnas nuevas con defaults
+            if "es_rectificativa"   not in df_facs.columns: df_facs["es_rectificativa"]   = False
+            if "factura_rectificada" not in df_facs.columns: df_facs["factura_rectificada"] = None
+            df_facs["es_rectificativa"] = df_facs["es_rectificativa"].fillna(False).astype(bool)
+
+            # KPIs — excluir rectificativas y anuladas del total positivo
+            df_activas = df_facs[~df_facs["es_rectificativa"] & (df_facs["estado"] != "anulada")]
+            total_emitido   = df_activas["total"].sum()
+            total_cobrado   = df_activas[df_activas["estado"]=="cobrada"]["total"].sum()
+            total_pendiente = df_activas[df_activas["estado"]=="emitida"]["total"].sum()
+
+            k1,k2,k3 = st.columns(3)
+            for col_k, lbl, val, color in [
+                (k1,"Total emitido",  f"{total_emitido:,.0f} €",   ACCENT),
+                (k2,"Cobrado",        f"{total_cobrado:,.0f} €",   GREEN),
+                (k3,"Pendiente",      f"{total_pendiente:,.0f} €", AMBER),
+            ]:
+                col_k.markdown(
+                    f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                    f"border-top:3px solid {color};border-radius:10px;padding:.8rem;"
+                    f"text-align:center;margin:8px 0;'>"
+                    f"<div style='font-size:0.68rem;color:{TEXT_SEC};text-transform:uppercase;"
+                    f"letter-spacing:.06em;margin-bottom:4px;'>{lbl}</div>"
+                    f"<div style='font-size:1.1rem;font-weight:700;color:{color};'>{val}</div>"
+                    f"</div>", unsafe_allow_html=True)
+
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+            # ── TOGGLE VISTA ───────────────────────────────────
+            _vista_ing = st.radio("Vista", ["📋 Tarjetas", "📊 Tabla"],
+                                  horizontal=True, key="vista_diario_ing",
+                                  label_visibility="collapsed")
+
+            if _vista_ing == "📊 Tabla":
+                _cols_t = ["numero","fecha","inmueble","inquilino","concepto","total","estado"]
+                _df_t   = df_facs[[c for c in _cols_t if c in df_facs.columns]].copy()
+                _df_t.columns = [c.capitalize() for c in _df_t.columns]
+                st.dataframe(_df_t, hide_index=True, use_container_width=True,
+                             column_config={
+                                 "Total": st.column_config.NumberColumn("Total (€)", format="%.2f"),
+                                 "Numero": st.column_config.TextColumn("Nº Factura"),
+                             })
+            else:
+                # ── LISTA DE FACTURAS ─────────────────────────
+                for _, fac in df_facs.iterrows():
+                    est        = str(fac.get("estado","emitida"))
+                    es_rec     = bool(fac.get("es_rectificativa", False))
+                    fac_rect   = str(fac.get("factura_rectificada","") or "")
+                    total_fac  = float(fac.get("total",0))
+                    _render_v  = st.session_state.get("fac_render_v", 0)
+
+                    # Badge de estado
+                    if es_rec:
+                        badge = f"<span style='background:#E6F1FB;color:#0C447C;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'>🔄 Rectificativa</span>"
+                    elif est == "cobrada":
+                        badge = f"<span style='background:#EAF3DE;color:#27500A;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'>✅ Cobrada</span>"
+                    elif est == "anulada":
+                        badge = f"<span style='background:#FDECEA;color:#7F1D1D;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'>❌ Anulada</span>"
+                    else:
+                        badge = f"<span style='background:#FFF9E6;color:#854F0B;font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600;'>⏳ Emitida</span>"
+
+                    # Color total — negativo en rojo para rectificativas
+                    color_total = RED if total_fac < 0 else ACCENT
+
+                    # Referencia a factura original en rectificativas
+                    ref_html = f"<br><span style='font-size:0.75rem;color:#0C447C;'>Rectifica: <b>{fac_rect}</b></span>" if es_rec and fac_rect else ""
+
+                    fecha_s = str(fac.get("fecha",""))[:10]
+                    st.markdown(f"""
+                    <div style='background:{CARD_BG};border:1px solid {"#B5D4F4" if es_rec else BORDER};
+                                border-left:3px solid {"#185FA5" if es_rec else "transparent"};
+                                border-radius:10px;padding:12px 16px;margin-bottom:6px;
+                                display:flex;justify-content:space-between;align-items:center;'>
+                        <div>
+                            <span style='font-weight:700;color:{TEXT_PRI};font-size:0.95rem;'>
+                                {fac.get("numero","")}
+                            </span>
+                            <span style='color:{TEXT_SEC};font-size:0.82rem;margin-left:10px;'>
+                                {fecha_s} · {fac.get("inmueble","")} · {fac.get("inquilino","")}
+                            </span>
+                            <br><span style='font-size:0.78rem;color:{TEXT_SEC};'>
+                                {fac.get("concepto","")}
+                            </span>{ref_html}
+                        </div>
+                        <div style='text-align:right;'>
+                            <div style='font-size:1.1rem;font-weight:700;color:{color_total};'>
+                                {total_fac:,.2f} €
+                            </div>
+                            {badge}
+                        </div>
+                    </div>""", unsafe_allow_html=True)
+
+                    with st.expander("", expanded=False,
+                                     key=f"fac_exp_{fac['id']}_{_render_v}"):
+                        cf1, cf2, cf3 = st.columns(3)
+
+                        with cf1:
+                            # Edición — bloqueada para anuladas y rectificativas
+                            _bloqueada = est == "anulada" or es_rec
+                            if _bloqueada:
+                                st.markdown(
+                                    f"<div style='background:#F8F8F8;border-radius:8px;"
+                                    f"padding:10px 12px;font-size:13px;color:{TEXT_SEC};'>"
+                                    f"{'🔄 Factura rectificativa — no editable' if es_rec else '❌ Factura anulada — no editable'}"
+                                    f"</div>", unsafe_allow_html=True)
+                            else:
+                                nueva_fecha = st.date_input("Fecha factura",
+                                    value=pd.to_datetime(fac.get("fecha", date.today())).date(),
+                                    key=f"fac_fecha_{fac['id']}")
+                                nueva_base = st.number_input("Base imponible (€)",
+                                    value=float(fac.get("base_imponible",0)),
+                                    min_value=0.0, step=1.0, format="%.2f",
+                                    key=f"fac_base_{fac['id']}")
+                                nuevo_concepto = st.text_input("Concepto",
+                                    value=str(fac.get("concepto","")),
+                                    key=f"fac_con_{fac['id']}")
+                                nuevo_estado = st.selectbox(
+                                    "Estado",
+                                    ["emitida","cobrada"],
+                                    index=0 if est == "emitida" else 1,
+                                    key=f"fac_est_{fac['id']}"
+                                )
+                                if st.button("💾 Guardar cambios", key=f"fac_upd_{fac['id']}",
+                                             use_container_width=True, type="primary"):
+                                    import requests as _rq
+                                    from supabase_db import SUPABASE_URL, SUPABASE_KEY
+                                    _pct_iva = float(fac.get("pct_iva",0))
+                                    _pct_ret = float(fac.get("pct_retencion",0))
+                                    _imp_iva = round(nueva_base * _pct_iva / 100, 2)
+                                    _imp_ret = round(nueva_base * _pct_ret / 100, 2)
+                                    _total   = round(nueva_base + _imp_iva - _imp_ret, 2)
+                                    _r = _rq.patch(
+                                        f"{SUPABASE_URL}/rest/v1/facturas_emitidas"
+                                        f"?id=eq.{fac['id']}&user_id=eq.{uid_ing}",
+                                        headers={
+                                            "apikey": SUPABASE_KEY,
+                                            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                                            "Content-Type": "application/json",
+                                            "Prefer": "return=minimal"
+                                        },
+                                        json={
+                                            "fecha": nueva_fecha.strftime("%Y-%m-%d"),
+                                            "base_imponible": nueva_base,
+                                            "importe_iva": _imp_iva,
+                                            "importe_retencion": _imp_ret,
+                                            "total": _total,
+                                            "concepto": nuevo_concepto,
+                                            "estado": nuevo_estado,
+                                        }, timeout=10
+                                    )
+                                    if _r.status_code in (200, 204):
+                                        st.success("✅ Guardado correctamente")
+                                        st.session_state["fac_render_v"] = st.session_state.get("fac_render_v",0)+1
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ Error {_r.status_code}: {_r.text[:100]}")
+
+                        with cf2:
+                            # Ver PDF
+                            if fac.get("pdf_url"):
+                                url_pdf = obtener_url_factura(uid_ing, str(fac["pdf_url"]))
+                                if url_pdf:
+                                    st.markdown(
+                                        f"<a href='{url_pdf}' target='_blank' "
+                                        f"style='display:inline-block;background:#E6F1FB;"
+                                        f"color:#0C447C;padding:8px 14px;border-radius:6px;"
+                                        f"font-size:13px;font-weight:600;text-decoration:none;"
+                                        f"border:1px solid #B5D4F4;'>👁️ Ver PDF</a>",
+                                        unsafe_allow_html=True)
+
+                            # Botón anular — solo para facturas activas no rectificativas
+                            if not es_rec and est != "anulada":
+                                st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+                                if st.button("🔄 Anular con rectificativa",
+                                             key=f"btn_rect_{fac['id']}",
+                                             use_container_width=True):
+                                    st.session_state[f"preview_rect_{fac['id']}"] = True
+
+                            # Preview de la rectificativa
+                            if st.session_state.get(f"preview_rect_{fac['id']}", False):
+                                _b  = -abs(float(fac.get("base_imponible",0)))
+                                _iv = -abs(float(fac.get("importe_iva",0)))
+                                _rt = -abs(float(fac.get("importe_retencion",0)))
+                                _tt = round(_b + _iv - _rt, 2)
+                                perfil_p = leer_perfil_usuario(uid_ing)
+                                _sig_r   = int(perfil_p.get("siguiente_numero_rec") or 1)
+                                _anio_2d = str(date.today().year)[2:]
+                                _num_rec = f"REC{_anio_2d}{_sig_r:04d}"
+
+                                st.markdown(f"""
+                                <div style='background:#EEF4FF;border:1.5px solid #185FA5;
+                                            border-radius:10px;padding:14px;margin-top:10px;
+                                            font-size:13px;'>
+                                    <div style='font-weight:700;color:#0C447C;margin-bottom:8px;'>
+                                        📄 Preview Rectificativa
+                                    </div>
+                                    <div style='color:{TEXT_PRI};line-height:1.8;'>
+                                        <b>Nº:</b> {_num_rec}<br>
+                                        <b>Rectifica:</b> {fac.get("numero","")}<br>
+                                        <b>Inquilino:</b> {fac.get("inquilino","")}<br>
+                                        <b>Concepto:</b> ANULACIÓN {fac.get("numero","")} — {fac.get("concepto","")}<br>
+                                        <hr style='border:0;border-top:1px dashed #B5D4F4;margin:6px 0;'>
+                                        <b>Base:</b> {_b:,.2f} €<br>
+                                        <b>IVA {float(fac.get("pct_iva",0)):.0f}%:</b> {_iv:,.2f} €<br>
+                                        <b>Ret. {float(fac.get("pct_retencion",0)):.0f}%:</b> {_rt:,.2f} €<br>
+                                        <b style='font-size:14px;'>TOTAL: {_tt:,.2f} €</b>
+                                    </div>
+                                </div>""", unsafe_allow_html=True)
+
+                                pr1, pr2 = st.columns(2)
+                                with pr1:
+                                    if st.button("✅ Confirmar y generar",
+                                                 key=f"conf_rect_{fac['id']}",
+                                                 type="primary",
+                                                 use_container_width=True):
+                                        _res = crear_factura_rectificativa(
+                                            uid_ing, fac.to_dict()
+                                        )
+                                        if _res["ok"]:
+                                            # Generar PDF rectificativa
+                                            if REPORTLAB_OK:
+                                                _datos_rec = {
+                                                    **fac.to_dict(),
+                                                    "numero": _res["numero"],
+                                                    "fecha": str(date.today()),
+                                                    "vencimiento": str(date.today()),
+                                                    "concepto": f"ANULACIÓN {fac.get('numero','')} — {fac.get('concepto','')}",
+                                                    "base_imponible": _b,
+                                                    "importe_iva": _iv,
+                                                    "importe_retencion": abs(_rt),
+                                                    "total": _tt,
+                                                    "es_rectificativa": True,
+                                                }
+                                                _pdf = _generar_pdf_factura(
+                                                    perfil_p, _datos_rec, _res["numero"],
+                                                    es_rectificativa=True
+                                                )
+                                                if _pdf:
+                                                    _pdf_bytes = _pdf.getvalue()
+                                                    guardar_pdf_factura(uid_ing, _res["id"],
+                                                                        _res["numero"], _pdf_bytes)
+                                                    st.success(f"✅ Rectificativa {_res['numero']} generada")
+                                                    st.download_button(
+                                                        f"📥 Descargar {_res['numero']}.pdf",
+                                                        data=_pdf_bytes,
+                                                        file_name=f"{_res['numero']}.pdf",
+                                                        mime="application/pdf",
+                                                        use_container_width=True
+                                                    )
+                                            st.session_state.pop(f"preview_rect_{fac['id']}", None)
+                                            st.session_state["fac_render_v"] = st.session_state.get("fac_render_v",0)+1
+                                            st.rerun()
+                                        else:
+                                            st.error(f"❌ {_res['error']}")
+                                with pr2:
+                                    if st.button("❌ Cancelar",
+                                                 key=f"cancel_rect_{fac['id']}",
+                                                 use_container_width=True):
+                                        st.session_state.pop(f"preview_rect_{fac['id']}", None)
+                                        st.rerun()
+
+                        with cf3:
+                            st.markdown(f"**Base:** {float(fac.get('base_imponible',0)):,.2f} €")
+                            st.markdown(f"**IVA {float(fac.get('pct_iva',0)):.0f}%:** {float(fac.get('importe_iva',0)):,.2f} €")
+                            st.markdown(f"**Ret. {float(fac.get('pct_retencion',0)):.0f}%:** −{float(fac.get('importe_retencion',0)):,.2f} €")
+                            st.markdown(f"**Total: {float(fac.get('total',0)):,.2f} €**")
+            # fin else tarjetas
+
+    # ── TAB 3: PLANTILLAS ──────────────────────────────────────
+    with tab_plantillas:
+        st.markdown('<div class="nc-section-title">Plantillas por inmueble</div>', unsafe_allow_html=True)
+        st.caption("Configura una vez los datos de cada inmueble. Se pre-rellenan al generar facturas.")
+
+        df_plt = leer_plantillas_factura(uid_ing)
+
+        # Mostrar plantillas existentes
+        if not df_plt.empty:
+            for _, plt_row in df_plt.iterrows():
+                st.markdown(f"""
+                <div style='background:{CARD_BG};border:1px solid {BORDER};
+                            border-radius:10px;padding:12px 16px;margin-bottom:6px;'>
+                    <b>{plt_row.get("inmueble","")}</b>
+                    <span style='color:{TEXT_SEC};font-size:0.82rem;margin-left:10px;'>
+                        {plt_row.get("inquilino","")} · Base: {float(plt_row.get("base_imponible",0)):,.2f}€
+                        · IVA: {float(plt_row.get("pct_iva",0)):.0f}%
+                        · Ret: {float(plt_row.get("pct_retencion",0)):.0f}%
+                    </span>
+                </div>""", unsafe_allow_html=True)
+            st.markdown("---")
+
+        # Formulario nueva plantilla / editar
+        st.markdown("**Añadir o editar plantilla:**")
+
+        # Selector inmueble — de la cartera o manual
+        nombres_inm = df_inm["Nombre"].tolist() if not df_inm.empty else []
+        inm_plt = st.selectbox("Inmueble", nombres_inm, key="plt_inm") if nombres_inm else \
+                  st.text_input("Inmueble (escribe el nombre)", key="plt_inm_txt")
+
+        if inm_plt:
+            # Pre-rellenar si existe plantilla
+            plt_exist = df_plt[df_plt["inmueble"]==inm_plt].iloc[0].to_dict() \
+                        if not df_plt.empty and inm_plt in df_plt["inmueble"].values else {}
+            # Pre-rellenar desde ficha del inmueble si existe
+            inm_row = df_inm[df_inm["Nombre"]==inm_plt].iloc[0] if inm_plt in df_inm["Nombre"].values else {}
+
+            with st.form(f"form_plt_{inm_plt}"):
+                cp1, cp2 = st.columns(2)
+                with cp1:
+                    plt_inq = st.text_input("Inquilino *",
+                        value=plt_exist.get("inquilino",
+                              str(inm_row.get("Inquilino","")) if hasattr(inm_row,"get") else ""))
+                    plt_nif = st.text_input("NIF inquilino",
+                        value=plt_exist.get("nif_inquilino",
+                              str(inm_row.get("NIF_Inquilino","")) if hasattr(inm_row,"get") else ""))
+                    plt_dir = st.text_area("Dirección inquilino",
+                        value=plt_exist.get("direccion_inquilino",""), height=80)
+                with cp2:
+                    plt_base = st.number_input("Base imponible (€) *",
+                        value=float(plt_exist.get("base_imponible",
+                                    float(inm_row.get("Renta",0)) if hasattr(inm_row,"get") else 0)),
+                        min_value=0.0, step=10.0, format="%.2f")
+                    plt_iva = st.number_input("IVA (%)",
+                        value=float(plt_exist.get("pct_iva",
+                                    float(inm_row.get("Tipo_IVA",0)) if hasattr(inm_row,"get") else 0)),
+                        min_value=0.0, max_value=21.0, step=1.0)
+                    plt_ret = st.number_input("Retención IRPF (%)",
+                        value=float(plt_exist.get("pct_retencion",
+                                    float(inm_row.get("Retencion_IRPF_Pct",0)) if hasattr(inm_row,"get") else 0)),
+                        min_value=0.0, max_value=25.0, step=1.0)
+
+                sub_plt = st.form_submit_button("💾 Guardar plantilla",
+                                                 type="primary", use_container_width=True)
+                if sub_plt:
+                    if not plt_inq.strip():
+                        st.warning("⚠️ El nombre del inquilino es obligatorio.")
+                    else:
+                        res_plt = guardar_plantilla_factura(uid_ing, {
+                            "inmueble": inm_plt,
+                            "inquilino": plt_inq.strip(),
+                            "nif_inquilino": plt_nif.strip(),
+                            "direccion_inquilino": plt_dir.strip(),
+                            "base_imponible": plt_base,
+                            "pct_iva": plt_iva,
+                            "pct_retencion": plt_ret,
+                        })
+                        if res_plt["ok"]:
+                            st.success(f"✅ Plantilla de {inm_plt} guardada")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {res_plt['error']}")
+
+
+# ================================================================
+# FUNCIÓN: GENERAR PDF FACTURA EMITIDA (ReportLab)
 # ================================================================
 
-def actualizar_importe_movimiento(mov_id, user_id: str, nuevo_importe: float) -> bool:
-    """
-    Actualiza el importe de un movimiento existente por su id.
-    Usado para edición inline desde la ficha de inmueble.
-    """
-    if not _validar_user_id(user_id, "actualizar_importe_movimiento"):
-        return False
-    try:
-        r = requests.patch(
-            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
-            headers={**_headers(), "Prefer": "return=minimal"},
-            json={"importe": float(nuevo_importe)},
-            timeout=10
-        )
-        return r.status_code in (200, 204)
-    except Exception:
-        return False
+# ================================================================
+# PÁGINA: DETALLE DE RATIO IS
+# Navegación desde Torre de Control IS — botones ℹ️ por ratio
+# ================================================================
+elif menu == "Ratio_Detalle":
+    _ratio_sel = st.session_state.get("ratio_detalle_sel", "DSCR")
 
-def obtener_url_factura_recibida(user_id: str, ruta: str, expira: int = 3600) -> str | None:
-    """Genera una URL firmada temporal para visualizar una factura recibida."""
-    if not _validar_user_id(user_id, "obtener_url_factura_recibida"):
-        return None
-    if not ruta:
-        return None
-    try:
-        r = requests.post(
-            f"{SUPABASE_URL}/storage/v1/object/sign/facturas/{ruta}",
-            headers={**_headers(), "Content-Type": "application/json"},
-            json={"expiresIn": expira},
-            timeout=10
-        )
-        if r.status_code == 200:
-            signed = r.json().get("signedURL", "")
-            if signed.startswith("/"):
-                return f"{SUPABASE_URL}/storage/v1{signed}"
-            return signed
-        return None
-    except Exception:
-        return None
+    if st.button("← Volver a Torre de Control", key="btn_back_ratio"):
+        st.session_state.menu = "Torre de Control"
+        st.rerun()
+
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+    # Datos calculados en Torre de Control (guardados en session_state)
+    _rd = st.session_state.get("ratio_detalle_datos", {})
+    _ebitda   = _rd.get("ebitda", 0)
+    _is_est   = _rd.get("is_est", 0)
+    _cf_neto  = _rd.get("cf_neto", 0)
+    _dscr     = _rd.get("dscr", 0)
+    _roi      = _rd.get("roi", 0)
+    _ltv      = _rd.get("ltv", 0)
+    _ingresos = _rd.get("ingresos", 0)
+    _gas_op   = _rd.get("gas_op", 0)
+    _cuota_a  = _rd.get("cuota_anual", 0)
+    _resultado= _rd.get("resultado", 0)
+    _inversion= _rd.get("inversion", 0)
+    _deuda    = _rd.get("deuda", 0)
+    _val_cat  = _rd.get("val_cat", 0)
+
+    RATIOS = {
+        "EBITDA": {
+            "titulo":   "EBITDA Inmobiliario",
+            "subtitulo":"Lo que genera tu cartera antes de pagar al banco y a Hacienda",
+            "icono":    "📊",
+            "color":    "#059669",
+            "que_es": (
+                "El **EBITDA** (Earnings Before Interest, Taxes, Depreciation and Amortization) "
+                "es el beneficio operativo de tu cartera inmobiliaria **antes** de descontar "
+                "los intereses de las hipotecas, el Impuesto de Sociedades y la amortización fiscal. "
+                "Es la métrica que mejor refleja la capacidad real de generar caja de tus activos."
+            ),
+            "formula": "EBITDA = Ingresos por arrendamiento − Gastos operativos",
+            "nota": "Los gastos operativos NO incluyen intereses hipotecarios ni amortización — esos son financieros, no operativos.",
+            "calculo": [
+                ("Ingresos arrendamiento", f"{_ingresos:,.2f} €"),
+                ("− Gastos operativos", f"−{_gas_op:,.2f} €"),
+                ("= EBITDA", f"{_ebitda:,.2f} €"),
+            ],
+            "interpretacion": (
+                f"Tu EBITDA de **{_ebitda:,.0f}€** significa que tu cartera genera ese importe "
+                f"de beneficio operativo bruto. "
+                + ("✅ Es positivo — tus inmuebles cubren sus gastos operativos." if _ebitda >= 0
+                   else "⚠️ Es negativo — los gastos operativos superan los ingresos. Revisa si hay gastos extraordinarios.")
+            ),
+            "referencia": "Un EBITDA saludable para una cartera patrimonial debe cubrir al menos 1.2× las cuotas hipotecarias anuales (DSCR ≥ 1.20).",
+        },
+        "IS": {
+            "titulo":   "IS Estimado — Impuesto de Sociedades",
+            "subtitulo":"Lo que Hacienda se lleva del beneficio de la sociedad",
+            "icono":    "🏛️",
+            "color":    "#DC2626",
+            "que_es": (
+                "El **Impuesto de Sociedades (IS)** es el impuesto que paga la sociedad patrimonial "
+                "sobre su beneficio neto. El tipo general es el **25%** (Art. 29 LIS). "
+                "A diferencia del IRPF de una persona física, no aplica la reducción del 60% "
+                "por arrendamiento de vivienda habitual."
+            ),
+            "formula": "IS = max(Resultado neto × 25%, 0)",
+            "nota": "El resultado neto = Ingresos − TODOS los gastos deducibles (incluidos intereses y amortización).",
+            "calculo": [
+                ("Resultado neto (base imponible)", f"{_resultado:,.2f} €"),
+                ("× Tipo general IS", "25%"),
+                ("= Cuota IS estimada", f"{_is_est:,.2f} €"),
+            ],
+            "interpretacion": (
+                f"Tu cuota IS estimada es **{_is_est:,.0f}€**. "
+                + ("✅ El resultado es positivo — pagas IS porque ganas dinero." if _resultado >= 0
+                   else "ℹ️ El resultado es negativo — no payas IS este ejercicio. Las bases negativas pueden compensarse en los 10 años siguientes.")
+            ),
+            "referencia": "Tipo nueva empresa: 15% los 2 primeros ejercicios con base imponible positiva (Art. 29.1 LIS).",
+        },
+        "CashFlow": {
+            "titulo":   "Cash Flow Neto",
+            "subtitulo":"Lo que realmente queda en tu cuenta bancaria cada año",
+            "icono":    "💶",
+            "color":    "#185FA5",
+            "que_es": (
+                "El **Cash Flow Neto** es el dinero que efectivamente entra en la cuenta de "
+                "la sociedad después de pagar todos los gastos operativos, las cuotas hipotecarias "
+                "y el Impuesto de Sociedades. Es el dato más real de la salud financiera."
+            ),
+            "formula": "Cash Flow Neto = EBITDA − IS estimado − Cuotas hipotecarias anuales",
+            "nota": "Un Cash Flow negativo no significa quiebra — puede que estés amortizando deuda (la cuota incluye capital además de intereses).",
+            "calculo": [
+                ("EBITDA", f"{_ebitda:,.2f} €"),
+                ("− IS estimado (25%)", f"−{_is_est:,.2f} €"),
+                ("− Cuotas hipotecarias anuales", f"−{_cuota_a:,.2f} €"),
+                ("= Cash Flow Neto", f"{_cf_neto:,.2f} €"),
+            ],
+            "interpretacion": (
+                f"Tu Cash Flow Neto es **{_cf_neto:,.0f}€/año** ({_cf_neto/12:,.0f}€/mes). "
+                + ("✅ Positivo — la cartera se autofinancia y genera excedente." if _cf_neto >= 0
+                   else "⚠️ Negativo — necesitas aportar capital adicional cada año para cubrir las hipotecas.")
+            ),
+            "referencia": "Un Cash Flow positivo es requisito mínimo para una cartera sostenible a largo plazo.",
+        },
+        "DSCR": {
+            "titulo":   "DSCR — Cobertura de Deuda",
+            "subtitulo":"El ratio que miran los bancos antes de darte una hipoteca",
+            "icono":    "🏦",
+            "color":    "#DC2626" if _dscr < 1.20 and _dscr > 0 else "#059669",
+            "que_es": (
+                "El **DSCR** (Debt Service Coverage Ratio) mide cuántas veces el EBITDA de tu "
+                "cartera cubre las cuotas anuales de las hipotecas. Es el ratio más importante "
+                "para cualquier banco o entidad financiera al evaluar si prestarte dinero."
+            ),
+            "formula": "DSCR = EBITDA / Cuota anual hipotecas",
+            "nota": "Los bancos exigen un DSCR mínimo de 1.20×. Por debajo de ese umbral consideran la operación de alto riesgo.",
+            "calculo": [
+                ("EBITDA", f"{_ebitda:,.2f} €"),
+                ("÷ Cuota anual hipotecas", f"{_cuota_a:,.2f} €"),
+                ("= DSCR", f"{_dscr:.2f}×" if _dscr > 0 else "Sin hipotecas"),
+            ],
+            "interpretacion": (
+                f"Tu DSCR es **{_dscr:.2f}×**. "
+                + ("🔴 Por debajo del umbral bancario (1.20×). Si fueras a pedir financiación, el banco lo rechazaría con estos números. "
+                   "Considera amortizar deuda o incrementar rentas." if _dscr < 1.20 and _dscr > 0
+                   else "✅ Por encima del mínimo bancario (1.20×). Tu cartera tiene capacidad de endeudamiento adicional." if _dscr >= 1.20
+                   else "ℹ️ Sin hipotecas registradas — DSCR no aplicable.")
+            ),
+            "referencia": "Umbral mínimo bancario: 1.20×. Óptimo para refinanciación: > 1.50×.",
+        },
+        "ROI": {
+            "titulo":   "ROI Societario",
+            "subtitulo":"Cuánto rinde cada euro que invertiste en la cartera",
+            "icono":    "📈",
+            "color":    "#059669" if _roi > 5 else "#D97706",
+            "que_es": (
+                "El **ROI** (Return on Investment) mide el porcentaje de beneficio que genera "
+                "la cartera respecto al capital total invertido en adquirirla "
+                "(precio de compra + impuestos de adquisición + gastos de escritura)."
+            ),
+            "formula": "ROI = Resultado neto / Inversión total × 100",
+            "nota": "El ROI societario usa el resultado neto IS (sin reducción del 60%), no el rendimiento IRPF.",
+            "calculo": [
+                ("Resultado neto (IS)", f"{_resultado:,.2f} €"),
+                ("÷ Inversión total", f"{_inversion:,.2f} €" if _inversion > 0 else "Sin datos"),
+                ("= ROI", f"{_roi:.1f}%" if _inversion > 0 else "Sin datos de inversión"),
+            ],
+            "interpretacion": (
+                f"Tu ROI es **{_roi:.1f}%**. "
+                + (f"✅ Por encima del 5% — rendimiento competitivo vs renta fija (Bono 10Y ~3.5%)." if _roi > 5
+                   else f"⚠️ Por debajo del 5% — evalúa si hay alternativas de inversión más rentables." if _roi > 0
+                   else "ℹ️ Sin datos de precio de compra — añade el precio de adquisición en Datos de Cartera.")
+            ),
+            "referencia": "ROI inmobiliario medio en España (2024): 4-7% en activos residenciales. Comercial/industrial: 5-9%.",
+        },
+        "LTV": {
+            "titulo":   "LTV — Loan to Value",
+            "subtitulo":"Cuánta deuda tienes respecto al valor de tus activos",
+            "icono":    "⚖️",
+            "color":    "#DC2626" if _ltv > 70 else "#D97706" if _ltv > 50 else "#059669",
+            "que_es": (
+                "El **LTV** (Loan to Value) mide qué porcentaje del valor catastral de la cartera "
+                "está financiado con deuda hipotecaria. Indica el nivel de apalancamiento "
+                "y el margen disponible para nueva financiación."
+            ),
+            "formula": "LTV = Saldo deuda hipotecas / Valor catastral total × 100",
+            "nota": "Usamos el valor catastral como proxy. El valor de mercado real suele ser superior, por lo que el LTV real puede ser menor.",
+            "calculo": [
+                ("Saldo deuda hipotecas", f"{_deuda:,.2f} €"),
+                ("÷ Valor catastral total", f"{_val_cat:,.2f} €" if _val_cat > 0 else "Sin datos"),
+                ("= LTV", f"{_ltv:.1f}%" if _val_cat > 0 else "Sin datos catastrales"),
+            ],
+            "interpretacion": (
+                f"Tu LTV es **{_ltv:.1f}%**. "
+                + ("🔴 Alto (>70%) — poco margen para nueva financiación. Los bancos suelen exigir LTV < 70-80%." if _ltv > 70
+                   else "⚠️ Moderado (50-70%) — margen limitado pero aceptable para la mayoría de entidades." if _ltv > 50
+                   else "✅ Bajo (<50%) — amplio margen de endeudamiento. Tu cartera tiene capacidad para nueva inversión." if _ltv > 0
+                   else "ℹ️ Sin datos de hipotecas o valor catastral.")
+            ),
+            "referencia": "LTV máximo habitual en financiación bancaria: 70-80% en residencial, 60-65% en comercial.",
+        },
+    }
+
+    _info = RATIOS.get(_ratio_sel, RATIOS["DSCR"])
+
+    # Cabecera
+    st.markdown(f"""
+    <div style="background:{'#0d1a0d' if _info['color']=="#059669" else '#fff'};
+                border:2px solid {_info['color']};border-radius:14px;
+                padding:20px 24px;margin-bottom:20px;">
+      <div style="font-size:2rem;margin-bottom:4px;">{_info['icono']}</div>
+      <div style="font-size:1.6rem;font-weight:900;color:{_info['color']};">{_info['titulo']}</div>
+      <div style="font-size:14px;color:#64748B;margin-top:4px;font-style:italic;">"{_info['subtitulo']}"</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    _t1, _t2, _t3 = st.tabs(["❓ ¿Qué es?", "🧮 Tu cálculo", "💡 ¿Qué significa?"])
+
+    with _t1:
+        st.markdown(_info["que_es"])
+        st.markdown("---")
+        st.markdown(f"**Fórmula:**")
+        st.code(_info["formula"], language=None)
+        st.info(f"ℹ️ {_info['nota']}")
+
+    with _t2:
+        st.markdown("**Datos de tu cartera:**")
+        for _concepto, _valor in _info["calculo"]:
+            _es_resultado = _concepto.startswith("=")
+            _bg = f"background:{_info['color']}15;" if _es_resultado else ""
+            _fw = "font-weight:900;" if _es_resultado else ""
+            st.markdown(
+                f'<div style="display:flex;justify-content:space-between;'
+                f'padding:10px 14px;border-radius:8px;margin-bottom:4px;'
+                f'border:1px solid #E2E8F0;{_bg}">'
+                f'<span style="font-size:14px;color:#475569;{_fw}">{_concepto}</span>'
+                f'<span style="font-size:16px;font-weight:800;color:{_info["color"] if _es_resultado else "#1e293b"};">'
+                f'{_valor}</span></div>',
+                unsafe_allow_html=True
+            )
+
+    with _t3:
+        st.markdown(_info["interpretacion"])
+        st.markdown("---")
+        st.caption(f"📚 Referencia: {_info['referencia']}")
+
+    # Navegación rápida a otros ratios
+    st.markdown("---")
+    st.markdown("**Ver explicación de otro ratio:**")
+    _otros = [k for k in RATIOS.keys() if k != _ratio_sel]
+    _cols_nav = st.columns(len(_otros))
+    for _i, (_k, _col_n) in enumerate(zip(_otros, _cols_nav)):
+        if _col_n.button(f"{RATIOS[_k]['icono']} {RATIOS[_k]['titulo']}", key=f"nav_ratio_{_k}"):
+            st.session_state.ratio_detalle_sel = _k
+            st.rerun()
