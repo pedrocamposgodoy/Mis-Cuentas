@@ -2768,16 +2768,10 @@ elif menu == "Gastos":
 </style>""", unsafe_allow_html=True)
 
         # ── FILTROS ────────────────────────────────────────────────────
-        col_titulo, col_modo = st.columns([5, 1])
-        with col_titulo:
-            st.markdown(
-                "<div style='font-size:0.72rem;font-weight:600;letter-spacing:0.08em;"
-                "text-transform:uppercase;color:#9CA3AF;margin-bottom:4px;'>"
-                "Vista de operaciones</div>", unsafe_allow_html=True)
-        with col_modo:
-            modo_diario = st.radio("Modo", ["📋 Tarjetas","⚙️ Tabla"],
-                                   horizontal=True, key="modo_diario",
-                                   label_visibility="collapsed")
+        st.markdown(
+            "<div style='font-size:0.72rem;font-weight:600;letter-spacing:0.08em;"
+            "text-transform:uppercase;color:#9CA3AF;margin-bottom:4px;'>"
+            "Vista de operaciones</div>", unsafe_allow_html=True)
 
         # Fila de filtros
         ff1,ff2,ff3,ff4,ff5,ff6 = st.columns([1.2,1.2,2,2,1.5,0.7])
@@ -2848,377 +2842,52 @@ elif menu == "Gastos":
                    (f" de {len(df_mov)} totales" if len(df_f) != len(df_mov) else ""))
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-        # ==============================================================
-        # MODO TARJETAS
-        # ==============================================================
-        if modo_diario == "📋 Tarjetas":
+        # ── VISTA COMPACTA (lista con paginación) ─────────────────────
+        _PG_SIZE = 15
+        if "gs_pag" not in st.session_state: st.session_state["gs_pag"] = 0
+        _n_total = len(df_f)
+        _n_pag   = max(1, (_n_total + _PG_SIZE - 1) // _PG_SIZE)
+        _pg      = min(st.session_state["gs_pag"], _n_pag - 1)
+        _df_pag  = df_f.iloc[_pg*_PG_SIZE:(_pg+1)*_PG_SIZE].reset_index(drop=True)
 
-            if df_f.empty:
-                st.info("No hay operaciones con los filtros seleccionados.")
-            else:
-                # Paginación — 20 por página para no sobrecargar
-                PAGE_SIZE = 20
-                total_pags = max(1, (len(df_f) - 1) // PAGE_SIZE + 1)
-                if "dc_pag" not in st.session_state: st.session_state.dc_pag = 1
-                # Resetear página si cambian filtros
-                _filtro_hash = f"{f_año}{f_mes}{f_inm}{f_buscar}{f_tipo}"
-                if st.session_state.get("dc_filtro_hash") != _filtro_hash:
-                    st.session_state.dc_pag = 1
-                    st.session_state.dc_filtro_hash = _filtro_hash
+        # Cabecera tabla
+        _gh = st.columns([1.5, 2, 3, 2, 1.5, 0.8])
+        for _ht, _hc in zip(["Fecha","Inmueble","Concepto","Categoría","Importe","PDF"], _gh):
+            _hc.markdown(f"<span style='font-size:11px;font-weight:500;color:var(--color-text-secondary);'>{_ht}</span>", unsafe_allow_html=True)
+        st.markdown("<hr style='margin:3px 0 5px;border-color:var(--color-border-secondary);'>", unsafe_allow_html=True)
 
-                pag_actual = st.session_state.dc_pag
-                df_pag = df_f.iloc[(pag_actual-1)*PAGE_SIZE : pag_actual*PAGE_SIZE]
-
-                for idx, row in df_pag.iterrows():
-                    es_ing  = str(row.get("Tipo","")) == "Ingreso"
-                    importe = float(row.get("Importe", 0))
-                    fecha_s = row["Fecha"].strftime("%d/%m/%Y") if pd.notna(row["Fecha"]) else "—"
-                    concepto = str(row.get("Concepto","—"))
-                    inmueble = str(row.get("Apartamento","—"))
-                    categoria = str(row.get("Categoría","—"))
-                    deducible = str(row.get("Deducible","N"))
-                    tiene_fac = bool(row.get("tiene_factura", False))
-                    estado_fis = str(row.get("estado_fiscal","pendiente"))
-                    mov_id = row.get("id", None)
-
-                    # Badge de estado factura
-                    if estado_fis == "validado":
-                        badge_fac = "<span class='dc-tag-val'>✅ Validado</span>"
-                    elif tiene_fac:
-                        badge_fac = "<span class='dc-tag-ok'>📄 Con factura</span>"
-                    else:
-                        badge_fac = "<span class='dc-tag-warn'>⚠️ Sin factura</span>"
-
-                    tag_tipo = (f"<span class='dc-tag-ing'>Ingreso</span>" if es_ing
-                                else f"<span class='dc-tag-gas'>Gasto</span>")
-                    imp_html = (f"<span class='dc-importe-ing'>+{importe:,.2f} €</span>" if es_ing
-                                else f"<span class='dc-importe-gas'>−{importe:,.2f} €</span>")
-                    ded_txt = "✅ Deducible" if deducible == "S" else "—"
-
-                    # Cabecera de tarjeta siempre visible
-                    st.markdown(f"""
-<div class="dc-card">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-    <div style="flex:1;min-width:0;">
-      <div style="font-size:0.72rem;color:{TEXT_SEC};margin-bottom:3px;">
-        📅 {fecha_s} &nbsp;·&nbsp; 🏠 {inmueble}
-      </div>
-      <div style="font-size:0.97rem;font-weight:600;color:{TEXT_PRI};
-                  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-                  max-width:480px;margin-bottom:6px;">{concepto}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-        {tag_tipo}
-        <span style="font-size:11px;color:{TEXT_SEC};">{categoria}</span>
-        <span style="font-size:11px;color:{TEXT_SEC};">{ded_txt}</span>
-        {badge_fac}
-      </div>
-    </div>
-    <div style="text-align:right;padding-left:16px;flex-shrink:0;">
-      {imp_html}
-    </div>
-  </div>
-</div>""", unsafe_allow_html=True)
-
-                    # Panel expandible
-                    # Key dinámica — cambia tras acción, fuerza expander cerrado
-                    _render_v = st.session_state.get("dc_render_v", 0)
-                    with st.expander("",
-                                     expanded=False,
-                                     key=f"exp_{idx}_{_render_v}"):
-                        col_det, col_fac = st.columns([1, 1])
-
-                        with col_det:
-                            st.markdown(f"**Categoría:** {categoria}")
-                            st.markdown(f"**Tipo:** {'Ingreso' if es_ing else 'Gasto'}")
-                            st.markdown(f"**Deducible:** {ded_txt}")
-                            st.markdown(f"**Estado fiscal:** {estado_fis}")
-
-                            # Edición rápida de campos
-                            st.markdown("---")
-                            nuevo_concepto = st.text_input("Concepto",
-                                value=concepto, key=f"ed_con_{idx}")
-                            nuevo_importe  = st.number_input("Importe (€)",
-                                value=importe, min_value=0.0, step=1.0,
-                                key=f"ed_imp_{idx}", format="%.2f")
-                            nueva_cat = st.selectbox("Categoría", l_cat,
-                                index=l_cat.index(categoria) if categoria in l_cat else 0,
-                                key=f"ed_cat_{idx}")
-                            nuevo_ded = st.selectbox("Deducible", ["S","N"],
-                                index=0 if deducible=="S" else 1,
-                                key=f"ed_ded_{idx}")
-
-                            ce1, ce2 = st.columns(2)
-                            with ce1:
-                                if st.button("💾 Guardar cambios",
-                                             key=f"btn_guardar_{idx}",
-                                             use_container_width=True):
-                                    if mov_id is not None:
-                                        import requests as _req
-                                        from supabase_db import SUPABASE_URL, SUPABASE_KEY
-                                        _h = {
-                                            "apikey": SUPABASE_KEY,
-                                            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-                                            "Content-Type": "application/json",
-                                            "Prefer": "return=minimal"
-                                        }
-                                        _r = _req.patch(
-                                            f"{SUPABASE_URL}/rest/v1/movimientos"
-                                            f"?id=eq.{mov_id}&user_id=eq.{uid_dc}",
-                                            headers=_h,
-                                            json={"concepto": nuevo_concepto,
-                                                  "importe": nuevo_importe,
-                                                  "categoria": nueva_cat,
-                                                  "deducible": nuevo_ded},
-                                            timeout=10
-                                        )
-                                        if _r.status_code in (200, 204):
-                                            st.success("✅ Guardado")
-                                            st.session_state.df_mov_persistent = leer_movimientos(uid_dc)
-                                            st.session_state["dc_render_v"] = st.session_state.get("dc_render_v",0)+1
-                                            st.rerun()
-                                        else:
-                                            st.error(f"❌ Error {_r.status_code}")
-                                    else:
-                                        st.warning("⚠️ Este movimiento no tiene id en Supabase. Usa el modo Tabla para editarlo.")
-
-                            with ce2:
-                                if st.button("🗑️ Eliminar",
-                                             key=f"btn_del_{idx}",
-                                             use_container_width=True,
-                                             type="secondary"):
-                                    if mov_id is not None:
-                                        import requests as _req
-                                        from supabase_db import SUPABASE_URL, SUPABASE_KEY
-                                        _h = {
-                                            "apikey": SUPABASE_KEY,
-                                            "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
-                                            "Content-Type": "application/json"
-                                        }
-                                        _r = _req.delete(
-                                            f"{SUPABASE_URL}/rest/v1/movimientos"
-                                            f"?id=eq.{mov_id}&user_id=eq.{uid_dc}",
-                                            headers=_h, timeout=10
-                                        )
-                                        if _r.status_code in (200, 204):
-                                            st.success("✅ Eliminado")
-                                            st.session_state.df_mov_persistent = leer_movimientos(uid_dc)
-                                            st.session_state["dc_render_v"] = st.session_state.get("dc_render_v",0)+1
-                                            st.rerun()
-                                        else:
-                                            st.error(f"❌ Error {_r.status_code}")
-                                    else:
-                                        st.warning("⚠️ Sin id — usa modo Tabla.")
-
-                        with col_fac:
-                            st.markdown("**📄 Factura**")
-
-                            if tiene_fac and row.get("factura_url"):
-                                # Ya tiene factura — mostrar opciones
-                                url_firmada = obtener_url_factura(uid_dc, str(row["factura_url"]))
-                                if url_firmada:
-                                    st.markdown(
-                                        f"<a href='{url_firmada}' target='_blank' "
-                                        f"style='display:inline-block;background:#E6F1FB;"
-                                        f"color:#0C447C;padding:6px 14px;border-radius:6px;"
-                                        f"font-size:13px;font-weight:600;text-decoration:none;"
-                                        f"border:1px solid #B5D4F4;'>👁️ Ver PDF</a>",
-                                        unsafe_allow_html=True
-                                    )
-                                st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-
-                                # Cambiar estado fiscal
-                                nuevo_estado = st.selectbox(
-                                    "Estado fiscal",
-                                    ["con_factura","validado","pendiente"],
-                                    index=["con_factura","validado","pendiente"].index(estado_fis)
-                                          if estado_fis in ["con_factura","validado","pendiente"] else 0,
-                                    key=f"est_{idx}"
-                                )
-                                if st.button("💾 Actualizar estado",
-                                             key=f"btn_est_{idx}",
-                                             use_container_width=True):
-                                    if mov_id and actualizar_estado_fiscal_movimiento(uid_dc, mov_id, nuevo_estado):
-                                        st.success("✅ Estado actualizado")
-                                        st.session_state.df_mov_persistent = leer_movimientos(uid_dc)
-                                        st.session_state["dc_render_v"] = st.session_state.get("dc_render_v",0)+1
-                                        st.rerun()
-                                    else:
-                                        st.error("❌ Error actualizando estado")
-
-                                # Eliminar factura
-                                if st.button("🗑️ Quitar factura",
-                                             key=f"btn_delfac_{idx}",
-                                             use_container_width=True):
-                                    if mov_id:
-                                        ok_del = eliminar_factura(uid_dc, mov_id, str(row["factura_url"]))
-                                        if ok_del:
-                                            st.success("✅ Factura eliminada")
-                                            st.session_state.df_mov_persistent = leer_movimientos(uid_dc)
-                                            st.session_state["dc_render_v"] = st.session_state.get("dc_render_v",0)+1
-                                            st.rerun()
-                                        else:
-                                            st.error("❌ Error eliminando factura")
-                            else:
-                                # Sin factura — uploader
-                                st.markdown(
-                                    "<div style='background:#FFF9E6;border:1px solid #F39C12;"
-                                    "border-radius:8px;padding:10px 12px;font-size:12px;"
-                                    "color:#854F0B;margin-bottom:10px;'>"
-                                    "⚠️ Sin factura. Súbela para que sea deducible.</div>",
-                                    unsafe_allow_html=True
-                                )
-                                archivo = st.file_uploader(
-                                    "Subir factura (PDF, JPG, PNG)",
-                                    type=["pdf","jpg","jpeg","png"],
-                                    key=f"fac_{idx}",
-                                    label_visibility="collapsed"
-                                )
-                                if archivo and mov_id:
-                                    ext = archivo.name.split(".")[-1].lower()
-                                    if st.button("📤 Subir factura",
-                                                 key=f"btn_up_{idx}",
-                                                 use_container_width=True,
-                                                 type="primary"):
-                                        with st.spinner("Subiendo..."):
-                                            res = subir_factura(uid_dc, mov_id,
-                                                                archivo.read(), ext)
-                                        if res["ok"]:
-                                            st.success("✅ Factura subida correctamente")
-                                            st.session_state.df_mov_persistent = leer_movimientos(uid_dc)
-                                            st.session_state["dc_render_v"] = st.session_state.get("dc_render_v",0)+1
-                                            st.rerun()
-                                        else:
-                                            st.error(f"❌ {res['error']}")
-                                elif archivo and not mov_id:
-                                    st.warning("⚠️ Este movimiento no tiene id. Guarda primero desde modo Tabla.")
-
-                # ── PAGINACIÓN ─────────────────────────────────────────
-                if total_pags > 1:
-                    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                    pp1,pp2,pp3 = st.columns([1,3,1])
-                    with pp1:
-                        if pag_actual > 1:
-                            if st.button("← Anterior", use_container_width=True, key="dc_prev"):
-                                st.session_state.dc_pag -= 1; st.rerun()
-                    with pp2:
-                        st.markdown(
-                            f"<div style='text-align:center;font-size:0.8rem;color:{TEXT_SEC};"
-                            f"padding-top:8px;'>Página {pag_actual} de {total_pags}"
-                            f" · {len(df_f)} operaciones</div>",
-                            unsafe_allow_html=True
-                        )
-                    with pp3:
-                        if pag_actual < total_pags:
-                            if st.button("Siguiente →", use_container_width=True, key="dc_next"):
-                                st.session_state.dc_pag += 1; st.rerun()
-
-        # ==============================================================
-        # MODO TABLA (avanzado — data_editor completo)
-        # ==============================================================
-        else:
-            # Filtros extra en modo tabla
-            ft1, ft2 = st.columns(2)
-            with ft1:
-                f_cat2 = st.selectbox("Categoría",["Todas"]+l_cat, key="dc_cat")
-            with ft2:
-                f_ded2 = st.selectbox("Deducible",["Todos","S","N"], key="dc_ded")
-
-            df_t = df_f.copy()
-            if f_cat2 != "Todas": df_t = df_t[df_t["Categoría"] == f_cat2]
-            if f_ded2 != "Todos": df_t = df_t[df_t["Deducible"] == f_ded2]
-
-            cols_tabla = [c for c in
-                ["Fecha","Apartamento","Concepto","Categoría","Tipo","Importe","Deducible"]
-                if c in df_t.columns]
-            df_tabla = df_t[cols_tabla].copy()
-
-            config_tabla = {
-                "Fecha":      st.column_config.DateColumn("📅 Fecha", format="DD/MM/YYYY"),
-                "Apartamento":st.column_config.SelectboxColumn("🏠 Inmueble",
-                               options=l_inm, required=True),
-                "Concepto":   st.column_config.TextColumn("📝 Concepto", width="large"),
-                "Categoría":  st.column_config.SelectboxColumn("🗂 Categoría",
-                               options=l_cat, required=True),
-                "Tipo":       st.column_config.SelectboxColumn("↕ Tipo",
-                               options=["Ingreso","Gasto"], required=True),
-                "Importe":    st.column_config.NumberColumn("💶 Importe (€)",
-                               format="%.2f €", min_value=0),
-                "Deducible":  st.column_config.SelectboxColumn("✅ Fiscal",
-                               options=["S","N"], required=True),
-            }
-
-            df_ed = st.data_editor(
-                df_tabla, num_rows="dynamic", use_container_width=True,
-                hide_index=True, column_config=config_tabla, key="tabla_completa"
-            )
-
-            # KPIs modo tabla
-            t_ing_t = df_ed[df_ed["Tipo"]=="Ingreso"]["Importe"].sum()
-            t_gas_t = df_ed[df_ed["Tipo"]=="Gasto"]["Importe"].sum()
-            ded_t   = df_ed[(df_ed["Tipo"]=="Gasto")&(df_ed["Deducible"]=="S")]["Importe"].sum()
-            pct_d   = (ded_t/t_gas_t*100) if t_gas_t>0 else 0
-            k1,k2,k3,k4 = st.columns(4)
-            for _c, _l, _v, _col in [
-                (k1,"Ingresos",   f"+{t_ing_t:,.0f} €", GREEN),
-                (k2,"Gastos",     f"−{t_gas_t:,.0f} €", RED),
-                (k3,"Deducibles", f"{ded_t:,.0f} €",    ACCENT),
-                (k4,"% Deducible",f"{pct_d:.0f}%",      ACCENT),
-            ]:
-                _c.markdown(
-                    f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
-                    f"border-top:3px solid {_col};border-radius:10px;padding:.7rem;"
-                    f"text-align:center;margin:8px 0;'>"
-                    f"<div class='dc-label'>{_l}</div>"
-                    f"<div style='font-size:1rem;font-weight:700;color:{_col};'>{_v}</div>"
-                    f"</div>", unsafe_allow_html=True)
-
-            # Botón guardar modo tabla
-            st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
-            if st.button("💾 Guardar Cambios", type="primary",
-                         use_container_width=True, key="guardar_tabla"):
-                # Validaciones
-                df_val = df_ed.copy()
-                df_val = df_val[~(df_val["Importe"].isna() &
-                                  df_val["Concepto"].isna() &
-                                  df_val["Apartamento"].isna())]
-                df_val["Importe"] = pd.to_numeric(df_val["Importe"],errors="coerce").fillna(0)
-                filas_malas = []
-                for _col in ["Fecha","Apartamento","Tipo","Importe"]:
-                    if _col in df_val.columns:
-                        _mask = df_val[_col].isna()|(df_val[_col].astype(str).str.strip()=="")
-                        filas_malas += df_val[_mask].index.tolist()
-                if filas_malas:
-                    st.warning(f"⚠️ {len(set(filas_malas))} fila(s) incompletas.")
-                elif len(df_val[df_val["Importe"]<=0]) > 0:
-                    st.warning("⚠️ Hay importes en 0 o negativos.")
+        for _, _gr in _df_pag.iterrows():
+            _gc = st.columns([1.5, 2, 3, 2, 1.5, 0.8])
+            _imp = float(_gr.get("Importe", 0) or 0)
+            _tipo_g = str(_gr.get("Tipo",""))
+            _imp_col = "#A32D2D" if _tipo_g=="Gasto" else "#3B6D11"
+            _imp_sgn = f'−{_imp:,.0f} €' if _tipo_g=="Gasto" else f'+{_imp:,.0f} €'
+            _fecha_g = str(_gr.get("Fecha",""))[:10] if _gr.get("Fecha") else "—"
+            _arch_g  = str(_gr.get("factura_url","") or "")
+            _gc[0].markdown(f"<span style='font-size:13px;color:var(--color-text-secondary);'>{_fecha_g}</span>", unsafe_allow_html=True)
+            _gc[1].markdown(f"<span style='font-size:13px;'>{str(_gr.get('Apartamento',''))[:20]}</span>", unsafe_allow_html=True)
+            _gc[2].markdown(f"<span style='font-size:13px;'>{str(_gr.get('Concepto',''))[:35]}</span>", unsafe_allow_html=True)
+            _gc[3].markdown(f"<span style='font-size:12px;background:#F0F5FF;color:#0C447C;padding:2px 8px;border-radius:20px;'>{str(_gr.get('Categoría',''))}</span>", unsafe_allow_html=True)
+            _gc[4].markdown(f"<span style='font-size:13px;font-weight:500;color:{_imp_col};'>{_imp_sgn}</span>", unsafe_allow_html=True)
+            with _gc[5]:
+                if _arch_g and _arch_g != "nan":
+                    st.link_button("📄", url=_arch_g, help="Ver factura", use_container_width=True)
                 else:
-                    # Reconstruir con filtros activos
-                    if any(v != d for v, d in [(f_año,"Todos"),(f_mes,"Todos"),
-                                               (f_inm,"Todos"),(f_tipo,"Todos"),
-                                               (f_cat2,"Todas"),(f_ded2,"Todos")]):
-                        df_comp = st.session_state.df_mov_persistent.copy()
-                        df_comp["Fecha"] = pd.to_datetime(df_comp["Fecha"],errors="coerce")
-                        mask = pd.Series([True]*len(df_comp))
-                        if f_año  != "Todos": mask = mask&(df_comp["Fecha"].dt.year!=int(f_año))
-                        if f_mes  != "Todos": mask = mask&(df_comp["Fecha"].dt.month!=meses_nombres.index(f_mes))
-                        if f_inm  != "Todos": mask = mask&(df_comp["Apartamento"]!=f_inm)
-                        if f_tipo != "Todos": mask = mask&(df_comp["Tipo"]!=f_tipo)
-                        if f_cat2 != "Todas": mask = mask&(df_comp.get("Categoría",pd.Series())!=f_cat2)
-                        if f_ded2 != "Todos": mask = mask&(df_comp.get("Deducible",pd.Series())!=f_ded2)
-                        df_final = pd.concat([df_comp[mask],df_val],ignore_index=True)
-                        df_final = df_final.sort_values("Fecha",ascending=False).reset_index(drop=True)
-                    else:
-                        df_final = df_val
-                    st.session_state.df_mov_persistent = df_final
-                    ok = guardar_movimientos_completo(df_final, user_id=uid_dc)
-                    if ok:
-                        n  = len(df_final)
-                        ti = df_final[df_final["Tipo"]=="Ingreso"]["Importe"].sum()
-                        tg = df_final[df_final["Tipo"]=="Gasto"]["Importe"].sum()
-                        st.success(f"✅ Guardado: {n} ops · Ingresos {ti:,.0f} € · Gastos {tg:,.0f} €")
-                        st.rerun()
-                    else:
-                        st.error("❌ Error al guardar en Supabase. Inténtalo de nuevo.")
+                    st.markdown("<span style='font-size:13px;color:var(--color-text-secondary);'>—</span>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin:1px 0;border-color:var(--color-border-tertiary);'>", unsafe_allow_html=True)
+
+        # Paginación
+        if _n_pag > 1:
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+            _pa, _pb, _pc = st.columns([2, 3, 2])
+            with _pa:
+                if st.button("← Anterior", disabled=_pg==0, use_container_width=True, key="gs_prev"):
+                    st.session_state["gs_pag"] = _pg - 1; st.rerun()
+            with _pb:
+                st.markdown(f"<div style='text-align:center;font-size:13px;color:var(--color-text-secondary);padding:6px 0;'>Página {_pg+1} de {_n_pag} · {_n_total} gastos</div>", unsafe_allow_html=True)
+            with _pc:
+                if st.button("Siguiente →", disabled=_pg>=_n_pag-1, use_container_width=True, key="gs_next"):
+                    st.session_state["gs_pag"] = _pg + 1; st.rerun()
 
     with tab2:
         if "gasto_guardado" not in st.session_state: st.session_state.gasto_guardado=False
