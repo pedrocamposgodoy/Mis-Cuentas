@@ -3530,16 +3530,12 @@ elif menu == "Cash Flow":
             f"</div>"
         )
     st.markdown(
-        f"<div style='display:flex;gap:4px;margin-bottom:20px;'>{_sem}</div>",
+        f"<div style='display:flex;gap:4px;margin-bottom:8px;'>{_sem}</div>",
         unsafe_allow_html=True
     )
-    # Selector funcional debajo (oculto visualmente con label_visibility)
-    _cols_cf = st.columns(12)
-    for _mi, _col in enumerate(_cols_cf):
-        with _col:
-            if st.button(_MN[_mi], key=f"cf_mes_{_mi}", use_container_width=True,
-                         type="primary" if _mi==_m else "secondary"):
-                st.session_state["cf_mes_sel"] = _mi; st.rerun()
+    _mes_radio = st.radio("", _MN, horizontal=True, index=_m, key="cf_radio", label_visibility="collapsed")
+    if _MN.index(_mes_radio) != _m:
+        st.session_state["cf_mes_sel"] = _MN.index(_mes_radio); st.rerun()
 
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
