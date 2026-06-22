@@ -2702,6 +2702,9 @@ elif menu == "Gastos":
     tab1,tab2,tab3,tab4=st.tabs(["📋 Registro de Gastos","📤 Registrar Gasto","💳 Gastos Fijos","📅 Gastos Programados"])
 
     with tab1:
+        # Filtro tipo por defecto = Gasto
+        if "dc_tipo" not in st.session_state:
+            st.session_state["dc_tipo"] = "Gasto"
         # ── IMPORTS LOCALES ────────────────────────────────────────────
         uid_dc = st.session_state.get("user_id", "")
 
