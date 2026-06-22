@@ -2450,10 +2450,14 @@ elif menu == "Fichas (Benchmark)":
                     _rc[3].markdown(f"<span style='font-size:12px;font-weight:500;color:{_tc_fr};'>{float(_fr_row.get('importe_total') or 0):,.2f} €</span>", unsafe_allow_html=True)
                     with _rc[4]:
                         if _arch_ruta:
-                            _pdf_url = f"https://odxixtgqcyddfqaapqgi.supabase.co/storage/v1/object/public/facturas/{_arch_ruta}"
-                            st.link_button("📄", url=_pdf_url, help="Ver PDF", use_container_width=True)
+                            from supabase_db import obtener_url_factura_recibida as _get_pdf_url
+                            _pdf_url = _get_pdf_url(_uid_fr, _arch_ruta)
+                            if _pdf_url:
+                                st.link_button("📄", url=_pdf_url, help="Ver PDF", use_container_width=True)
+                            else:
+                                st.markdown("<span title='PDF no disponible' style='font-size:16px;color:#A32D2D;'>⚠️</span>", unsafe_allow_html=True)
                         else:
-                            st.markdown("<span style='font-size:16px;color:var(--color-text-secondary);'>○</span>", unsafe_allow_html=True)
+                            st.markdown("<span style='font-size:14px;color:var(--color-text-secondary);'>—</span>", unsafe_allow_html=True)
                     with _rc[5]:
                         if st.button("✏️", key=f"edit_fr_btn_{_fr_id}", help="Editar", use_container_width=True):
                             st.session_state[f"edit_fr_{sel}"] = None if _edit_fr==_fr_id else _fr_id
