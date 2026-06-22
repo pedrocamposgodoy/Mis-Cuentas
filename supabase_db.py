@@ -2000,3 +2000,25 @@ def actualizar_importe_movimiento(mov_id, user_id: str, nuevo_importe: float) ->
         return r.status_code in (200, 204)
     except Exception:
         return False
+
+def obtener_url_factura_recibida(user_id: str, ruta: str, expira: int = 3600) -> str | None:
+    """Genera una URL firmada temporal para visualizar una factura recibida."""
+    if not _validar_user_id(user_id, "obtener_url_factura_recibida"):
+        return None
+    if not ruta:
+        return None
+    try:
+        r = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/sign/facturas/{ruta}",
+            headers={**_headers(), "Content-Type": "application/json"},
+            json={"expiresIn": expira},
+            timeout=10
+        )
+        if r.status_code == 200:
+            signed = r.json().get("signedURL", "")
+            if signed.startswith("/"):
+                return f"{SUPABASE_URL}/storage/v1{signed}"
+            return signed
+        return None
+    except Exception:
+        return None
