@@ -2429,8 +2429,8 @@ elif menu == "Fichas (Benchmark)":
                 _kf2.metric("Total gastos", f"{_total_gas_fr:,.0f} €")
                 st.divider()
                 # Cabecera de tabla
-                _hc = st.columns([2, 3, 3, 2, 1, 1])
-                for _htxt, _hcol in zip(["Fecha","Categoría","Concepto / proveedor","Importe","",""], _hc):
+                _hc = st.columns([2, 3, 3, 2, 1, 1, 1])
+                for _htxt, _hcol in zip(["Fecha","Categoría","Concepto / proveedor","Importe","PDF","",""], _hc):
                     _hcol.markdown(f"<span style='font-size:11px;color:var(--color-text-secondary);font-weight:500;'>{_htxt}</span>", unsafe_allow_html=True)
                 st.markdown("<hr style='margin:4px 0 6px;border-color:var(--color-border-tertiary);'>", unsafe_allow_html=True)
                 _edit_fr = st.session_state.get(f"edit_fr_{sel}")
@@ -2442,16 +2442,23 @@ elif menu == "Fichas (Benchmark)":
                     _concepto_fr = _fr_row.get("concepto","") or _fr_row.get("proveedor","—")
                     _proveedor_fr = _fr_row.get("proveedor","")
                     _label_fr = f"{_proveedor_fr} · {_concepto_fr}" if _proveedor_fr and _concepto_fr and _proveedor_fr != _concepto_fr else (_proveedor_fr or _concepto_fr or "—")
-                    _rc = st.columns([2, 3, 3, 2, 1, 1])
+                    _arch_ruta = _fr_row.get("archivo_ruta") or ""
+                    _rc = st.columns([2, 3, 3, 2, 1, 1, 1])
                     _rc[0].markdown(f"<span style='font-size:12px;'>{str(_fr_row.get('fecha',''))[:10]}</span>", unsafe_allow_html=True)
                     _rc[1].markdown(f"<span style='font-size:12px;'>{_fr_row.get('categoria','')}{_ai_fr}</span>", unsafe_allow_html=True)
                     _rc[2].markdown(f"<span style='font-size:12px;'>{_label_fr[:40]}</span>", unsafe_allow_html=True)
                     _rc[3].markdown(f"<span style='font-size:12px;font-weight:500;color:{_tc_fr};'>{float(_fr_row.get('importe_total') or 0):,.2f} €</span>", unsafe_allow_html=True)
                     with _rc[4]:
+                        if _arch_ruta:
+                            _pdf_url = f"https://odxixtgqcyddfqaapqgi.supabase.co/storage/v1/object/public/facturas/{_arch_ruta}"
+                            st.link_button("📄", url=_pdf_url, help="Ver PDF", use_container_width=True)
+                        else:
+                            st.markdown("<span style='font-size:16px;color:var(--color-text-secondary);'>○</span>", unsafe_allow_html=True)
+                    with _rc[5]:
                         if st.button("✏️", key=f"edit_fr_btn_{_fr_id}", help="Editar", use_container_width=True):
                             st.session_state[f"edit_fr_{sel}"] = None if _edit_fr==_fr_id else _fr_id
                             st.rerun()
-                    with _rc[5]:
+                    with _rc[6]:
                         if st.button("🗑", key=f"del_fr_{_fr_id}", help="Eliminar", use_container_width=True):
                             eliminar_factura_recibida(_fr_id, _uid_fr, _fr_row.get("archivo_ruta"))
                             st.success("Eliminada ✓"); st.rerun()
