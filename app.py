@@ -3578,14 +3578,14 @@ elif menu == "Cash Flow":
 
     st.markdown(
         f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:0;"
-        f"border:0.5px solid var(--color-border-tertiary);border-radius:12px;overflow:hidden;'>"
+        f"border:0.5px solid var(--color-border-tertiary);border-radius:12px 12px 0 0;overflow:hidden;'>"
         f"<div style='padding:18px 22px;border-right:0.5px solid var(--color-border-tertiary);'>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);font-weight:500;"
-        f"text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;'>Ingresos</div>"
+        f"<div style='font-size:14px;font-weight:500;color:#185FA5;"
+        f"border-left:3px solid #185FA5;padding-left:10px;margin-bottom:14px;'>Ingresos</div>"
         f"{_html_ing}</div>"
         f"<div style='padding:18px 22px;'>"
-        f"<div style='font-size:11px;color:var(--color-text-secondary);font-weight:500;"
-        f"text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;'>Gastos</div>"
+        f"<div style='font-size:14px;font-weight:500;color:#A32D2D;"
+        f"border-left:3px solid #A32D2D;padding-left:10px;margin-bottom:14px;'>Gastos</div>"
         f"{_html_gas}</div></div>",
         unsafe_allow_html=True
     )
