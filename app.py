@@ -2654,58 +2654,24 @@ elif menu == "Gastos":
     tab1,tab2,tab3,tab4=st.tabs(["📋 Registro de Gastos","📤 Registrar Gasto","💳 Gastos Fijos","📅 Gastos Programados"])
 
     with tab1:
-        # Filtro tipo por defecto = Gasto
-        if "dc_tipo" not in st.session_state:
-            st.session_state["dc_tipo"] = "Gasto"
-        # ── IMPORTS LOCALES ────────────────────────────────────────────
+        # ── ESTADO ────────────────────────────────────────────────────
+        if "dc_tipo"       not in st.session_state: st.session_state["dc_tipo"]       = "Gasto"
+        if "gs_pag"        not in st.session_state: st.session_state["gs_pag"]        = 0
+        if "gs_editing_id" not in st.session_state: st.session_state["gs_editing_id"] = None
+
         uid_dc = st.session_state.get("user_id", "")
 
-        # ── LISTAS GLOBALES ────────────────────────────────────────────
-        l_inm  = df_inm["Nombre"].tolist() + ["Global"]
-        l_cat  = ["Ingresos","Financiero","Tributario","Suministros","Seguros",
-                  "Mantenimiento","Estructura","Comunidad","Otros"]
+        l_cat = ["Ingresos","Financiero","Tributario","Suministros","Seguros",
+                 "Mantenimiento","Estructura","Comunidad","Otros"]
         meses_nombres = ["Todos","Enero","Febrero","Marzo","Abril","Mayo","Junio",
                          "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
-        # ── ESTILOS TARJETAS ───────────────────────────────────────────
-        st.markdown("""
-<style>
-.dc-card{background:#fff;border:1px solid #D0DFF0;border-radius:12px 12px 0 0;
-         padding:14px 18px;margin-bottom:0;transition:border-color .15s;
-         border-bottom:none;}
-.dc-card:hover{border-color:#185FA5;}
-.dc-tag-ing{background:#EAF3DE;color:#27500A;font-size:11px;padding:2px 8px;
-            border-radius:20px;font-weight:600;}
-.dc-tag-gas{background:#FDECEA;color:#7F1D1D;font-size:11px;padding:2px 8px;
-            border-radius:20px;font-weight:600;}
-.dc-tag-ok {background:#EAF3DE;color:#27500A;font-size:11px;padding:2px 7px;border-radius:20px;}
-.dc-tag-warn{background:#FFF9E6;color:#854F0B;font-size:11px;padding:2px 7px;border-radius:20px;}
-.dc-tag-val{background:#E6F1FB;color:#0C447C;font-size:11px;padding:2px 7px;border-radius:20px;}
-.dc-importe-ing{font-size:1.15rem;font-weight:700;color:#1a7a40;}
-.dc-importe-gas{font-size:1.15rem;font-weight:700;color:#C0392B;}
+        st.markdown("""<style>
 .dc-label{font-size:0.68rem;color:#5A7A9A;text-transform:uppercase;letter-spacing:.06em;}
-
-/* Expander pegado a la tarjeta — aspecto acordeón */
-.dc-card + div [data-testid="stExpander"] {
-    border:1px solid #D0DFF0 !important;
-    border-top:none !important;
-    border-radius:0 0 12px 12px !important;
-    margin-bottom:12px !important;
-    margin-top:0 !important;
-}
-.dc-card + div [data-testid="stExpander"] > div:first-child {
-    border-radius:0 0 12px 12px !important;
-    padding:6px 18px !important;
-    background:#F8FAFC !important;
-    border-top:1px dashed #D0DFF0 !important;
-}
-/* Ocultar el label vacío del expander */
-.dc-card + div [data-testid="stExpander"] summary p {display:none !important;}
-/* Flecha centrada */
-.dc-card + div [data-testid="stExpander"] summary {
-    justify-content:center !important;
-    min-height:28px !important;
-}
+.dc-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;
+          background:#E6F1FB;color:#0C447C;white-space:nowrap;}
+.dc-edit-strip{background:#F8FAFC;border-top:1px dashed #D0DFF0;
+               border-bottom:1px dashed #D0DFF0;padding:8px 0 12px;}
 </style>""", unsafe_allow_html=True)
 
         # ── FILTROS ────────────────────────────────────────────────────
@@ -2714,7 +2680,6 @@ elif menu == "Gastos":
             "text-transform:uppercase;color:#9CA3AF;margin-bottom:4px;'>"
             "Vista de operaciones</div>", unsafe_allow_html=True)
 
-        # Fila de filtros
         ff1,ff2,ff3,ff4,ff5,ff6 = st.columns([1.2,1.2,2,2,1.5,0.7])
         with ff1:
             años_disp = sorted(pd.to_datetime(df_mov["Fecha"],errors="coerce")
@@ -2734,6 +2699,7 @@ elif menu == "Gastos":
             if st.button("🔄", use_container_width=True, key="dc_limpiar", help="Limpiar filtros"):
                 for k in ["dc_año","dc_mes","dc_inm","dc_buscar","dc_tipo"]:
                     if k in st.session_state: del st.session_state[k]
+                st.session_state["gs_editing_id"] = None
                 st.rerun()
 
         # ── APLICAR FILTROS ────────────────────────────────────────────
@@ -2747,110 +2713,315 @@ elif menu == "Gastos":
             df_f = df_f[df_f["Concepto"].str.contains(f_buscar.strip(),case=False,na=False)]
         df_f = df_f.sort_values("Fecha", ascending=False).reset_index(drop=True)
 
-        # ── JOIN con facturas_recibidas para obtener URL de PDF ─────────
+        # ── JOIN PDF (facturas_recibidas) ──────────────────────────────
         try:
             from supabase_db import leer_facturas_recibidas as _leer_fr_join
-            _df_fr_join = _leer_fr_join(uid_dc)
-            if not _df_fr_join.empty and "movimiento_id" in _df_fr_join.columns and "id" in df_f.columns:
-                _fr_map = _df_fr_join[_df_fr_join["movimiento_id"].notna()][
-                    ["movimiento_id","archivo_ruta","archivo_nombre"]
-                ].copy()
+            _df_fr = _leer_fr_join(uid_dc)
+            if not _df_fr.empty and "movimiento_id" in _df_fr.columns and "id" in df_f.columns:
+                _fr_map = _df_fr[_df_fr["movimiento_id"].notna()][
+                    ["movimiento_id","archivo_ruta","archivo_nombre"]].copy()
                 _fr_map["movimiento_id"] = _fr_map["movimiento_id"].astype(str)
                 df_f["id"] = df_f["id"].astype(str)
                 df_f = df_f.merge(_fr_map, left_on="id", right_on="movimiento_id", how="left")
             else:
-                df_f["archivo_ruta"] = None
-                df_f["archivo_nombre"] = None
+                df_f["archivo_ruta"] = None; df_f["archivo_nombre"] = None
         except Exception:
-            df_f["archivo_ruta"] = None
-            df_f["archivo_nombre"] = None
+            df_f["archivo_ruta"] = None; df_f["archivo_nombre"] = None
 
-        # ── RESUMEN 3 CARDS ────────────────────────────────────────────
+        # ── KPI CARDS ──────────────────────────────────────────────────
         t_ing = df_f[df_f["Tipo"]=="Ingreso"]["Importe"].sum()
         t_gas = df_f[df_f["Tipo"]=="Gasto"]["Importe"].sum()
         bal   = t_ing - t_gas
         bal_c = GREEN if bal >= 0 else RED
+        n_sf  = int((df_f["archivo_ruta"].isna() | (df_f["archivo_ruta"].astype(str).isin(["","nan","None"]))).sum()) \
+                if "archivo_ruta" in df_f.columns else 0
+
         rc1,rc2,rc3,rc4 = st.columns(4)
-        rc1.markdown(f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
-                     f"border-top:3px solid {GREEN};border-radius:10px;padding:.7rem;"
-                     f"text-align:center;margin:8px 0;'>"
-                     f"<div class='dc-label'>Ingresos</div>"
-                     f"<div style='font-size:1.1rem;font-weight:700;color:{GREEN};'>+{t_ing:,.0f} €</div>"
-                     f"</div>", unsafe_allow_html=True)
-        rc2.markdown(f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
-                     f"border-top:3px solid {RED};border-radius:10px;padding:.7rem;"
-                     f"text-align:center;margin:8px 0;'>"
-                     f"<div class='dc-label'>Gastos</div>"
-                     f"<div style='font-size:1.1rem;font-weight:700;color:{RED};'>−{t_gas:,.0f} €</div>"
-                     f"</div>", unsafe_allow_html=True)
-        rc3.markdown(f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
-                     f"border-top:3px solid {bal_c};border-radius:10px;padding:.7rem;"
-                     f"text-align:center;margin:8px 0;'>"
-                     f"<div class='dc-label'>Balance</div>"
-                     f"<div style='font-size:1.1rem;font-weight:700;color:{bal_c};'>{bal:+,.0f} €</div>"
-                     f"</div>", unsafe_allow_html=True)
-        n_sf = len(df_f[df_f.get("tiene_factura", pd.Series([False]*len(df_f),dtype=bool)) == False]) if "tiene_factura" in df_f.columns else 0
-        rc4.markdown(f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
-                     f"border-top:3px solid {AMBER};border-radius:10px;padding:.7rem;"
-                     f"text-align:center;margin:8px 0;'>"
-                     f"<div class='dc-label'>Sin factura</div>"
-                     f"<div style='font-size:1.1rem;font-weight:700;color:{AMBER};'>{n_sf}</div>"
-                     f"</div>", unsafe_allow_html=True)
+        for _col, _lbl, _val, _clr, _fmt in [
+            (rc1, "Ingresos",   t_ing, GREEN, f"+{t_ing:,.0f} €"),
+            (rc2, "Gastos",     t_gas, RED,   f"−{t_gas:,.0f} €"),
+            (rc3, "Balance",    bal,   bal_c, f"{bal:+,.0f} €"),
+            (rc4, "Sin factura",n_sf,  AMBER, str(int(n_sf))),
+        ]:
+            _col.markdown(
+                f"<div style='background:{CARD_BG};border:1px solid {BORDER};"
+                f"border-top:3px solid {_clr};border-radius:10px;padding:.7rem;"
+                f"text-align:center;margin:8px 0;'>"
+                f"<div class='dc-label'>{_lbl}</div>"
+                f"<div style='font-size:1.1rem;font-weight:700;color:{_clr};'>{_fmt}</div>"
+                f"</div>", unsafe_allow_html=True)
 
         st.caption(f"📊 {len(df_f)} operaciones" +
                    (f" de {len(df_mov)} totales" if len(df_f) != len(df_mov) else ""))
         st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-        # ── VISTA COMPACTA (lista con paginación) ─────────────────────
+        # ── PAGINACIÓN — preparar ──────────────────────────────────────
         _PG_SIZE = 15
-        if "gs_pag" not in st.session_state: st.session_state["gs_pag"] = 0
         _n_total = len(df_f)
         _n_pag   = max(1, (_n_total + _PG_SIZE - 1) // _PG_SIZE)
         _pg      = min(st.session_state["gs_pag"], _n_pag - 1)
         _df_pag  = df_f.iloc[_pg*_PG_SIZE:(_pg+1)*_PG_SIZE].reset_index(drop=True)
 
-        # Cabecera tabla
-        _gh = st.columns([1.5, 2, 3, 2, 1.5, 0.8])
-        for _ht, _hc in zip(["Fecha","Inmueble","Concepto","Categoría","Importe","PDF"], _gh):
-            _hc.markdown(f"<span style='font-size:11px;font-weight:500;color:var(--color-text-secondary);'>{_ht}</span>", unsafe_allow_html=True)
-        st.markdown("<hr style='margin:3px 0 5px;border-color:var(--color-border-secondary);'>", unsafe_allow_html=True)
+        # ── CABECERA TABLA ─────────────────────────────────────────────
+        _COL_W = [1.4, 1.8, 2.8, 1.8, 1.3, 0.55, 0.45]
+        _gh = st.columns(_COL_W)
+        for _ht, _hc in zip(["Fecha","Inmueble","Concepto","Categoría","Importe","PDF",""], _gh):
+            _hc.markdown(
+                f"<span style='font-size:11px;font-weight:500;color:{TEXT_SEC};'>{_ht}</span>",
+                unsafe_allow_html=True)
+        st.markdown(f"<hr style='margin:3px 0 5px;border-color:{BORDER};'>",
+                    unsafe_allow_html=True)
 
-        for _, _gr in _df_pag.iterrows():
-            _gc = st.columns([1.5, 2, 3, 2, 1.5, 0.8])
-            _imp = float(_gr.get("Importe", 0) or 0)
-            _tipo_g = str(_gr.get("Tipo",""))
+        # ── FILAS ──────────────────────────────────────────────────────
+        for _i, _gr in _df_pag.iterrows():
+            _row_id  = str(_gr.get("id",""))
+            _is_edit = (st.session_state["gs_editing_id"] == _row_id and _row_id != "")
+            _imp     = float(_gr.get("Importe", 0) or 0)
+            _tipo_g  = str(_gr.get("Tipo",""))
             _imp_col = "#A32D2D" if _tipo_g=="Gasto" else "#3B6D11"
             _imp_sgn = f'−{_imp:,.0f} €' if _tipo_g=="Gasto" else f'+{_imp:,.0f} €'
             _fecha_g = str(_gr.get("Fecha",""))[:10] if _gr.get("Fecha") else "—"
             _arch_g  = str(_gr.get("archivo_ruta","") or "")
-            _gc[0].markdown(f"<span style='font-size:13px;color:var(--color-text-secondary);'>{_fecha_g}</span>", unsafe_allow_html=True)
-            _gc[1].markdown(f"<span style='font-size:13px;'>{str(_gr.get('Apartamento',''))[:20]}</span>", unsafe_allow_html=True)
-            _gc[2].markdown(f"<span style='font-size:13px;'>{str(_gr.get('Concepto',''))[:35]}</span>", unsafe_allow_html=True)
-            _gc[3].markdown(f"<span style='font-size:12px;background:#F0F5FF;color:#0C447C;padding:2px 8px;border-radius:20px;'>{str(_gr.get('Categoría',''))}</span>", unsafe_allow_html=True)
-            _gc[4].markdown(f"<span style='font-size:13px;font-weight:500;color:{_imp_col};'>{_imp_sgn}</span>", unsafe_allow_html=True)
-            with _gc[5]:
-                if _arch_g and _arch_g not in ("nan","None",""):
-                    from supabase_db import obtener_url_factura_recibida as _get_pdf
-                    _pdf_url = _get_pdf(uid_dc, _arch_g)
-                    if _pdf_url:
-                        st.link_button("📄", url=_pdf_url, help="Ver PDF", use_container_width=True)
-                    else:
-                        st.markdown("<span style='color:#A32D2D;'>⚠️</span>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<span style='font-size:13px;color:var(--color-text-secondary);'>—</span>", unsafe_allow_html=True)
-            st.markdown("<hr style='margin:1px 0;border-color:var(--color-border-tertiary);'>", unsafe_allow_html=True)
+            _arch_n  = str(_gr.get("archivo_nombre","") or "")
+            _cat_g   = str(_gr.get("Categoría",""))
+            _con_g   = str(_gr.get("Concepto",""))
+            _inm_g   = str(_gr.get("Apartamento",""))
 
-        # Paginación
+            # fila de datos
+            _gc = st.columns(_COL_W)
+            _gc[0].markdown(
+                f"<span style='font-size:13px;color:{TEXT_SEC};'>{_fecha_g}</span>",
+                unsafe_allow_html=True)
+            _gc[1].markdown(
+                f"<span style='font-size:13px;'>{_inm_g[:22]}</span>",
+                unsafe_allow_html=True)
+            _gc[2].markdown(
+                f"<span style='font-size:13px;'>{_con_g[:40]}</span>",
+                unsafe_allow_html=True)
+            _gc[3].markdown(
+                f"<span class='dc-badge'>{_cat_g}</span>",
+                unsafe_allow_html=True)
+            _gc[4].markdown(
+                f"<span style='font-size:13px;font-weight:500;color:{_imp_col};'>{_imp_sgn}</span>",
+                unsafe_allow_html=True)
+            with _gc[5]:
+                _has_pdf = _arch_g and _arch_g not in ("nan","None","")
+                if _has_pdf:
+                    try:
+                        from supabase_db import obtener_url_factura_recibida as _get_pdf_url
+                        _pdf_url = _get_pdf_url(uid_dc, _arch_g)
+                        if _pdf_url:
+                            st.link_button("📄", url=_pdf_url, help="Ver PDF",
+                                           use_container_width=True)
+                        else:
+                            st.markdown("<span style='color:#A32D2D;font-size:12px;'>⚠️</span>",
+                                        unsafe_allow_html=True)
+                    except Exception:
+                        st.markdown("—")
+                else:
+                    st.markdown(
+                        f"<span style='font-size:13px;color:{TEXT_SEC};'>—</span>",
+                        unsafe_allow_html=True)
+            with _gc[6]:
+                if st.button("✕" if _is_edit else "✏️",
+                             key=f"gs_edit_{_i}",
+                             use_container_width=True,
+                             help="Cerrar" if _is_edit else "Editar"):
+                    if _is_edit:
+                        st.session_state["gs_editing_id"] = None
+                    else:
+                        st.session_state["gs_editing_id"] = _row_id
+                    st.rerun()
+
+            # ── PANEL EDICIÓN INLINE ───────────────────────────────────
+            if _is_edit:
+                st.markdown("<div class='dc-edit-strip'>", unsafe_allow_html=True)
+
+                _e1,_e2,_e3,_e4,_e5 = st.columns(_COL_W[:5])
+                with _e1:
+                    try:
+                        _fval = pd.to_datetime(_fecha_g).date()
+                    except Exception:
+                        _fval = date.today()
+                    _new_fecha = st.date_input("Fecha", value=_fval,
+                                               key=f"ef_fecha_{_i}",
+                                               label_visibility="collapsed")
+                with _e2:
+                    _inm_opts = df_inm["Nombre"].tolist()
+                    _inm_idx  = _inm_opts.index(_inm_g) if _inm_g in _inm_opts else 0
+                    _new_inm  = st.selectbox("Inmueble", _inm_opts, index=_inm_idx,
+                                             key=f"ef_inm_{_i}",
+                                             label_visibility="collapsed")
+                with _e3:
+                    _new_con = st.text_input("Concepto", value=_con_g,
+                                             key=f"ef_con_{_i}",
+                                             label_visibility="collapsed")
+                with _e4:
+                    _cat_idx = l_cat.index(_cat_g) if _cat_g in l_cat else 0
+                    _new_cat = st.selectbox("Categoría", l_cat, index=_cat_idx,
+                                            key=f"ef_cat_{_i}",
+                                            label_visibility="collapsed")
+                with _e5:
+                    _new_imp = st.number_input("Importe", value=_imp,
+                                               min_value=0.0, step=0.01, format="%.2f",
+                                               key=f"ef_imp_{_i}",
+                                               label_visibility="collapsed")
+
+                # PDF
+                _nuevo_pdf = None
+                _pdf_c1, _pdf_c2 = st.columns([4, 5])
+                with _pdf_c1:
+                    if _has_pdf:
+                        _nom_visible = _arch_n or _arch_g.split("/")[-1]
+                        st.caption(f"📄 {_nom_visible[:40]}")
+                    else:
+                        _nuevo_pdf = st.file_uploader(
+                            "Subir factura (PDF/imagen)",
+                            type=["pdf","jpg","jpeg","png"],
+                            key=f"ef_pdf_{_i}",
+                            label_visibility="collapsed")
+
+                # Botones
+                _ba1,_ba2,_ba3,_ba4 = st.columns([1.2,1,0.9,5])
+                with _ba1:
+                    _save_clicked = st.button("💾 Guardar", key=f"ef_save_{_i}",
+                                              type="primary", use_container_width=True)
+                with _ba2:
+                    _del_clicked = st.button("🗑 Eliminar", key=f"ef_del_{_i}",
+                                             use_container_width=True)
+                with _ba3:
+                    if st.button("✕ Cancelar", key=f"ef_cancel_{_i}",
+                                 use_container_width=True):
+                        st.session_state["gs_editing_id"] = None
+                        st.rerun()
+
+                # Confirmar eliminación
+                if _del_clicked:
+                    st.session_state[f"gs_confirm_del_{_row_id}"] = True
+
+                if st.session_state.get(f"gs_confirm_del_{_row_id}", False):
+                    st.warning(
+                        f"¿Eliminar **{_con_g}** ({_imp_sgn})? "
+                        "Esta acción no se puede deshacer.")
+                    _cd1,_cd2,_cd3 = st.columns([1.2,1,6])
+                    with _cd1:
+                        if st.button("Sí, eliminar", key=f"ef_del_ok_{_i}",
+                                     type="primary", use_container_width=True):
+                            try:
+                                import requests as _rq
+                                from supabase_db import SUPABASE_URL, SUPABASE_KEY
+                                _hdr_d = {
+                                    "apikey": SUPABASE_KEY,
+                                    "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                                }
+                                _rq.delete(
+                                    f"{SUPABASE_URL}/rest/v1/movimientos"
+                                    f"?id=eq.{_row_id}&user_id=eq.{uid_dc}",
+                                    headers=_hdr_d, timeout=10)
+                                st.session_state.pop(f"gs_confirm_del_{_row_id}", None)
+                                st.session_state["gs_editing_id"] = None
+                                st.session_state.df_mov_persistent = \
+                                    leer_movimientos(uid_dc)
+                                st.rerun()
+                            except Exception as _ex:
+                                st.error(f"Error al eliminar: {_ex}")
+                    with _cd2:
+                        if st.button("Cancelar", key=f"ef_del_no_{_i}",
+                                     use_container_width=True):
+                            st.session_state.pop(f"gs_confirm_del_{_row_id}", None)
+                            st.rerun()
+
+                # Guardar cambios
+                if _save_clicked:
+                    if not _new_con.strip():
+                        st.error("El concepto no puede estar vacío.")
+                    elif _new_imp <= 0:
+                        st.error("El importe debe ser mayor que 0.")
+                    else:
+                        try:
+                            import requests as _rq
+                            from supabase_db import SUPABASE_URL, SUPABASE_KEY
+                            _hdr_p = {
+                                "apikey": SUPABASE_KEY,
+                                "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                                "Content-Type": "application/json",
+                                "Prefer": "return=minimal",
+                            }
+                            _payload = {
+                                "fecha":       _new_fecha.strftime("%Y-%m-%d"),
+                                "apartamento": _new_inm,
+                                "concepto":    _new_con.strip(),
+                                "categoria":   _new_cat,
+                                "importe":     round(_new_imp, 2),
+                            }
+                            _r = _rq.patch(
+                                f"{SUPABASE_URL}/rest/v1/movimientos"
+                                f"?id=eq.{_row_id}&user_id=eq.{uid_dc}",
+                                headers=_hdr_p, json=_payload, timeout=10)
+                            if _r.status_code in (200, 204):
+                                # PDF nuevo
+                                if _nuevo_pdf is not None:
+                                    try:
+                                        from supabase_db import (
+                                            crear_factura_recibida,
+                                            subir_archivo_factura_recibida,
+                                            actualizar_factura_recibida)
+                                        _ext_p = _nuevo_pdf.name.split(".")[-1].lower()
+                                        _fr_new = crear_factura_recibida(uid_dc, {
+                                            "tipo": "gasto",
+                                            "categoria": _new_cat.lower(),
+                                            "fecha": _new_fecha.strftime("%Y-%m-%d"),
+                                            "ejercicio": _new_fecha.year,
+                                            "inmueble": _new_inm,
+                                            "concepto": _new_con.strip()[:60],
+                                            "importe": round(_new_imp, 2),
+                                            "iva": 0,
+                                            "importe_total": round(_new_imp, 2),
+                                            "movimiento_id": _row_id,
+                                        })
+                                        if _fr_new.get("ok"):
+                                            _up = subir_archivo_factura_recibida(
+                                                uid_dc, _fr_new["id"],
+                                                _nuevo_pdf.read(), _ext_p)
+                                            if _up.get("ok"):
+                                                actualizar_factura_recibida(
+                                                    _fr_new["id"], uid_dc,
+                                                    {"archivo_ruta": _up["ruta"],
+                                                     "archivo_nombre": _nuevo_pdf.name})
+                                    except Exception:
+                                        pass  # PDF no crítico
+                                st.session_state["gs_editing_id"] = None
+                                st.session_state.df_mov_persistent = \
+                                    leer_movimientos(uid_dc)
+                                st.success("✓ Guardado")
+                                st.rerun()
+                            else:
+                                st.error(f"Error Supabase {_r.status_code}: {_r.text[:120]}")
+                        except Exception as _ex:
+                            st.error(f"Error al guardar: {_ex}")
+
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            st.markdown(
+                f"<hr style='margin:1px 0;border-color:{BORDER};'>",
+                unsafe_allow_html=True)
+
+        # ── PAGINACIÓN ─────────────────────────────────────────────────
         if _n_pag > 1:
             st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
             _pa, _pb, _pc = st.columns([2, 3, 2])
             with _pa:
-                if st.button("← Anterior", disabled=_pg==0, use_container_width=True, key="gs_prev"):
+                if st.button("← Anterior", disabled=_pg==0,
+                             use_container_width=True, key="gs_prev"):
                     st.session_state["gs_pag"] = _pg - 1; st.rerun()
             with _pb:
-                st.markdown(f"<div style='text-align:center;font-size:13px;color:var(--color-text-secondary);padding:6px 0;'>Página {_pg+1} de {_n_pag} · {_n_total} gastos</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='text-align:center;font-size:13px;color:{TEXT_SEC};"
+                    f"padding:6px 0;'>Página {_pg+1} de {_n_pag} · {_n_total} registros</div>",
+                    unsafe_allow_html=True)
             with _pc:
-                if st.button("Siguiente →", disabled=_pg>=_n_pag-1, use_container_width=True, key="gs_next"):
+                if st.button("Siguiente →", disabled=_pg>=_n_pag-1,
+                             use_container_width=True, key="gs_next"):
                     st.session_state["gs_pag"] = _pg + 1; st.rerun()
 
     with tab2:
