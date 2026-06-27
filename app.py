@@ -2713,20 +2713,34 @@ elif menu == "Gastos":
             df_f = df_f[df_f["Concepto"].str.contains(f_buscar.strip(),case=False,na=False)]
         df_f = df_f.sort_values("Fecha", ascending=False).reset_index(drop=True)
 
-        # ── JOIN PDF (facturas_recibidas) ──────────────────────────────
-        try:
-            from supabase_db import leer_facturas_recibidas as _leer_fr_join
-            _df_fr = _leer_fr_join(uid_dc)
-            if not _df_fr.empty and "movimiento_id" in _df_fr.columns and "id" in df_f.columns:
-                _fr_map = _df_fr[_df_fr["movimiento_id"].notna()][
-                    ["movimiento_id","archivo_ruta","archivo_nombre"]].copy()
-                _fr_map["movimiento_id"] = _fr_map["movimiento_id"].astype(str)
-                df_f["id"] = df_f["id"].astype(str)
-                df_f = df_f.merge(_fr_map, left_on="id", right_on="movimiento_id", how="left")
-            else:
-                df_f["archivo_ruta"] = None; df_f["archivo_nombre"] = None
-        except Exception:
-            df_f["archivo_ruta"] = None; df_f["archivo_nombre"] = None
+        # ── JOIN PDF — REST directo para evitar problemas de firma ────
+        df_f["archivo_ruta"] = None
+        df_f["archivo_nombre"] = None
+        if "id" in df_f.columns and not df_f.empty:
+            try:
+                import requests as _rq_fr
+                from supabase_db import SUPABASE_URL, SUPABASE_KEY
+                _hdr_fr = {
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                }
+                _resp_fr = _rq_fr.get(
+                    f"{SUPABASE_URL}/rest/v1/facturas_recibidas"
+                    f"?user_id=eq.{uid_dc}"
+                    f"&movimiento_id=not.is.null"
+                    f"&select=movimiento_id,archivo_ruta,archivo_nombre",
+                    headers=_hdr_fr, timeout=10
+                )
+                if _resp_fr.status_code == 200:
+                    _fr_data = _resp_fr.json()
+                    if _fr_data:
+                        _fr_map = pd.DataFrame(_fr_data)
+                        _fr_map["movimiento_id"] = _fr_map["movimiento_id"].astype(str)
+                        df_f["id"] = df_f["id"].astype(str)
+                        df_f = df_f.merge(
+                            _fr_map, left_on="id", right_on="movimiento_id", how="left")
+            except Exception:
+                pass  # archivo_ruta ya es None por defecto
 
         # ── KPI CARDS ──────────────────────────────────────────────────
         t_ing = df_f[df_f["Tipo"]=="Ingreso"]["Importe"].sum()
@@ -2966,7 +2980,8 @@ elif menu == "Gastos":
                                             crear_factura_recibida,
                                             subir_archivo_factura_recibida,
                                             actualizar_factura_recibida)
-                                        _ext_p = _nuevo_pdf.name.split(".")[-1].lower()
+                                        _ext_p  = _nuevo_pdf.name.split(".")[-1].lower()
+                                        _pdf_bytes = _nuevo_pdf.read()
                                         _fr_new = crear_factura_recibida(uid_dc, {
                                             "tipo": "gasto",
                                             "categoria": _new_cat.lower(),
@@ -2982,14 +2997,18 @@ elif menu == "Gastos":
                                         if _fr_new.get("ok"):
                                             _up = subir_archivo_factura_recibida(
                                                 uid_dc, _fr_new["id"],
-                                                _nuevo_pdf.read(), _ext_p)
+                                                _pdf_bytes, _ext_p)
                                             if _up.get("ok"):
                                                 actualizar_factura_recibida(
                                                     _fr_new["id"], uid_dc,
                                                     {"archivo_ruta": _up["ruta"],
                                                      "archivo_nombre": _nuevo_pdf.name})
-                                    except Exception:
-                                        pass  # PDF no crítico
+                                            else:
+                                                st.warning(f"⚠️ PDF subido sin ruta: {_up}")
+                                        else:
+                                            st.warning(f"⚠️ Error registro factura: {_fr_new}")
+                                    except Exception as _ex_pdf:
+                                        st.warning(f"⚠️ Error PDF: {_ex_pdf}")
                                 st.session_state["gs_editing_id"] = None
                                 st.session_state.df_mov_persistent = \
                                     leer_movimientos(uid_dc)
