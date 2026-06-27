@@ -1689,10 +1689,13 @@ elif menu == "Fichas (Benchmark)":
     f = df_inm[df_inm["Nombre"]==sel].iloc[0]
     renta_act=safe_float(f.get("Renta",0)); renta_mer=tasacion(f)
 
-    # Header dinámico con nombre del inmueble
-    _tipo_inm  = str(f.get("Tipo_Arrendamiento","Larga Duración"))
+    # Header dinámico con nombre del inmueble + botón IA
+    _tipo_inm   = str(f.get("Tipo_Arrendamiento","Larga Duración"))
     _estado_inm = str(f.get("Estado",""))
-    st.markdown(f"""
+    _key_ia_fic = f"ia_consejo_{sel}"
+    _hcol1, _hcol2 = st.columns([5, 1])
+    with _hcol1:
+        st.markdown(f"""
     <div style="margin:4px 0 16px;padding:16px 20px;background:#0F2744;border-radius:12px;
                 display:flex;justify-content:space-between;align-items:center;">
       <div>
@@ -1705,6 +1708,13 @@ elif menu == "Fichas (Benchmark)":
         <div style="font-size:24px;font-weight:600;color:#E6F1FB;">{renta_act:,.0f} €<span style="font-size:13px;font-weight:400;color:#B5D4F4;">/mes</span></div>
       </div>
     </div>""", unsafe_allow_html=True)
+    with _hcol2:
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        if st.button("🤖 IA", key=f"btn_ia_hdr_{sel}", use_container_width=True,
+                     help="Analizar este inmueble con IA"):
+            if _key_ia_fic in st.session_state:
+                del st.session_state[_key_ia_fic]
+            st.session_state[f"run_ia_{sel}"] = True
     desv=(renta_act-renta_mer)/renta_mer*100 if renta_mer else 0
     perdida_m=max(0,renta_mer-renta_act); perdida_a=perdida_m*12
     df_gf=df_mov[(df_mov["Apartamento"]==sel)&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]
@@ -2042,7 +2052,10 @@ elif menu == "Fichas (Benchmark)":
             _key_ia_fic = f"ia_consejo_{sel}"
             _col_ia_txt, _col_ia_btn = st.columns([5, 1])
             with _col_ia_btn:
-                _btn_ia = st.button("🤖 Analizar con IA", key=f"btn_ia_{sel}", use_container_width=True)
+                _btn_ia = st.button("🤖 Analizar", key=f"btn_ia_{sel}", use_container_width=True)
+            # Activar si viene del botón del header o del tab
+            if st.session_state.pop(f"run_ia_{sel}", False):
+                _btn_ia = True
             if _btn_ia and _key_ia_fic in st.session_state:
                 del st.session_state[_key_ia_fic]
 
