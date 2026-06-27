@@ -1576,128 +1576,56 @@ if menu == "Torre de Control":
         ])
     st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
 
-    # ── Salud de la Cartera ──────────────────────────────────────
-    st.markdown('<div class="nc-section-title">🏥 Salud de la Cartera</div>', unsafe_allow_html=True)
+    # ── TARJETAS DE INMUEBLE (Opción A) ─────────────────────────────
+    st.markdown('<div class="nc-section-title">🏠 Cartera de Inmuebles</div>', unsafe_allow_html=True)
     _df_hip_tc2 = st.session_state.get("df_hip", pd.DataFrame())
-    _n_inm_sc   = min(len(df_inm), 4)
-    if _n_inm_sc > 0:
-        _cols_sc = st.columns(_n_inm_sc)
-        for _idx_sc, (_, _row_sc) in enumerate(df_inm.head(_n_inm_sc).iterrows()):
-            _sd_sc = calcular_score_salud(_row_sc, df_mov,
-                                           tipo_cuenta=_perfil_tc.get("tipo_cuenta","particular"),
-                                           df_hip=_df_hip_tc2)
-            with _cols_sc[_idx_sc]:
-                _primera_alerta = _sd_sc["alertas"][0][:35] + "..." if _sd_sc["alertas"] else ""
-                st.markdown(
-                    f'<div style="background:#fff;border-radius:12px;padding:14px;' +
-                    f'border:2px solid {_sd_sc["color"]};text-align:center;margin-bottom:8px;">' +
-                    f'<div style="font-size:10px;color:#94A3B8;font-weight:700;' +
-                    f'text-transform:uppercase;margin-bottom:4px;white-space:nowrap;' +
-                    f'overflow:hidden;text-overflow:ellipsis;">{str(_row_sc.get("Nombre",""))[:18]}</div>' +
-                    f'<div style="font-size:2.2rem;font-weight:900;color:{_sd_sc["color"]};line-height:1;">' +
-                    f'{_sd_sc["score"]:.1f}</div>' +
-                    f'<div style="font-size:11px;color:{_sd_sc["color"]};font-weight:600;margin-top:3px;">' +
-                    f'{_sd_sc["etiq"]}</div>' +
-                    (f'<div style="font-size:9px;color:#DC2626;margin-top:4px;">{_primera_alerta}</div>' if _primera_alerta else "") +
-                    f'</div>', unsafe_allow_html=True)
-    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
-
-    _titulo_activos = "Rentabilidad por Activo IS — [399] Resultado por inmueble" if _es_sociedad_tc else "Rentabilidad por Activo"
-    st.markdown(f'<div class="nc-section-title">{_titulo_activos}</div>', unsafe_allow_html=True)
-    def _roof_color(row):
-        texto = str(row.get("Nombre","")).lower()+" "+str(row.get("Tipo",row.get("Tipo_Arrendamiento",""))).lower()
-        if any(x in texto for x in ["nave","industrial","almacen","almacén","taller","fabrica","fábrica"]): return "#374151","Nave Industrial"
-        if any(x in texto for x in ["despacho","oficina","comercial","local","salón","salon","coworking"]): return "#185FA5","Despacho/Local"
-        if any(x in texto for x in ["casa","chalet","adosado","unifamiliar","abarqueros","villa","cortijo","finca"]): return "#6B2737","Casa"
-        if any(x in texto for x in ["cochera","garaje","parking","trastero"]): return "#4A5568","Garaje"
-        if any(x in texto for x in ["estudio","loft","ático","atico"]): return "#6D4C9E","Estudio"
-        if any(x in texto for x in ["piso","apartamento","huerto","campus","cadiz","gojar","rosario"]): return "#B8924A","Piso"
-        return "#B8924A","Inmueble"
-
-    st.markdown("""<style>
-    .casita-body{background:var(--background-color,#fff);border:0.5px solid rgba(0,0,0,0.1);border-top:none;border-radius:0 0 12px 12px;padding:12px 12px 10px;box-sizing:border-box;}
-    .c-name{font-size:13px;font-weight:600;margin:0 0 2px;line-height:1.3;} .c-tenant{font-size:11px;color:#888;margin:0 0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-    .c-row{display:flex;justify-content:space-between;margin-bottom:4px;} .c-lbl{font-size:11px;color:#888;} .c-div{height:0.5px;background:rgba(0,0,0,0.08);margin:7px 0;}
-    .c-pill{border-radius:6px;padding:3px 8px;text-align:center;font-size:11px;margin:8px 0 10px;display:block;}
-    .c-pos{color:#1a7a40;font-size:12px;font-weight:600;} .c-neg{color:#a32d2d;font-size:12px;font-weight:600;} .c-neu{font-size:13px;font-weight:600;}
-    .pill-pos{background:#eaf3de;color:#3b6d11;} .pill-neg{background:#ffebeb;color:#a32d2d;} .pill-neu{background:#f4f4f4;color:#666;}
-    </style>""", unsafe_allow_html=True)
-
+    _mes_actual  = datetime.now().month
+    _anio_actual = datetime.now().year
     MAX_COLS = 4
-    inmuebles_list = list(df_inm.iterrows())
-    for fila_start in range(0, len(inmuebles_list), MAX_COLS):
-        fila_rows = inmuebles_list[fila_start:fila_start+MAX_COLS]
-        cols = st.columns(MAX_COLS)
-        for col_idx, (i, row) in enumerate(fila_rows):
-            g_esp    = df_mov[(df_mov["Apartamento"]==row["Nombre"])&(df_mov["Tipo"]=="Gasto")&(df_mov["Categoría"]!="Comunidad")]["Importe"].sum()
-            comunidad= safe_float(row.get("Comunidad",0)) if pd.notna(row.get("Comunidad",0)) else 0
-            gastos_u = comunidad + g_esp
-            neto_u   = safe_float(row.get("Renta",0)) - gastos_u
-            rm       = tasacion(row)
-            desv     = (safe_float(row.get("Renta",0))-rm)/rm*100 if rm else 0
-            zt       = " 🔒" if str(row.get("Zona_Tensionada","N"))=="S" else ""
-            roof_col, tipo_label = _roof_color(row)
-            if desv>5:   pill_cls,desv_txt="pill-pos",f"+{desv:.1f}% mercado"
-            elif desv<-5: pill_cls,desv_txt="pill-neg",f"{desv:.1f}% mercado"
-            else:         pill_cls,desv_txt="pill-neu",f"{desv:+.1f}% mercado"
-            neto_col = "#1a7a40" if neto_u>=0 else "#a32d2d"
-            with cols[col_idx]:
-                st.markdown(f"""<svg viewBox="0 0 200 52" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;margin-bottom:-1px;" preserveAspectRatio="none">
-                  <polygon points="100,4 196,52 4,52" fill="{roof_col}"/>
-                  <text x="100" y="40" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="500" fill="white" opacity="0.95">{tipo_label}</text>
-                  <text x="100" y="20" text-anchor="middle" font-family="sans-serif" font-size="13" fill="white" opacity="0.6">⌂</text>
-                </svg>
-                <div class="casita-body">
-                  <p class="c-name">{row["Nombre"]}{zt}</p>
-                  <p class="c-tenant">{row.get("Inquilino","—")}</p>
-                  <div class="c-row"><span class="c-lbl">Renta</span><span class="c-pos">+{safe_float(row.get("Renta",0)):,.0f}€</span></div>
-                  <div class="c-row"><span class="c-lbl">Gastos</span><span class="c-neg">−{gastos_u:,.0f}€</span></div>
-                  <div class="c-div"></div>
-                  <div class="c-row"><span class="c-lbl">Neto</span><span class="c-neu" style="color:{neto_col};">{neto_u:,.0f}€</span></div>
-                  <span class="c-pill {pill_cls}">{desv_txt}</span>
-                </div>""", unsafe_allow_html=True)
-                if st.button("→ Ver ficha", key=f"card_{fila_start}_{col_idx}", use_container_width=True):
-                    st.session_state.menu="Fichas (Benchmark)"; st.session_state.ficha_sel=row["Nombre"]; st.rerun()
-
-    col_l, col_r = st.columns(2)
-    with col_l:
-        st.markdown('<div class="nc-section-title">Composición de Rentas</div>', unsafe_allow_html=True)
-        fig = go.Figure(go.Bar(x=df_inm["Renta"],y=df_inm["Nombre"],orientation="h",marker_color=COLOR_TOPS[:len(df_inm)],text=[f"{r:,.0f} €" for r in df_inm["Renta"]],textposition="outside"))
-        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=60,t=10,b=10),height=280,xaxis=dict(showgrid=False,visible=False),yaxis=dict(showgrid=False),font=dict(family="DM Sans",size=12))
-        st.plotly_chart(fig,use_container_width=True)
-    with col_r:
-        st.markdown('<div class="nc-section-title">Lucro Cesante Anual</div>', unsafe_allow_html=True)
-        total_lc=0
-        for _,row in df_inm.iterrows():
-            rm=tasacion(row); pa=max(0,rm-safe_float(row.get("Renta",0)))*12; total_lc+=pa
-            if pa>0:
-                dv=(safe_float(row.get("Renta",0))-rm)/rm*100 if rm else 0; cv=RED if dv<-15 else AMBER
-                st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:{CARD_BG};border:1px solid {BORDER};border-radius:8px;margin-bottom:6px;"><span style="font-size:0.8rem;color:{TEXT_SEC};">{row["Nombre"]}</span><span style="font-size:0.9rem;font-weight:600;color:{cv};">−{pa:,.0f} €/año</span></div>', unsafe_allow_html=True)
-        st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:{ACCENT};border-radius:8px;margin-top:4px;"><span style="font-size:0.72rem;font-weight:500;color:#B5D4F4;text-transform:uppercase;letter-spacing:0.06em;">Total pérdida anual</span><span style="font-size:1.3rem;font-weight:600;color:#fff;">−{total_lc:,.0f} €</span></div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="nc-section-title">📈 Evolución Últimos 12 Meses</div>', unsafe_allow_html=True)
-    df_mov["Fecha"] = pd.to_datetime(df_mov["Fecha"], errors="coerce")
-    df_mov_12m = df_mov[df_mov["Fecha"].notna()].copy()
-    df_mov_12m["Mes"] = df_mov_12m["Fecha"].dt.to_period("M")
-    ingresos_mes = df_mov_12m[df_mov_12m["Tipo"]=="Ingreso"].groupby("Mes")["Importe"].sum()
-    gastos_mes   = df_mov_12m[df_mov_12m["Tipo"]=="Gasto"].groupby("Mes")["Importe"].sum()
-    hoy = pd.Period(datetime.now(), freq="M")
-    meses = [hoy-i for i in range(11,-1,-1)]; meses_str=[str(m) for m in meses]
-    ing_data=[ingresos_mes.get(m,0) for m in meses]; gas_data=[gastos_mes.get(m,0) for m in meses]
-    neto_data=[i-g for i,g in zip(ing_data,gas_data)]
-    fig_hist = go.Figure()
-    fig_hist.add_trace(go.Scatter(x=meses_str,y=ing_data,mode='lines+markers',name='Ingresos',line=dict(color=GREEN,width=3),marker=dict(size=7)))
-    fig_hist.add_trace(go.Scatter(x=meses_str,y=gas_data,mode='lines+markers',name='Gastos',line=dict(color=RED,width=3),marker=dict(size=7)))
-    fig_hist.add_trace(go.Scatter(x=meses_str,y=neto_data,mode='lines+markers',name='Neto',line=dict(color=ACCENT,width=3,dash='dot'),marker=dict(size=7)))
-    fig_hist.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",margin=dict(l=10,r=10,t=10,b=40),height=280,xaxis=dict(showgrid=True,gridcolor="rgba(0,0,0,0.05)"),yaxis=dict(showgrid=True,gridcolor="rgba(0,0,0,0.05)",title="€"),font=dict(family="DM Sans",size=11),legend=dict(orientation="h",yanchor="bottom",y=1.02,xanchor="center",x=0.5),hovermode="x unified")
-    st.plotly_chart(fig_hist,use_container_width=True)
-
-    alertas = [(row["Nombre"],*alerta_vencimiento(row)) for _,row in df_inm.iterrows() if alerta_vencimiento(row)[0] in ("vencido","urgente","aviso")]
-    if alertas:
-        st.markdown('<div class="nc-section-title">📅 Alertas de Contratos</div>', unsafe_allow_html=True)
-        for nombre,tipo,msg in alertas:
-            cls = "status-red" if tipo in ("vencido","urgente") else "status-yellow"
-            st.markdown(f'<div class="{cls}" style="margin-bottom:6px;"><b>{nombre}</b> — {msg}</div>', unsafe_allow_html=True)
+    _inm_list = list(df_inm.iterrows())
+    for _fila_s in range(0, len(_inm_list), MAX_COLS):
+        _fila_rows = _inm_list[_fila_s:_fila_s+MAX_COLS]
+        _cols_inm  = st.columns(MAX_COLS)
+        for _col_idx, (_i, _row) in enumerate(_fila_rows):
+            _nombre   = str(_row.get("Nombre",""))
+            _renta    = safe_float(_row.get("Renta",0))
+            _tipo_arr = str(_row.get("Tipo_Arrendamiento","Larga Duración"))
+            _inv_act  = safe_float(_row.get("Precio_Compra",0)) + safe_float(_row.get("Impuestos_Compra",0)) + safe_float(_row.get("Gastos_Compra",0))
+            _yield_n  = round(_renta*12/_inv_act*100,1) if _inv_act>0 else 0.0
+            try:
+                _df_m    = df_mov[df_mov["Apartamento"]==_nombre].copy()
+                _df_m["_fe"] = pd.to_datetime(_df_m["Fecha"],errors="coerce")
+                _df_m_mes = _df_m[(_df_m["_fe"].dt.month==_mes_actual)&(_df_m["_fe"].dt.year==_anio_actual)]
+                _ing_mes = float(_df_m_mes[_df_m_mes["Tipo"]=="Ingreso"]["Importe"].sum())
+                _gas_mes = float(_df_m_mes[_df_m_mes["Tipo"]=="Gasto"]["Importe"].sum())
+                _bal_mes = _ing_mes - _gas_mes
+            except Exception:
+                _ing_mes=_gas_mes=_bal_mes=0.0
+            _sd = calcular_score_salud(_row, df_mov,
+                                        tipo_cuenta=_perfil_tc.get("tipo_cuenta","particular"),
+                                        df_hip=_df_hip_tc2)
+            _score    = _sd["score"]
+            _score_bg = "#EAF3DE" if _score>=8 else "#FAEEDA" if _score>=6 else "#FCEBEB"
+            _score_col= "#3B6D11" if _score>=8 else "#854F0B" if _score>=6 else "#A32D2D"
+            _tipo_v, _msg_v = alerta_vencimiento(_row)
+            _alerta_html = ""
+            if _tipo_v == "critica":
+                _alerta_html = f'<div style="font-size:11px;color:#A32D2D;margin-top:4px;">⚠️ {_msg_v[:40]}</div>'
+            elif _tipo_v == "media":
+                _alerta_html = f'<div style="font-size:11px;color:#854F0B;margin-top:4px;">🔔 {_msg_v[:40]}</div>'
+            _inquilino = str(_row.get("NIF_Inquilino","") or "")[:30] or "—"
+            _bal_col = "#3B6D11" if _bal_mes>=0 else "#A32D2D"
+            _bal_sgn = f"+{_bal_mes:,.0f} €" if _bal_mes>=0 else f"−{abs(_bal_mes):,.0f} €"
+            with _cols_inm[_col_idx]:
+                st.markdown(
+                    f'<div style="border-radius:12px;overflow:hidden;border:0.5px solid var(--color-border-tertiary);margin-bottom:10px;">'                    f'<div style="background:#0F2744;padding:11px 14px;display:flex;justify-content:space-between;align-items:flex-start;">'                    f'<div><div style="font-size:13px;font-weight:500;color:#E6F1FB;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;">{_nombre}</div>'                    f'<div style="font-size:11px;color:#85B7EB;margin-top:2px;">{_tipo_arr[:20]}</div></div>'                    f'<div style="background:{_score_bg};border-radius:8px;padding:3px 9px;text-align:center;flex-shrink:0;">'                    f'<div style="font-size:15px;font-weight:500;color:{_score_col};">{_score:.1f}</div></div></div>'                    f'<div style="padding:10px 14px;">'                    f'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--color-border-tertiary);">'                    f'<span style="font-size:12px;color:var(--color-text-secondary);">Renta</span>'                    f'<span style="font-size:13px;font-weight:500;color:#3B6D11;">+{_renta:,.0f} €</span></div>'                    f'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--color-border-tertiary);">'                    f'<span style="font-size:12px;color:var(--color-text-secondary);">Yield</span>'                    f'<span style="font-size:13px;font-weight:500;">{"%.1f%%" % _yield_n if _yield_n else "—"}</span></div>'                    f'<div style="display:flex;justify-content:space-between;padding:4px 0;">'                    f'<span style="font-size:12px;color:var(--color-text-secondary);">Balance mes</span>'                    f'<span style="font-size:13px;font-weight:500;color:{_bal_col};">{_bal_sgn}</span></div>'                    f'<div style="border-top:0.5px solid var(--color-border-tertiary);margin-top:8px;padding-top:6px;">'                    f'<div style="font-size:11px;color:var(--color-text-secondary);">{_inquilino}</div>'                    f'{_alerta_html}</div></div></div>',
+                    unsafe_allow_html=True
+                )
+                if st.button("Ver ficha →", key=f"tc_ficha_{_nombre}", use_container_width=True):
+                    st.session_state["menu"] = "Fichas (Benchmark)"
+                    st.session_state["ficha_sel"] = _nombre
+                    st.rerun()
+    st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
 
     # ── SABIO IA — Torre de Control (activado por botón robot) ──
     contexto_torre = {
