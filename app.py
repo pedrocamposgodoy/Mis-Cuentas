@@ -2339,15 +2339,30 @@ elif menu == "Fichas (Benchmark)":
         except Exception:
             _df_mov_ft4 = pd.DataFrame()
 
-        # ── JOIN con facturas_recibidas para obtener PDF por movimiento_id ─
+        # ── JOIN PDF por movimiento_id (REST directo, evita filtro inmueble) ─
         _df_fr_map = pd.DataFrame()
-        try:
-            _df_fr_all = leer_facturas_recibidas(_uid_fr, inmueble=sel, ejercicio=_ej_fr, tipo="gasto")
-            if not _df_fr_all.empty and "movimiento_id" in _df_fr_all.columns:
-                _df_fr_map = _df_fr_all[["id","movimiento_id","archivo_ruta","archivo_nombre"]].copy()
-                _df_fr_map["movimiento_id"] = _df_fr_map["movimiento_id"].astype(str)
-        except Exception:
-            pass
+        if not _df_mov_ft4.empty and "id" in _df_mov_ft4.columns:
+            try:
+                import requests as _rq_ft4
+                from supabase_db import SUPABASE_URL, SUPABASE_KEY
+                _mov_ids_ft4 = _df_mov_ft4["id"].dropna().astype(str).tolist()
+                _ids_filter  = ",".join(_mov_ids_ft4)
+                _hdr_ft4 = {
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {st.session_state.get('access_token', SUPABASE_KEY)}",
+                }
+                _r_ft4 = _rq_ft4.get(
+                    f"{SUPABASE_URL}/rest/v1/facturas_recibidas"
+                    f"?user_id=eq.{_uid_fr}"
+                    f"&movimiento_id=in.({_ids_filter})"
+                    f"&select=id,movimiento_id,archivo_ruta,archivo_nombre",
+                    headers=_hdr_ft4, timeout=10
+                )
+                if _r_ft4.status_code == 200 and _r_ft4.json():
+                    _df_fr_map = pd.DataFrame(_r_ft4.json())
+                    _df_fr_map["movimiento_id"] = _df_fr_map["movimiento_id"].astype(str)
+            except Exception:
+                pass
 
         def _get_fr_for_mov(mov_id):
             if _df_fr_map.empty: return None
