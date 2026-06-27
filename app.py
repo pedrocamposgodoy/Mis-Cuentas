@@ -3824,11 +3824,14 @@ elif menu == "Asesor Patrimonial IA":
                         f"Eres un asesor patrimonial inmobiliario en España. Analiza esta cartera.\n\n"
                         f"CARTERA ({len(_inm_data)} inmuebles):\n{_resumen_inm}\n\n"
                         f"INMUEBLES PROBLEMÁTICOS:\n{_conflictivos_txt}\n\n"
-                        f"Responde con:\n"
-                        f"1. Una frase sobre el estado general de la cartera\n"
-                        f"2. Para CADA inmueble conflictivo: acción concreta y urgencia\n"
-                        f"3. Una oportunidad de mejora global\n"
-                        f"Sé directo, usa cifras reales, máximo 150 palabras. En español."
+                        f"Responde EXACTAMENTE en este formato, sin introducción previa:\n\n"
+                        f"**Estado general:** [una frase]\n\n"
+                        f"**Acciones prioritarias:**\n\n"
+                        f"| Inmueble | Acción concreta | Urgencia |\n"
+                        f"|---|---|---|\n"
+                        f"[una fila por cada inmueble conflictivo]\n\n"
+                        f"**Oportunidad global:** [una frase]\n\n"
+                        f"Usa cifras reales. Máximo 120 palabras total. En español."
                     )
                     _resp_cartera = anthropic.Anthropic(
                         api_key=st.secrets.get("ANTHROPIC_API_KEY","")
@@ -3843,14 +3846,11 @@ elif menu == "Asesor Patrimonial IA":
         _analisis_txt = st.session_state.get(_key_ia_cartera,"")
         if _analisis_txt:
             st.markdown(
-                f'<div style="background:linear-gradient(135deg,#EBF3FC 0%,#F4F7FB 100%);\n'
-                f'border-left:4px solid #185FA5;border-radius:0 12px 12px 0;\n'
-                f'padding:16px 20px;margin-top:8px;">\n'
-                f'<div style="font-size:11px;color:#185FA5;font-weight:600;\n'
-                f'text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">\n'
-                f'🧠 Análisis global de cartera</div>\n'
-                f'<div style="font-size:14px;color:#1E293B;line-height:1.7;white-space:pre-line;">{_analisis_txt}</div>\n'
-                f'</div>', unsafe_allow_html=True)
+                '<div style="font-size:11px;color:#185FA5;font-weight:600;'
+                'text-transform:uppercase;letter-spacing:.05em;margin:12px 0 8px;">'
+                '🧠 Análisis global de cartera</div>',
+                unsafe_allow_html=True)
+            st.markdown(_analisis_txt)
         else:
             st.caption("Pulsa el botón para obtener un análisis completo con acciones prioritarias.")
 
