@@ -2713,9 +2713,10 @@ elif menu == "Gastos":
             df_f = df_f[df_f["Concepto"].str.contains(f_buscar.strip(),case=False,na=False)]
         df_f = df_f.sort_values("Fecha", ascending=False).reset_index(drop=True)
 
-        # ── JOIN PDF — REST directo para evitar problemas de firma ────
+        # ── JOIN PDF — REST directo ────────────────────────────────────
         df_f["archivo_ruta"] = None
         df_f["archivo_nombre"] = None
+        _debug_pdf = {}
         if "id" in df_f.columns and not df_f.empty:
             try:
                 import requests as _rq_fr
@@ -2731,16 +2732,24 @@ elif menu == "Gastos":
                     f"&select=movimiento_id,archivo_ruta,archivo_nombre",
                     headers=_hdr_fr, timeout=10
                 )
+                _debug_pdf["status"] = _resp_fr.status_code
+                _debug_pdf["raw"] = _resp_fr.json() if _resp_fr.status_code == 200 else _resp_fr.text[:200]
                 if _resp_fr.status_code == 200:
                     _fr_data = _resp_fr.json()
+                    _debug_pdf["registros"] = len(_fr_data)
                     if _fr_data:
                         _fr_map = pd.DataFrame(_fr_data)
                         _fr_map["movimiento_id"] = _fr_map["movimiento_id"].astype(str)
                         df_f["id"] = df_f["id"].astype(str)
+                        _debug_pdf["ids_movimientos"] = df_f["id"].tolist()[:5]
                         df_f = df_f.merge(
                             _fr_map, left_on="id", right_on="movimiento_id", how="left")
-            except Exception:
-                pass  # archivo_ruta ya es None por defecto
+                        _debug_pdf["match_count"] = int(df_f["archivo_ruta"].notna().sum())
+            except Exception as _ex_join:
+                _debug_pdf["error"] = str(_ex_join)
+
+        with st.expander("🔍 Debug PDF (borrar tras diagnosticar)", expanded=False):
+            st.json(_debug_pdf)
 
         # ── KPI CARDS ──────────────────────────────────────────────────
         t_ing = df_f[df_f["Tipo"]=="Ingreso"]["Importe"].sum()
