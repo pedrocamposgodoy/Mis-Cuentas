@@ -3720,38 +3720,140 @@ elif menu == "Macrofinanzas":
 # Deps: df_inm, asesoramiento_ia.py, nolasco_styles.py
 # ================================================================
 elif menu == "Asesor Patrimonial IA":
-    st.markdown(f"""
-    <div style='background:{SIDEBAR_BG};padding:20px 24px 16px;border-radius:12px;margin-bottom:24px;border-left:4px solid {ACCENT};'>
-        <h2 style='color:white;margin:0;font-size:22px'>🧠 Asesor Patrimonial IA</h2>
-        <p style='color:#8899AA;margin:6px 0 0;font-size:14px'>Analizamos tu cartera y te conectamos con inmobiliarias cuando lo necesitas. Tú controlas tus datos en todo momento.</p>
-    </div>""",unsafe_allow_html=True)
-    if df_inm.empty:
-        st.info("📭 Añade inmuebles en 'Datos de la Cartera' para usar el Asesor.")
-    else:
-        def _safe_float(v):
-            try: return float(str(v).replace(",","").replace("€","").strip())
-            except: return 0.0
-        renta_total   = df_inm["Renta"].apply(_safe_float).sum()
-        mercado_total = df_inm["Renta_Mercado"].apply(_safe_float).sum()
-        rent_pct      = round(renta_total/mercado_total*100,1) if mercado_total>0 else 0
-        contexto_ia = {
-            "num_inmuebles":       len(df_inm),
-            "rentabilidad_media":  rent_pct,
-            "rentabilidad_mercado":100,
-            "perdida_mensual":     round(mercado_total-renta_total,0),
-            "inmuebles": [{"nombre":row.get("Nombre",""),"renta":_safe_float(row.get("Renta",0)),"mercado":_safe_float(row.get("Renta_Mercado",0)),"vencimiento":str(row.get("Fecha_Vencimiento_Contrato",""))} for _,row in df_inm.iterrows()],
-            "email": st.session_state.user_email or "",
-        }
-        st.markdown("<hr style='border:0;border-top:1px solid #D0DFF0;margin:1.5rem 0;'>",unsafe_allow_html=True)
-        datos_propietario={"nombre":st.session_state.get("user_nombre",""),"email":st.session_state.get("user_email",st.session_state.user_email or ""),"telefono":st.session_state.get("user_telefono",""),}
-        render_asesor_ia(user_id=st.session_state.user_id,df_inmuebles=df_inm,datos_propietario=datos_propietario)
-        # ── SABIO PATRIMONIAL — Asesor ──────────────────────────
-        render_sabio("asesor", contexto_ia)
+    st.markdown('<div class="nc-brand-header">🧠 Análisis Patrimonial</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nc-brand-sub">Visión global de tu cartera · Acciones prioritarias</div>', unsafe_allow_html=True)
 
-# ================================================================
-# PANTALLA: PRIVACIDAD Y CONSENTIMIENTOS (RGPD)
-# Deps: asesoramiento_ia.render_privacidad()
-# ================================================================
+    if df_inm.empty:
+        st.info("📭 Añade inmuebles en 'Datos de la Cartera' para usar el análisis.")
+    else:
+        _uid_ap  = st.session_state.get("user_id","")
+        _df_hip_ap = st.session_state.get("df_hip", pd.DataFrame())
+        _perfil_ap = st.session_state.get("perfil_usuario", {})
+
+        # ── Clasificar inmuebles ──────────────────────────────────────
+        _bien, _regular, _fatal = [], [], []
+        _inm_data = []
+        for _, _row in df_inm.iterrows():
+            _nom  = str(_row.get("Nombre",""))
+            _renta = safe_float(_row.get("Renta",0))
+            _inv   = safe_float(_row.get("Precio_Compra",0)) + safe_float(_row.get("Impuestos_Compra",0)) + safe_float(_row.get("Gastos_Compra",0))
+            _yield = round(_renta*12/_inv*100,1) if _inv>0 else 0.0
+            _sd    = calcular_score_salud(_row, df_mov, tipo_cuenta=_perfil_ap.get("tipo_cuenta","particular"), df_hip=_df_hip_ap)
+            _score = _sd["score"]
+            _alertas = _sd.get("alertas",[])
+            _tipo_v, _msg_v = alerta_vencimiento(_row)
+            # Gastos fijos del inmueble
+            _df_gr_ap = leer_gastos_recurrentes(_uid_ap)
+            _gas_fijos = 0.0
+            if not _df_gr_ap.empty and "inmueble" in _df_gr_ap.columns:
+                _gas_fijos = float(_df_gr_ap[_df_gr_ap["inmueble"].str.lower().str.strip()==_nom.lower().strip()]["importe"].sum())
+            _cf = _renta - _gas_fijos
+            _d = {"nombre":_nom,"renta":_renta,"yield":_yield,"score":_score,
+                  "cf":_cf,"gas_fijos":_gas_fijos,"alertas":_alertas,
+                  "venc_tipo":_tipo_v,"venc_msg":_msg_v}
+            _inm_data.append(_d)
+            if _score >= 8 and _tipo_v != "critica" and _yield > 3:
+                _bien.append(_d)
+            elif _score < 6 or _tipo_v == "critica" or _yield < 2:
+                _fatal.append(_d)
+            else:
+                _regular.append(_d)
+
+        # ── Panel semáforo visual ──────────────────────────────────────
+        def _card_inm(d, color_bg, color_txt, color_border):
+            alertas_html = "".join([f'<div style="font-size:11px;color:{color_txt};margin-top:2px;">• {a[:50]}</div>' for a in d["alertas"][:2]])
+            return (f'<div style="background:{color_bg};border:1.5px solid {color_border};'
+                    f'border-radius:10px;padding:10px 12px;margin-bottom:8px;">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+                    f'<span style="font-size:13px;font-weight:500;color:{color_txt};">{d["nombre"]}</span>'
+                    f'<span style="font-size:14px;font-weight:500;color:{color_txt};">{d["score"]:.1f}</span></div>'
+                    f'<div style="font-size:12px;color:{color_txt};margin-top:4px;">'
+                    f'Renta {d["renta"]:,.0f}€ · Yield {d["yield"]:.1f}% · CF {d["cf"]:+,.0f}€</div>'
+                    f'{alertas_html}</div>')
+
+        _c1, _c2, _c3 = st.columns(3)
+        with _c1:
+            st.markdown(f'<div style="text-align:center;background:#EAF3DE;border-radius:10px;padding:10px;margin-bottom:12px;">'
+                        f'<div style="font-size:20px;">✅</div>'
+                        f'<div style="font-size:13px;font-weight:500;color:#3B6D11;">BIEN ({len(_bien)})</div></div>',
+                        unsafe_allow_html=True)
+            for _d in _bien:
+                st.markdown(_card_inm(_d,"#EAF3DE","#3B6D11","#97C459"), unsafe_allow_html=True)
+        with _c2:
+            st.markdown(f'<div style="text-align:center;background:#FAEEDA;border-radius:10px;padding:10px;margin-bottom:12px;">'
+                        f'<div style="font-size:20px;">⚠️</div>'
+                        f'<div style="font-size:13px;font-weight:500;color:#854F0B;">REGULAR ({len(_regular)})</div></div>',
+                        unsafe_allow_html=True)
+            for _d in _regular:
+                st.markdown(_card_inm(_d,"#FAEEDA","#854F0B","#EF9F27"), unsafe_allow_html=True)
+        with _c3:
+            st.markdown(f'<div style="text-align:center;background:#FCEBEB;border-radius:10px;padding:10px;margin-bottom:12px;">'
+                        f'<div style="font-size:20px;">🔴</div>'
+                        f'<div style="font-size:13px;font-weight:500;color:#A32D2D;">CONFLICTIVO ({len(_fatal)})</div></div>',
+                        unsafe_allow_html=True)
+            for _d in _fatal:
+                st.markdown(_card_inm(_d,"#FCEBEB","#A32D2D","#E24B4A"), unsafe_allow_html=True)
+
+        st.divider()
+
+        # ── Análisis IA global ──────────────────────────────────────────
+        _key_ia_cartera = "ia_analisis_cartera"
+        _btn_cartera = st.button("🤖 Analizar toda la cartera con IA",
+                                  use_container_width=True, type="primary",
+                                  key="btn_ia_cartera")
+        if _btn_cartera and _key_ia_cartera in st.session_state:
+            del st.session_state[_key_ia_cartera]
+
+        if _btn_cartera and _key_ia_cartera not in st.session_state:
+            with st.spinner("Analizando toda la cartera..."):
+                try:
+                    _resumen_inm = "\n".join([
+                        f"  - {d['nombre']}: renta {d['renta']:,.0f}€/mes, yield {d['yield']:.1f}%, "
+                        f"CF neto {d['cf']:+,.0f}€, score {d['score']:.1f}"
+                        + (f", ALERTA: {d['venc_msg']}" if d['venc_tipo'] else "")
+                        + (f", alertas: {'; '.join(d['alertas'][:2])}" if d['alertas'] else "")
+                        for d in _inm_data
+                    ])
+                    _conflictivos_txt = "\n".join([
+                        f"  - {d['nombre']}: score {d['score']:.1f}, yield {d['yield']:.1f}%, "
+                        f"CF {d['cf']:+,.0f}€"
+                        + (f", {d['venc_msg']}" if d['venc_tipo'] else "")
+                        for d in _fatal + _regular
+                    ]) or "  Ninguno"
+                    _prompt_cartera = (
+                        f"Eres un asesor patrimonial inmobiliario en España. Analiza esta cartera.\n\n"
+                        f"CARTERA ({len(_inm_data)} inmuebles):\n{_resumen_inm}\n\n"
+                        f"INMUEBLES PROBLEMÁTICOS:\n{_conflictivos_txt}\n\n"
+                        f"Responde con:\n"
+                        f"1. Una frase sobre el estado general de la cartera\n"
+                        f"2. Para CADA inmueble conflictivo: acción concreta y urgencia\n"
+                        f"3. Una oportunidad de mejora global\n"
+                        f"Sé directo, usa cifras reales, máximo 150 palabras. En español."
+                    )
+                    _resp_cartera = anthropic.Anthropic(
+                        api_key=st.secrets.get("ANTHROPIC_API_KEY","")
+                    ).messages.create(
+                        model="claude-sonnet-4-6", max_tokens=400,
+                        messages=[{"role":"user","content":_prompt_cartera}]
+                    )
+                    st.session_state[_key_ia_cartera] = _resp_cartera.content[0].text.strip()
+                except Exception as _e_c:
+                    st.session_state[_key_ia_cartera] = f"Error: {str(_e_c)[:200]}"
+
+        _analisis_txt = st.session_state.get(_key_ia_cartera,"")
+        if _analisis_txt:
+            st.markdown(
+                f'<div style="background:linear-gradient(135deg,#EBF3FC 0%,#F4F7FB 100%);\n'
+                f'border-left:4px solid #185FA5;border-radius:0 12px 12px 0;\n'
+                f'padding:16px 20px;margin-top:8px;">\n'
+                f'<div style="font-size:11px;color:#185FA5;font-weight:600;\n'
+                f'text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">\n'
+                f'🧠 Análisis global de cartera</div>\n'
+                f'<div style="font-size:14px;color:#1E293B;line-height:1.7;white-space:pre-line;">{_analisis_txt}</div>\n'
+                f'</div>', unsafe_allow_html=True)
+        else:
+            st.caption("Pulsa el botón para obtener un análisis completo con acciones prioritarias.")
+
 elif menu == "Privacidad y Consentimientos":
     st.markdown(f"""
     <div style='background:{SIDEBAR_BG};padding:20px 24px 16px;border-radius:12px;margin-bottom:24px;border-left:4px solid #0F6E56;'>
