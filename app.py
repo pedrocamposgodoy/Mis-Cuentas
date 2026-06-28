@@ -4714,8 +4714,8 @@ elif menu == "Ingresos · Rentas":
             st.session_state.menu = "Mi Perfil"; st.rerun()
         st.stop()
 
-    tab_generar, tab_historial, tab_plantillas = st.tabs([
-        "🧾 Generar Factura", "📋 Diario de Ingresos", "⚙️ Plantillas"
+    tab_historial, tab_generar, tab_plantillas = st.tabs([
+        "📋 Diario de Ingresos", "🧾 Generar Factura", "⚙️ Plantillas"
     ])
 
     # ── TAB 1: GENERAR FACTURA ─────────────────────────────────
