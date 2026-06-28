@@ -1223,15 +1223,22 @@ if menu == "Torre de Control":
 .element-container:has(.vf-ghost-marker) + div.element-container .stButton > button,
 .element-container:has(.vf-ghost-marker) + .element-container .stButton > button {
     background: transparent !important;
-    color: #0F2744 !important;
-    border: 1.5px solid #0F2744 !important;
-    font-weight: 500 !important;
-    padding: 0.5rem !important;
+    color: #5A7A9A !important;
+    border: none !important;
+    border-bottom: 1px solid #C8D9E8 !important;
+    border-radius: 0 !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    padding: 4px 0 !important;
+    margin-top: 0 !important;
+    width: auto !important;
+    display: block !important;
 }
 .element-container:has(.vf-ghost-marker) + div.element-container .stButton > button:hover,
 .element-container:has(.vf-ghost-marker) + .element-container .stButton > button:hover {
-    background: #EEF2F7 !important;
     color: #0F2744 !important;
+    border-bottom-color: #0F2744 !important;
+    background: transparent !important;
 }
 </style>""", unsafe_allow_html=True)
     if df_inm.empty:
