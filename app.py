@@ -1578,6 +1578,20 @@ if menu == "Torre de Control":
 
     # ── TARJETAS DE INMUEBLE (Opción A) ─────────────────────────────
     st.markdown('<div class="nc-section-title">🏠 Cartera de Inmuebles</div>', unsafe_allow_html=True)
+    st.markdown("""<style>
+.cartera-ghost div.stButton > button {
+    background: transparent !important;
+    color: #0F2744 !important;
+    border: 1.5px solid #0F2744 !important;
+    font-weight: 500 !important;
+    font-size: 0.9rem !important;
+    padding: 0.5rem !important;
+}
+.cartera-ghost div.stButton > button:hover {
+    background: #EEF2F7 !important;
+}
+</style>""", unsafe_allow_html=True)
+    st.markdown('<div class="cartera-ghost">', unsafe_allow_html=True)
     _df_hip_tc2 = st.session_state.get("df_hip", pd.DataFrame())
     _mes_actual  = datetime.now().month
     _anio_actual = datetime.now().year
@@ -1627,6 +1641,7 @@ if menu == "Torre de Control":
                     st.rerun()
     st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
 
+    st.markdown('</div>', unsafe_allow_html=True)
     # ── SABIO IA — Torre de Control (activado por botón robot) ──
     contexto_torre = {
         "total_ingresos": total_ingresos_registrados,
