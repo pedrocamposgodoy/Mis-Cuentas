@@ -1219,6 +1219,21 @@ Generado con Nolasco Capital · Consulte con abogado
 # Deps: df_inm, df_mov, tasacion(), alerta_vencimiento()
 # ================================================================
 if menu == "Torre de Control":
+    st.markdown("""<style>
+.element-container:has(.vf-ghost-marker) + div.element-container .stButton > button,
+.element-container:has(.vf-ghost-marker) + .element-container .stButton > button {
+    background: transparent !important;
+    color: #0F2744 !important;
+    border: 1.5px solid #0F2744 !important;
+    font-weight: 500 !important;
+    padding: 0.5rem !important;
+}
+.element-container:has(.vf-ghost-marker) + div.element-container .stButton > button:hover,
+.element-container:has(.vf-ghost-marker) + .element-container .stButton > button:hover {
+    background: #EEF2F7 !important;
+    color: #0F2744 !important;
+}
+</style>""", unsafe_allow_html=True)
     if df_inm.empty:
         st.markdown("## 🏠 Bienvenido a Nolasco Capital")
         st.info("📭 Aún no tienes inmuebles registrados. Ve a **Datos de Cartera** para añadir tu primer inmueble.")
@@ -1578,20 +1593,6 @@ if menu == "Torre de Control":
 
     # ── TARJETAS DE INMUEBLE (Opción A) ─────────────────────────────
     st.markdown('<div class="nc-section-title">🏠 Cartera de Inmuebles</div>', unsafe_allow_html=True)
-    st.markdown("""<style>
-.cartera-ghost div.stButton > button {
-    background: transparent !important;
-    color: #0F2744 !important;
-    border: 1.5px solid #0F2744 !important;
-    font-weight: 500 !important;
-    font-size: 0.9rem !important;
-    padding: 0.5rem !important;
-}
-.cartera-ghost div.stButton > button:hover {
-    background: #EEF2F7 !important;
-}
-</style>""", unsafe_allow_html=True)
-    st.markdown('<div class="cartera-ghost">', unsafe_allow_html=True)
     _df_hip_tc2 = st.session_state.get("df_hip", pd.DataFrame())
     _mes_actual  = datetime.now().month
     _anio_actual = datetime.now().year
@@ -1635,13 +1636,13 @@ if menu == "Torre de Control":
                     f'<div style="border-radius:12px;overflow:hidden;border:0.5px solid var(--color-border-tertiary);margin-bottom:10px;">'                    f'<div style="background:#0F2744;padding:11px 14px;display:flex;justify-content:space-between;align-items:flex-start;">'                    f'<div><div style="font-size:13px;font-weight:500;color:#E6F1FB;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px;">{_nombre}</div>'                    f'<div style="font-size:11px;color:#85B7EB;margin-top:2px;">{_tipo_arr[:20]}</div></div>'                    f'<div style="background:{_score_bg};border-radius:8px;padding:3px 9px;text-align:center;flex-shrink:0;">'                    f'<div style="font-size:15px;font-weight:500;color:{_score_col};">{_score:.1f}</div></div></div>'                    f'<div style="padding:10px 14px;">'                    f'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--color-border-tertiary);">'                    f'<span style="font-size:12px;color:var(--color-text-secondary);">Renta</span>'                    f'<span style="font-size:13px;font-weight:500;color:#3B6D11;">+{_renta:,.0f} €</span></div>'                    f'<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:0.5px solid var(--color-border-tertiary);">'                    f'<span style="font-size:12px;color:var(--color-text-secondary);">Yield</span>'                    f'<span style="font-size:13px;font-weight:500;">{"%.1f%%" % _yield_n if _yield_n else "—"}</span></div>'                    f'<div style="display:flex;justify-content:space-between;padding:4px 0;">'                    f'<span style="font-size:12px;color:var(--color-text-secondary);">Balance mes</span>'                    f'<span style="font-size:13px;font-weight:500;color:{_bal_col};">{_bal_sgn}</span></div>'                    f'<div style="border-top:0.5px solid var(--color-border-tertiary);margin-top:8px;padding-top:6px;">'                    f'<div style="font-size:11px;color:var(--color-text-secondary);">{_inquilino}</div>'                    f'{_alerta_html}</div></div></div>',
                     unsafe_allow_html=True
                 )
+                st.markdown('<div class="vf-ghost-marker"></div>', unsafe_allow_html=True)
                 if st.button("Ver ficha →", key=f"tc_ficha_{_nombre}", use_container_width=True):
                     st.session_state["menu"] = "Fichas (Benchmark)"
                     st.session_state["ficha_sel"] = _nombre
                     st.rerun()
     st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
     # ── SABIO IA — Torre de Control (activado por botón robot) ──
     contexto_torre = {
         "total_ingresos": total_ingresos_registrados,
