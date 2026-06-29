@@ -2162,3 +2162,38 @@ def eliminar_mantenimiento(item_id: str, user_id: str) -> bool:
     except Exception as e:
         print(f"[eliminar_mantenimiento] Error: {e}")
         return False
+
+
+# ================================================================
+# ACTUALIZACIÓN COMPLETA DE UN MOVIMIENTO
+# Permite editar concepto, categoría, fecha, importe, deducible
+# ================================================================
+
+def actualizar_movimiento_campos(mov_id, user_id: str, campos: dict) -> bool:
+    """
+    Actualiza campos editables de un movimiento existente.
+    campos puede contener: concepto, categoria, fecha, importe, deducible
+    Usa GET-before-PATCH para evitar inserciones silenciosas.
+    """
+    if not _validar_user_id(user_id, "actualizar_movimiento_campos"):
+        return False
+    CAMPOS_VALIDOS = {"concepto", "categoria", "fecha", "importe", "deducible"}
+    payload = {k: v for k, v in campos.items() if k in CAMPOS_VALIDOS}
+    if not payload:
+        return False
+    try:
+        r_check = requests.get(
+            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}&select=id",
+            headers=_headers(), timeout=10
+        )
+        if r_check.status_code != 200 or not r_check.json():
+            return False
+        r = requests.patch(
+            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
+            headers={**_headers(), "Prefer": "return=minimal"},
+            json=payload, timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f"[actualizar_movimiento_campos] Error: {e}")
+        return False
