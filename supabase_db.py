@@ -2053,3 +2053,112 @@ def obtener_url_factura_recibida(user_id: str, ruta: str, expira: int = 3600) :
         return None
     except Exception:
         return None
+
+
+# ================================================================
+# MANTENIMIENTO PREVISTO — CAPEX planificado por inmueble
+# Tabla: mantenimiento_previsto (inmueble_id bigint, user_id uuid)
+# ================================================================
+
+BASE_MP = f"{SUPABASE_URL}/rest/v1/mantenimiento_previsto"
+
+
+def obtener_mantenimiento_previsto(inmueble_id, user_id: str) -> list:
+    """
+    Lee los ítems de mantenimiento previsto de un inmueble.
+    Excluye los estados 'ejecutado' y 'descartado'.
+    Devuelve lista de dicts o [] si vacío/error.
+    """
+    if not _validar_user_id(user_id, "obtener_mantenimiento_previsto"):
+        return []
+    try:
+        url = (f"{BASE_MP}?inmueble_id=eq.{int(inmueble_id)}&user_id=eq.{user_id}"
+               f"&estado=neq.ejecutado&estado=neq.descartado"
+               f"&order=prioridad.asc,fecha_estimada.asc&select=*")
+        r = requests.get(url, headers=_headers(), timeout=10)
+        if r.status_code == 200:
+            return r.json() or []
+        return []
+    except Exception as e:
+        print(f"[obtener_mantenimiento_previsto] Error: {e}")
+        return []
+
+
+def crear_mantenimiento(datos: dict, user_id: str) -> dict:
+    """
+    Crea un ítem de mantenimiento previsto.
+    datos debe contener: inmueble_id, descripcion, importe_estimado, prioridad
+    Opcionales: fecha_estimada (str 'YYYY-MM-DD'), notas
+    Devuelve: {'ok': True} o {'ok': False, 'error': ...}
+    """
+    if not _validar_user_id(user_id, "crear_mantenimiento"):
+        return {"ok": False, "error": "user_id inválido"}
+    try:
+        payload = {
+            "user_id":          user_id,
+            "inmueble_id":      int(datos["inmueble_id"]),
+            "descripcion":      str(datos.get("descripcion", "")).strip(),
+            "importe_estimado": float(datos.get("importe_estimado", 0)),
+            "prioridad":        datos.get("prioridad", "medio_plazo"),
+            "fecha_estimada":   datos.get("fecha_estimada") or None,
+            "estado":           "pendiente",
+            "notas":            datos.get("notas", "") or None,
+        }
+        r = requests.post(
+            BASE_MP,
+            headers={**_headers(), "Prefer": "return=representation"},
+            json=payload, timeout=10
+        )
+        if r.status_code in (200, 201):
+            return {"ok": True}
+        return {"ok": False, "error": f"{r.status_code}: {r.text[:200]}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def actualizar_mantenimiento(item_id: str, datos: dict, user_id: str) -> bool:
+    """
+    Actualiza un ítem de mantenimiento previsto.
+    Campos actualizables: descripcion, importe_estimado, prioridad,
+                          fecha_estimada, estado, notas
+    Usa GET-before-PATCH para evitar inserciones silenciosas.
+    """
+    if not _validar_user_id(user_id, "actualizar_mantenimiento"):
+        return False
+    campos_validos = {"descripcion", "importe_estimado", "prioridad",
+                      "fecha_estimada", "estado", "notas"}
+    payload = {k: v for k, v in datos.items() if k in campos_validos}
+    if not payload:
+        return False
+    try:
+        # GET-before-PATCH: verificar que existe
+        r_check = requests.get(
+            f"{BASE_MP}?id=eq.{item_id}&user_id=eq.{user_id}&select=id",
+            headers=_headers(), timeout=10
+        )
+        if r_check.status_code != 200 or not r_check.json():
+            return False
+        r = requests.patch(
+            f"{BASE_MP}?id=eq.{item_id}&user_id=eq.{user_id}",
+            headers={**_headers(), "Prefer": "return=minimal"},
+            json=payload, timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f"[actualizar_mantenimiento] Error: {e}")
+        return False
+
+
+def eliminar_mantenimiento(item_id: str, user_id: str) -> bool:
+    """Elimina permanentemente un ítem de mantenimiento previsto."""
+    if not _validar_user_id(user_id, "eliminar_mantenimiento"):
+        return False
+    try:
+        r = requests.delete(
+            f"{BASE_MP}?id=eq.{item_id}&user_id=eq.{user_id}",
+            headers=_headers(), timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f"[eliminar_mantenimiento] Error: {e}")
+        return False
