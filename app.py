@@ -2380,11 +2380,18 @@ elif menu == "Fichas (Benchmark)":
             st.metric("Total gastos período",f"{float(_dfg3['Importe'].sum()):,.0f} €")
             _cats_t3 = ["Mantenimiento","Suministros","Comunidad","Seguros",
                         "Tributario","Financiero","Reparación","Reforma","Otros"]
+            # Asegurar tipos compatibles con data_editor
+            _dfg3["Fecha"]    = _dfg3["Fecha"].astype(str)
+            _dfg3["Concepto"] = _dfg3["Concepto"].fillna("").astype(str)
+            _dfg3["Categoría"]= _dfg3["Categoría"].fillna("Otros").astype(str)
+            _dfg3["Importe"]  = pd.to_numeric(_dfg3["Importe"], errors="coerce").fillna(0.0)
+            _dfg3["Deducible"]= _dfg3["Deducible"].fillna("S").astype(str).str.upper().str.strip()
+            _dfg3["Deducible"]= _dfg3["Deducible"].where(_dfg3["Deducible"].isin(["S","N"]), "S")
             _ed3=st.data_editor(
                 _dfg3.drop(columns=["id"]),hide_index=True,use_container_width=True,
                 key=f"ed3_{sel}_{_anio_t3}_{_mes_t3}",
                 column_config={
-                    "Fecha":     st.column_config.DateColumn("Fecha", format="YYYY-MM-DD"),
+                    "Fecha":     st.column_config.TextColumn("Fecha"),
                     "Concepto":  st.column_config.TextColumn("Concepto"),
                     "Categoría": st.column_config.SelectboxColumn("Categoría", options=_cats_t3),
                     "Importe":   st.column_config.NumberColumn("Importe (€)", format="%.2f", min_value=0.0),
