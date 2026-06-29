@@ -97,7 +97,8 @@ from supabase_db import (
     actualizar_estado_factura, guardar_pdf_factura,
     crear_factura_rectificativa,
     obtener_mantenimiento_previsto, crear_mantenimiento,
-    actualizar_mantenimiento, eliminar_mantenimiento
+    actualizar_mantenimiento, eliminar_mantenimiento,
+    actualizar_movimiento_campos
 )
 
 COLS_INM = [
@@ -2377,23 +2378,43 @@ elif menu == "Fichas (Benchmark)":
             _dfg3=pd.DataFrame()
         if not _dfg3.empty:
             st.metric("Total gastos período",f"{float(_dfg3['Importe'].sum()):,.0f} €")
-            from supabase_db import actualizar_importe_movimiento as _aim
+            _cats_t3 = ["Mantenimiento","Suministros","Comunidad","Seguros",
+                        "Tributario","Financiero","Reparación","Reforma","Otros"]
             _ed3=st.data_editor(
                 _dfg3.drop(columns=["id"]),hide_index=True,use_container_width=True,
                 key=f"ed3_{sel}_{_anio_t3}_{_mes_t3}",
                 column_config={
-                    "Fecha":st.column_config.TextColumn("Fecha",disabled=True),
-                    "Concepto":st.column_config.TextColumn("Concepto",disabled=True),
-                    "Categoría":st.column_config.TextColumn("Categoría",disabled=True),
-                    "Importe":st.column_config.NumberColumn("Importe (€)",format="%.2f",min_value=0.0),
-                    "Deducible":st.column_config.TextColumn("Deducible",disabled=True),
+                    "Fecha":     st.column_config.DateColumn("Fecha", format="YYYY-MM-DD"),
+                    "Concepto":  st.column_config.TextColumn("Concepto"),
+                    "Categoría": st.column_config.SelectboxColumn("Categoría", options=_cats_t3),
+                    "Importe":   st.column_config.NumberColumn("Importe (€)", format="%.2f", min_value=0.0),
+                    "Deducible": st.column_config.SelectboxColumn("Deducible", options=["S","N"]),
                 })
-            _oi3=_dfg3["Importe"].reset_index(drop=True)
-            _ei3=_ed3["Importe"].reset_index(drop=True)
-            _ch3=_oi3[_oi3!=_ei3].index.tolist()
-            if _ch3:
-                _sv3=sum(1 for i in _ch3 if _aim(_dfg3.iloc[i]["id"],_uid_t3,float(_ei3.iloc[i])))
-                if _sv3: st.success(f"✓ {_sv3} gasto(s) actualizados."); st.rerun()
+            _cols_check = ["Fecha","Concepto","Categoría","Importe","Deducible"]
+            _cambios3 = []
+            for _ci3 in range(len(_ed3)):
+                _row3 = _ed3.iloc[_ci3]
+                _orig3 = _dfg3.iloc[_ci3]
+                _dif = {}
+                for _col3 in _cols_check:
+                    if str(_row3.get(_col3,"")) != str(_orig3.get(_col3,"")):
+                        _dif[_col3] = _row3.get(_col3)
+                if _dif:
+                    _cambios3.append((_orig3["id"], _dif))
+            if _cambios3:
+                _ok3 = 0
+                for _mid3, _campos3 in _cambios3:
+                    _payload3 = {}
+                    if "Fecha"     in _campos3: _payload3["fecha"]     = str(_campos3["Fecha"])[:10]
+                    if "Concepto"  in _campos3: _payload3["concepto"]  = str(_campos3["Concepto"])
+                    if "Categoría" in _campos3: _payload3["categoria"] = str(_campos3["Categoría"])
+                    if "Importe"   in _campos3: _payload3["importe"]   = float(_campos3["Importe"])
+                    if "Deducible" in _campos3: _payload3["deducible"] = str(_campos3["Deducible"])
+                    if actualizar_movimiento_campos(_mid3, _uid_t3, _payload3):
+                        _ok3 += 1
+                if _ok3:
+                    st.success(f"✓ {_ok3} gasto(s) actualizados.")
+                    st.rerun()
         else:
             st.caption("Sin gastos registrados en este período.")
 
