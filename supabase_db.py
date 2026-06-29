@@ -2197,3 +2197,18 @@ def actualizar_movimiento_campos(mov_id, user_id: str, campos: dict) -> bool:
     except Exception as e:
         print(f"[actualizar_movimiento_campos] Error: {e}")
         return False
+
+
+def eliminar_movimiento(mov_id, user_id: str) -> bool:
+    """Elimina un movimiento por su id. Siempre filtra por user_id."""
+    if not _validar_user_id(user_id, "eliminar_movimiento"):
+        return False
+    try:
+        r = requests.delete(
+            f"{SUPABASE_URL}/rest/v1/movimientos?id=eq.{mov_id}&user_id=eq.{user_id}",
+            headers=_headers(), timeout=10
+        )
+        return r.status_code in (200, 204)
+    except Exception as e:
+        print(f"[eliminar_movimiento] Error: {e}")
+        return False
