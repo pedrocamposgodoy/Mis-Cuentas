@@ -2402,12 +2402,21 @@ elif menu == "Fichas (Benchmark)":
                     "Deducible": st.column_config.SelectboxColumn("Deducible", options=["S","N"]),
                 })
             # ── Eliminar seleccionados ────────────────────────────────
-            _ids_borrar = [_dfg3.iloc[i]["id"] for i in range(len(_ed3)) if _ed3.iloc[i]["🗑"]]
+            _ids_borrar = []
+            for _bi in range(len(_ed3)):
+                if _ed3.iloc[_bi]["🗑"]:
+                    _raw_id = _dfg3.iloc[_bi]["id"]
+                    if _raw_id is not None and str(_raw_id) not in ("", "None", "nan"):
+                        try:
+                            _ids_borrar.append(int(float(_raw_id)))
+                        except (ValueError, TypeError):
+                            pass
             if _ids_borrar:
                 if st.button(f"🗑 Eliminar {len(_ids_borrar)} gasto(s) seleccionado(s)",
                              type="primary", key=f"del_g3_{sel}"):
                     _del_ok = sum(1 for _did in _ids_borrar if eliminar_movimiento(_did, _uid_t3))
                     if _del_ok:
+                        st.session_state.pop("df_mov_persistent", None)
                         st.success(f"✓ {_del_ok} gasto(s) eliminados.")
                         st.rerun()
             # ── Guardar ediciones ─────────────────────────────────────
