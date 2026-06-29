@@ -98,7 +98,8 @@ from supabase_db import (
     crear_factura_rectificativa,
     obtener_mantenimiento_previsto, crear_mantenimiento,
     actualizar_mantenimiento, eliminar_mantenimiento,
-    actualizar_movimiento_campos
+    actualizar_movimiento_campos,
+    eliminar_movimiento
 )
 
 COLS_INM = [
@@ -2387,19 +2388,34 @@ elif menu == "Fichas (Benchmark)":
             _dfg3["Importe"]  = pd.to_numeric(_dfg3["Importe"], errors="coerce").fillna(0.0)
             _dfg3["Deducible"]= _dfg3["Deducible"].fillna("S").astype(str).str.upper().str.strip()
             _dfg3["Deducible"]= _dfg3["Deducible"].where(_dfg3["Deducible"].isin(["S","N"]), "S")
+            _dfg3_ed = _dfg3.drop(columns=["id"]).copy()
+            _dfg3_ed.insert(0, "🗑", False)
             _ed3=st.data_editor(
-                _dfg3.drop(columns=["id"]),hide_index=True,use_container_width=True,
+                _dfg3_ed, hide_index=True, use_container_width=True,
                 key=f"ed3_{sel}_{_anio_t3}_{_mes_t3}",
                 column_config={
+                    "🗑":        st.column_config.CheckboxColumn("Borrar", default=False),
                     "Fecha":     st.column_config.TextColumn("Fecha"),
                     "Concepto":  st.column_config.TextColumn("Concepto"),
                     "Categoría": st.column_config.SelectboxColumn("Categoría", options=_cats_t3),
                     "Importe":   st.column_config.NumberColumn("Importe (€)", format="%.2f", min_value=0.0),
                     "Deducible": st.column_config.SelectboxColumn("Deducible", options=["S","N"]),
                 })
+            # ── Eliminar seleccionados ────────────────────────────────
+            _ids_borrar = [_dfg3.iloc[i]["id"] for i in range(len(_ed3)) if _ed3.iloc[i]["🗑"]]
+            if _ids_borrar:
+                if st.button(f"🗑 Eliminar {len(_ids_borrar)} gasto(s) seleccionado(s)",
+                             type="primary", key=f"del_g3_{sel}"):
+                    _del_ok = sum(1 for _did in _ids_borrar if eliminar_movimiento(_did, _uid_t3))
+                    if _del_ok:
+                        st.success(f"✓ {_del_ok} gasto(s) eliminados.")
+                        st.rerun()
+            # ── Guardar ediciones ─────────────────────────────────────
             _cols_check = ["Fecha","Concepto","Categoría","Importe","Deducible"]
             _cambios3 = []
             for _ci3 in range(len(_ed3)):
+                if _ed3.iloc[_ci3]["🗑"]:
+                    continue  # ignorar filas marcadas para borrar
                 _row3 = _ed3.iloc[_ci3]
                 _orig3 = _dfg3.iloc[_ci3]
                 _dif = {}
