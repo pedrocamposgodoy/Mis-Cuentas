@@ -2198,14 +2198,14 @@ elif menu == "Fichas (Benchmark)":
                 f'{_mp_badge}</div>'
                 f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">'
                 f'<div style="background:#F8FAFC;border-radius:6px;padding:8px;text-align:center;">'
-                f'<div style="font-size:10px;color:{TEXT_SEC};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">CAPEX {_anio_act}</div>'
-                f'<div style="font-size:15px;font-weight:500;color:{TEXT_PRI};">{_capex_eje:,.0f} €</div></div>'
+                f'<div style="font-size:11px;color:{TEXT_SEC};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">CAPEX {_anio_act}</div>'
+                f'<div style="font-size:16px;font-weight:600;color:{TEXT_PRI};">{_capex_eje:,.0f} €</div></div>'
                 f'<div style="background:#FFF9E6;border-radius:6px;padding:8px;text-align:center;">'
-                f'<div style="font-size:10px;color:{AMBER};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Previsto &lt;12m</div>'
-                f'<div style="font-size:15px;font-weight:500;color:{AMBER};">{_capex_12m:,.0f} €</div></div>'
+                f'<div style="font-size:11px;color:{AMBER};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Previsto &lt;12m</div>'
+                f'<div style="font-size:16px;font-weight:600;color:{AMBER};">{_capex_12m:,.0f} €</div></div>'
                 f'<div style="background:#F8FAFC;border-radius:6px;padding:8px;text-align:center;">'
-                f'<div style="font-size:10px;color:{TEXT_SEC};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Previsto 1-3a</div>'
-                f'<div style="font-size:15px;font-weight:500;color:{TEXT_SEC};">{_capex_3a:,.0f} €</div></div>'
+                f'<div style="font-size:11px;color:{TEXT_SEC};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Previsto 1-3a</div>'
+                f'<div style="font-size:16px;font-weight:600;color:{TEXT_PRI};">{_capex_3a:,.0f} €</div></div>'
                 f'</div>',
                 unsafe_allow_html=True
             )
@@ -2224,13 +2224,13 @@ elif menu == "Fichas (Benchmark)":
                 _alertas_html += (
                     f'<div style="background:{_bg};border-radius:6px;padding:6px 12px;'
                     f'margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">'
-                    f'<span style="font-size:12px;color:{_tc};">{_ico} {_desc_it}</span>'
+                    f'<span style="font-size:12px;font-weight:500;color:{_tc};">{_ico} {_desc_it}</span>'
                     f'<span style="font-size:12px;font-weight:600;color:{_tc};">{_imp_it:,.0f} €</span>'
                     f'</div>'
                 )
             if not _items_mp:
                 _alertas_html = (
-                    f'<div style="font-size:12px;color:{TEXT_SEC};text-align:center;padding:8px 0;">'
+                    f'<div style="font-size:12px;font-weight:500;color:{TEXT_SEC};text-align:center;padding:8px 0;">'
                     f'Sin mantenimiento previsto registrado</div>'
                 )
             # Rent. ajustada
@@ -2239,16 +2239,16 @@ elif menu == "Fichas (Benchmark)":
                 f'<div style="display:flex;align-items:center;justify-content:space-between;'
                 f'background:#F8FAFC;border-radius:6px;padding:8px 12px;margin-top:10px;">'
                 f'<div style="text-align:center;">'
-                f'<div style="font-size:10px;color:{TEXT_SEC};">Rent. bruta</div>'
-                f'<div style="font-size:13px;font-weight:500;color:{ACCENT};">{rent_bruta:.1f}%</div></div>'
+                f'<div style="font-size:11px;font-weight:500;color:{TEXT_SEC};">Rent. bruta</div>'
+                f'<div style="font-size:14px;font-weight:600;color:{ACCENT};">{rent_bruta:.1f}%</div></div>'
                 f'<span style="color:{TEXT_SEC};font-size:14px;">→</span>'
                 f'<div style="text-align:center;">'
-                f'<div style="font-size:10px;color:{TEXT_SEC};">Ajustada CAPEX</div>'
-                f'<div style="font-size:13px;font-weight:500;color:{_rent_color};">{_rent_ajus:.1f}%</div></div>'
+                f'<div style="font-size:11px;font-weight:500;color:{TEXT_SEC};">Ajustada CAPEX</div>'
+                f'<div style="font-size:14px;font-weight:600;color:{_rent_color};">{_rent_ajus:.1f}%</div></div>'
                 f'<span style="color:{TEXT_SEC};font-size:14px;">→</span>'
                 f'<div style="text-align:center;">'
-                f'<div style="font-size:10px;color:{TEXT_SEC};">Mercado</div>'
-                f'<div style="font-size:13px;font-weight:500;color:{GREEN};">'
+                f'<div style="font-size:11px;font-weight:500;color:{TEXT_SEC};">Mercado</div>'
+                f'<div style="font-size:14px;font-weight:600;color:{GREEN};">'
                 f'{renta_mer/safe_float(f.get("Precio_Compra",1))*12*100:.1f}% ' if safe_float(f.get("Precio_Compra",0))>0 else
                 f'{(renta_mer/renta_act*rent_bruta):.1f}% '
                 f'</div></div></div>'
