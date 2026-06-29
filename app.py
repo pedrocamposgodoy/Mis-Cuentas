@@ -2206,13 +2206,15 @@ elif menu == "Fichas (Benchmark)":
                 f'{_gr_rows_html}</div>',
                 unsafe_allow_html=True
             )
+
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+        with st.expander("📊 Desglose score salud", expanded=False):
             for _dcomp, _ddesc, _dpts, _dmax in _sd["detalle"]:
                 _dc1, _dc2, _dc3 = st.columns([2, 4, 1])
                 _dc1.markdown(f"**{_dcomp}**")
                 _dc2.markdown(f"<span style='font-size:12px;'>{_ddesc}</span>", unsafe_allow_html=True)
                 _dc3.markdown(f"**{_dpts:.1f}/{_dmax:.1f}**")
-
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
         # ── HERRAMIENTAS FISCALES ─────────────────────────────────────
         if _es_soc_fic:
