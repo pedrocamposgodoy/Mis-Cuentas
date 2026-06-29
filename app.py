@@ -2161,7 +2161,51 @@ elif menu == "Fichas (Benchmark)":
                 unsafe_allow_html=True
             )
 
-        with st.expander("📊 Desglose score salud", expanded=False):
+        with _mp_c2:
+            # Gastos recurrentes de este inmueble
+            _df_gr_mp = leer_gastos_recurrentes(_uid_mp)
+            if not _df_gr_mp.empty and "inmueble" in _df_gr_mp.columns:
+                _gr_sel = _df_gr_mp[
+                    (_df_gr_mp["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
+                    (_df_gr_mp.get("activo", pd.Series([True]*len(_df_gr_mp))).fillna(True))
+                ].copy()
+            else:
+                _gr_sel = pd.DataFrame()
+
+            _gr_rows_html = ""
+            _gr_total = 0.0
+            if not _gr_sel.empty:
+                for _, _gr in _gr_sel.iterrows():
+                    _gr_imp = float(_gr.get("importe", 0))
+                    _gr_total += _gr_imp
+                    _gr_conc = str(_gr.get("concepto", ""))
+                    _gr_rows_html += (
+                        f'<div style="display:flex;justify-content:space-between;'
+                        f'padding:6px 0;border-bottom:0.5px solid {BORDER};">'
+                        f'<span style="font-size:13px;color:{TEXT_PRI};font-weight:400;">{_gr_conc}</span>'
+                        f'<span style="font-size:13px;font-weight:600;color:{TEXT_PRI};">{_gr_imp:,.0f} €</span>'
+                        f'</div>'
+                    )
+                _gr_rows_html += (
+                    f'<div style="display:flex;justify-content:space-between;padding:6px 0;margin-top:2px;">'
+                    f'<span style="font-size:12px;font-weight:600;color:{TEXT_SEC};">Total mensual</span>'
+                    f'<span style="font-size:13px;font-weight:600;color:{ACCENT};">{_gr_total:,.0f} €</span>'
+                    f'</div>'
+                )
+            else:
+                _gr_rows_html = (
+                    f'<div style="font-size:12px;color:{TEXT_SEC};font-weight:500;padding:8px 0;">'
+                    f'Sin gastos recurrentes registrados</div>'
+                )
+
+            st.markdown(
+                f'<div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;'
+                f'padding:1rem 1.25rem;height:100%;">'
+                f'<div style="font-size:11px;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;'
+                f'letter-spacing:.05em;margin-bottom:10px;">Gastos recurrentes</div>'
+                f'{_gr_rows_html}</div>',
+                unsafe_allow_html=True
+            )
             for _dcomp, _ddesc, _dpts, _dmax in _sd["detalle"]:
                 _dc1, _dc2, _dc3 = st.columns([2, 4, 1])
                 _dc1.markdown(f"**{_dcomp}**")
