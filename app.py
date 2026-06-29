@@ -2051,6 +2051,116 @@ elif menu == "Fichas (Benchmark)":
                 f'padding:9px 14px;font-size:13px;font-weight:500;color:{_cs};'
                 f'margin-bottom:10px;">💡 {_sd["suger"]}</div>', unsafe_allow_html=True)
 
+        # ── CARD MANTENIMIENTO PREVISTO ──────────────────────────────
+        _uid_mp     = st.session_state.get("user_id", "")
+        _inm_id_mp  = f.get("id") if f.get("id") is not None else 0
+        _items_mp   = []
+        if _inm_id_mp:
+            try:
+                _items_mp = obtener_mantenimiento_previsto(_inm_id_mp, _uid_mp)
+            except Exception:
+                _items_mp = []
+
+        from datetime import date as _date
+        _hoy        = _date.today()
+        _anio_act   = _hoy.year
+        _capex_urg  = sum(float(i.get("importe_estimado", 0)) for i in _items_mp if i.get("prioridad") == "urgente")
+        _capex_med  = sum(float(i.get("importe_estimado", 0)) for i in _items_mp if i.get("prioridad") == "medio_plazo")
+        _capex_lar  = sum(float(i.get("importe_estimado", 0)) for i in _items_mp if i.get("prioridad") == "largo_plazo")
+        _capex_12m  = _capex_urg + _capex_med
+        _capex_3a   = _capex_urg + _capex_med + _capex_lar
+        _capex_anu  = _capex_3a / 3 if _capex_3a > 0 else 0
+        _n_urgentes = sum(1 for i in _items_mp if i.get("prioridad") == "urgente")
+
+        _capex_eje  = 0.0
+        try:
+            _df_mp_eje = df_mov[
+                (df_mov["Apartamento"] == sel) &
+                (df_mov["Tipo"] == "Gasto") &
+                (df_mov["Categoría"].isin(["Mantenimiento", "Reforma", "Reparación"]))
+            ].copy()
+            if not _df_mp_eje.empty:
+                _df_mp_eje["Fecha"] = pd.to_datetime(_df_mp_eje["Fecha"], errors="coerce")
+                _capex_eje = _df_mp_eje[_df_mp_eje["Fecha"].dt.year == _anio_act]["Importe"].sum()
+        except Exception:
+            _capex_eje = 0.0
+
+        _precio_ref = safe_float(f.get("Precio_Compra", 0))
+        if _precio_ref == 0:
+            _precio_ref = safe_float(f.get("Valor_Construccion", 0))
+        _rent_ajus  = ((renta_act * 12 - _capex_anu) / _precio_ref * 100) if _precio_ref > 0 else 0.0
+
+        _mp_c1, _mp_c2 = st.columns([1, 1])
+        with _mp_c1:
+            _mp_badge = (f'<span style="background:#FDECEA;color:#C0392B;font-size:11px;'
+                         f'font-weight:600;padding:2px 10px;border-radius:20px;">'
+                         f'{_n_urgentes} urgencia{"s" if _n_urgentes != 1 else ""}</span>'
+                         if _n_urgentes > 0 else "")
+            st.markdown(
+                f'<div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;padding:1rem 1.25rem;">'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
+                f'<span style="font-size:13px;font-weight:600;color:{TEXT_PRI};">🔧 Mantenimiento</span>'
+                f'{_mp_badge}</div>'
+                f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">'
+                f'<div style="background:#F8FAFC;border-radius:6px;padding:8px;text-align:center;">'
+                f'<div style="font-size:11px;color:{TEXT_SEC};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">CAPEX {_anio_act}</div>'
+                f'<div style="font-size:16px;font-weight:600;color:{TEXT_PRI};">{_capex_eje:,.0f} €</div></div>'
+                f'<div style="background:#FFF9E6;border-radius:6px;padding:8px;text-align:center;">'
+                f'<div style="font-size:11px;color:{AMBER};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Previsto &lt;12m</div>'
+                f'<div style="font-size:16px;font-weight:600;color:{AMBER};">{_capex_12m:,.0f} €</div></div>'
+                f'<div style="background:#F8FAFC;border-radius:6px;padding:8px;text-align:center;">'
+                f'<div style="font-size:11px;color:{TEXT_SEC};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Previsto 1-3a</div>'
+                f'<div style="font-size:16px;font-weight:600;color:{TEXT_PRI};">{_capex_3a:,.0f} €</div></div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            _alertas_html = ""
+            for _it in _items_mp:
+                _pr = _it.get("prioridad", "")
+                if _pr == "urgente":
+                    _bg, _tc, _ico = "#FDECEA", RED, "⚠"
+                elif _pr == "medio_plazo":
+                    _bg, _tc, _ico = "#FFF9E6", AMBER, "🕐"
+                else:
+                    continue
+                _imp_it = float(_it.get("importe_estimado", 0))
+                _desc_it = str(_it.get("descripcion", ""))[:40]
+                _alertas_html += (
+                    f'<div style="background:{_bg};border-radius:6px;padding:6px 12px;'
+                    f'margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">'
+                    f'<span style="font-size:12px;font-weight:500;color:{_tc};">{_ico} {_desc_it}</span>'
+                    f'<span style="font-size:12px;font-weight:600;color:{_tc};">{_imp_it:,.0f} €</span>'
+                    f'</div>'
+                )
+            if not _items_mp:
+                _alertas_html = (
+                    f'<div style="font-size:12px;font-weight:500;color:{TEXT_SEC};text-align:center;padding:8px 0;">'
+                    f'Sin mantenimiento previsto registrado</div>'
+                )
+            _rent_color = ACCENT if _rent_ajus >= rent_bruta * 0.85 else AMBER if _rent_ajus > 0 else RED
+            _rent_row = (
+                f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                f'background:#F8FAFC;border-radius:6px;padding:8px 12px;margin-top:10px;">'
+                f'<div style="text-align:center;">'
+                f'<div style="font-size:11px;font-weight:500;color:{TEXT_SEC};">Rent. bruta</div>'
+                f'<div style="font-size:14px;font-weight:600;color:{ACCENT};">{rent_bruta:.1f}%</div></div>'
+                f'<span style="color:{TEXT_SEC};font-size:14px;">→</span>'
+                f'<div style="text-align:center;">'
+                f'<div style="font-size:11px;font-weight:500;color:{TEXT_SEC};">Ajustada CAPEX</div>'
+                f'<div style="font-size:14px;font-weight:600;color:{_rent_color};">{_rent_ajus:.1f}%</div></div>'
+                f'<span style="color:{TEXT_SEC};font-size:14px;">→</span>'
+                f'<div style="text-align:center;">'
+                f'<div style="font-size:11px;font-weight:500;color:{TEXT_SEC};">Mercado</div>'
+                f'<div style="font-size:14px;font-weight:600;color:{GREEN};">'
+                f'{renta_mer/safe_float(f.get("Precio_Compra",1))*12*100:.1f}% ' if safe_float(f.get("Precio_Compra",0))>0 else
+                f'{(renta_mer/renta_act*rent_bruta):.1f}% '
+                f'</div></div></div>'
+            ) if _precio_ref > 0 else ""
+            st.markdown(
+                _alertas_html + _rent_row + '</div>',
+                unsafe_allow_html=True
+            )
+
         with st.expander("📊 Desglose score salud", expanded=False):
             for _dcomp, _ddesc, _dpts, _dmax in _sd["detalle"]:
                 _dc1, _dc2, _dc3 = st.columns([2, 4, 1])
@@ -2142,121 +2252,7 @@ elif menu == "Fichas (Benchmark)":
                         f'<b>💡 Óptimo fiscal:</b> <b>{_mm}</b> con rentabilidad neta real del {_mrn:.1f}%.'
                         f'</div>', unsafe_allow_html=True)
 
-        # ── CARD MANTENIMIENTO PREVISTO ──────────────────────────────
-        _uid_mp     = st.session_state.get("user_id", "")
-        _inm_id_mp  = f.get("id") if f.get("id") is not None else 0
-        _items_mp   = []
-        if _inm_id_mp:
-            try:
-                _items_mp = obtener_mantenimiento_previsto(_inm_id_mp, _uid_mp)
-            except Exception:
-                _items_mp = []
-
-        # Cálculos CAPEX
-        from datetime import date as _date
-        _hoy        = _date.today()
-        _anio_act   = _hoy.year
-        _capex_urg  = sum(float(i.get("importe_estimado", 0)) for i in _items_mp if i.get("prioridad") == "urgente")
-        _capex_med  = sum(float(i.get("importe_estimado", 0)) for i in _items_mp if i.get("prioridad") == "medio_plazo")
-        _capex_lar  = sum(float(i.get("importe_estimado", 0)) for i in _items_mp if i.get("prioridad") == "largo_plazo")
-        _capex_12m  = _capex_urg + _capex_med
-        _capex_3a   = _capex_urg + _capex_med + _capex_lar
-        _capex_anu  = _capex_3a / 3 if _capex_3a > 0 else 0
-        _n_urgentes = sum(1 for i in _items_mp if i.get("prioridad") == "urgente")
-
-        # CAPEX ejecutado año actual (movimientos categoría Mantenimiento/Reforma del año actual)
-        _capex_eje  = 0.0
-        try:
-            _df_mp_eje = df_mov[
-                (df_mov["Apartamento"] == sel) &
-                (df_mov["Tipo"] == "Gasto") &
-                (df_mov["Categoría"].isin(["Mantenimiento", "Reforma", "Reparación"]))
-            ].copy()
-            if not _df_mp_eje.empty:
-                _df_mp_eje["Fecha"] = pd.to_datetime(_df_mp_eje["Fecha"], errors="coerce")
-                _capex_eje = _df_mp_eje[_df_mp_eje["Fecha"].dt.year == _anio_act]["Importe"].sum()
-        except Exception:
-            _capex_eje = 0.0
-
-        # Rentabilidad ajustada CAPEX
-        _precio_ref = safe_float(f.get("Precio_Compra", 0))
-        if _precio_ref == 0:
-            _precio_ref = safe_float(f.get("Valor_Construccion", 0))
-        _rent_ajus  = ((renta_act * 12 - _capex_anu) / _precio_ref * 100) if _precio_ref > 0 else 0.0
-
-        # Render card
-        _mp_c1, _mp_c2 = st.columns([1, 1])
-        with _mp_c1:
-            _mp_badge = (f'<span style="background:#FDECEA;color:#C0392B;font-size:11px;'
-                         f'font-weight:600;padding:2px 10px;border-radius:20px;">'
-                         f'{_n_urgentes} urgencia{"s" if _n_urgentes != 1 else ""}</span>'
-                         if _n_urgentes > 0 else "")
-            st.markdown(
-                f'<div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;padding:1rem 1.25rem;">'
-                f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">'
-                f'<span style="font-size:13px;font-weight:600;color:{TEXT_PRI};">🔧 Mantenimiento</span>'
-                f'{_mp_badge}</div>'
-                f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;">'
-                f'<div style="background:#F8FAFC;border-radius:6px;padding:8px;text-align:center;">'
-                f'<div style="font-size:11px;color:{TEXT_SEC};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">CAPEX {_anio_act}</div>'
-                f'<div style="font-size:16px;font-weight:600;color:{TEXT_PRI};">{_capex_eje:,.0f} €</div></div>'
-                f'<div style="background:#FFF9E6;border-radius:6px;padding:8px;text-align:center;">'
-                f'<div style="font-size:11px;color:{AMBER};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Previsto &lt;12m</div>'
-                f'<div style="font-size:16px;font-weight:600;color:{AMBER};">{_capex_12m:,.0f} €</div></div>'
-                f'<div style="background:#F8FAFC;border-radius:6px;padding:8px;text-align:center;">'
-                f'<div style="font-size:11px;color:{TEXT_SEC};font-weight:600;text-transform:uppercase;letter-spacing:.04em;">Previsto 1-3a</div>'
-                f'<div style="font-size:16px;font-weight:600;color:{TEXT_PRI};">{_capex_3a:,.0f} €</div></div>'
-                f'</div>',
-                unsafe_allow_html=True
-            )
-            # Alertas urgente y medio plazo
-            _alertas_html = ""
-            for _it in _items_mp:
-                _pr = _it.get("prioridad", "")
-                if _pr == "urgente":
-                    _bg, _tc, _ico = "#FDECEA", RED, "⚠"
-                elif _pr == "medio_plazo":
-                    _bg, _tc, _ico = "#FFF9E6", AMBER, "🕐"
-                else:
-                    continue
-                _imp_it = float(_it.get("importe_estimado", 0))
-                _desc_it = str(_it.get("descripcion", ""))[:40]
-                _alertas_html += (
-                    f'<div style="background:{_bg};border-radius:6px;padding:6px 12px;'
-                    f'margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">'
-                    f'<span style="font-size:12px;font-weight:500;color:{_tc};">{_ico} {_desc_it}</span>'
-                    f'<span style="font-size:12px;font-weight:600;color:{_tc};">{_imp_it:,.0f} €</span>'
-                    f'</div>'
-                )
-            if not _items_mp:
-                _alertas_html = (
-                    f'<div style="font-size:12px;font-weight:500;color:{TEXT_SEC};text-align:center;padding:8px 0;">'
-                    f'Sin mantenimiento previsto registrado</div>'
-                )
-            # Rent. ajustada
-            _rent_color = ACCENT if _rent_ajus >= rent_bruta * 0.85 else AMBER if _rent_ajus > 0 else RED
-            _rent_row = (
-                f'<div style="display:flex;align-items:center;justify-content:space-between;'
-                f'background:#F8FAFC;border-radius:6px;padding:8px 12px;margin-top:10px;">'
-                f'<div style="text-align:center;">'
-                f'<div style="font-size:11px;font-weight:500;color:{TEXT_SEC};">Rent. bruta</div>'
-                f'<div style="font-size:14px;font-weight:600;color:{ACCENT};">{rent_bruta:.1f}%</div></div>'
-                f'<span style="color:{TEXT_SEC};font-size:14px;">→</span>'
-                f'<div style="text-align:center;">'
-                f'<div style="font-size:11px;font-weight:500;color:{TEXT_SEC};">Ajustada CAPEX</div>'
-                f'<div style="font-size:14px;font-weight:600;color:{_rent_color};">{_rent_ajus:.1f}%</div></div>'
-                f'<span style="color:{TEXT_SEC};font-size:14px;">→</span>'
-                f'<div style="text-align:center;">'
-                f'<div style="font-size:11px;font-weight:500;color:{TEXT_SEC};">Mercado</div>'
-                f'<div style="font-size:14px;font-weight:600;color:{GREEN};">'
-                f'{renta_mer/safe_float(f.get("Precio_Compra",1))*12*100:.1f}% ' if safe_float(f.get("Precio_Compra",0))>0 else
-                f'{(renta_mer/renta_act*rent_bruta):.1f}% '
-                f'</div></div></div>'
-            ) if _precio_ref > 0 else ""
-            st.markdown(
-                _alertas_html + _rent_row + '</div>',
-                unsafe_allow_html=True
-            )
+        # ── CARD MANTENIMIENTO PREVISTO ── (movida arriba, antes de expanders) ──
 
 
     with _ft2:
