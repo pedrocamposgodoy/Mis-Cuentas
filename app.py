@@ -2162,47 +2162,49 @@ elif menu == "Fichas (Benchmark)":
             )
 
         with _mp_c2:
-            # Gastos recurrentes de este inmueble
-            _df_gr_mp = leer_gastos_recurrentes(_uid_mp)
-            if not _df_gr_mp.empty and "inmueble" in _df_gr_mp.columns:
-                _gr_sel = _df_gr_mp[
-                    (_df_gr_mp["inmueble"].str.lower().str.strip() == sel.lower().strip()) &
-                    (_df_gr_mp.get("activo", pd.Series([True]*len(_df_gr_mp))).fillna(True))
-                ].copy()
-            else:
-                _gr_sel = pd.DataFrame()
+            # Gastos programados de este inmueble (cashflow_programado)
+            from supabase_db import leer_cashflow_programado as _lcfp
+            _df_cp_mp = _lcfp(_uid_mp, inmueble=sel)
 
             _gr_rows_html = ""
             _gr_total = 0.0
-            if not _gr_sel.empty:
-                for _, _gr in _gr_sel.iterrows():
-                    _gr_imp = float(_gr.get("importe", 0))
+            if not _df_cp_mp.empty:
+                _df_cp_gas = _df_cp_mp[_df_cp_mp.get("tipo", pd.Series(["gasto"]*len(_df_cp_mp))).fillna("gasto") == "gasto"].copy() if "tipo" in _df_cp_mp.columns else _df_cp_mp.copy()
+                for _, _gr in _df_cp_gas.iterrows():
+                    _gr_imp  = float(_gr.get("importe", 0))
                     _gr_total += _gr_imp
-                    _gr_conc = str(_gr.get("concepto", ""))
+                    _gr_conc = str(_gr.get("descripcion", _gr.get("concepto", "")))
+                    _meses_n = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+                    _gr_mes  = _meses_n[int(_gr.get("mes", 0))] if 1 <= int(_gr.get("mes", 0) or 0) <= 12 else ""
+                    _gr_rec  = "Anual" if str(_gr.get("recurrencia","")) == "anual" else _gr_mes
                     _gr_rows_html += (
-                        f'<div style="display:flex;justify-content:space-between;'
+                        f'<div style="display:flex;justify-content:space-between;align-items:center;'
                         f'padding:6px 0;border-bottom:0.5px solid {BORDER};">'
-                        f'<span style="font-size:13px;color:{TEXT_PRI};font-weight:400;">{_gr_conc}</span>'
-                        f'<span style="font-size:13px;font-weight:600;color:{TEXT_PRI};">{_gr_imp:,.0f} €</span>'
+                        f'<div>'
+                        f'<div style="font-size:13px;color:{TEXT_PRI};font-weight:500;">{_gr_conc}</div>'
+                        f'<div style="font-size:11px;color:{TEXT_SEC};">{_gr_rec}</div>'
+                        f'</div>'
+                        f'<span style="font-size:13px;font-weight:600;color:{RED};">−{_gr_imp:,.0f} €</span>'
                         f'</div>'
                     )
-                _gr_rows_html += (
-                    f'<div style="display:flex;justify-content:space-between;padding:6px 0;margin-top:2px;">'
-                    f'<span style="font-size:12px;font-weight:600;color:{TEXT_SEC};">Total mensual</span>'
-                    f'<span style="font-size:13px;font-weight:600;color:{ACCENT};">{_gr_total:,.0f} €</span>'
-                    f'</div>'
-                )
-            else:
+                if _gr_total > 0:
+                    _gr_rows_html += (
+                        f'<div style="display:flex;justify-content:space-between;padding:6px 0;margin-top:2px;">'
+                        f'<span style="font-size:12px;font-weight:600;color:{TEXT_SEC};">Total gastos</span>'
+                        f'<span style="font-size:13px;font-weight:600;color:{RED};">−{_gr_total:,.0f} €</span>'
+                        f'</div>'
+                    )
+            if not _gr_rows_html:
                 _gr_rows_html = (
                     f'<div style="font-size:12px;color:{TEXT_SEC};font-weight:500;padding:8px 0;">'
-                    f'Sin gastos recurrentes registrados</div>'
+                    f'Sin gastos programados</div>'
                 )
 
             st.markdown(
                 f'<div style="background:{CARD_BG};border:1px solid {BORDER};border-radius:10px;'
-                f'padding:1rem 1.25rem;height:100%;">'
+                f'padding:1rem 1.25rem;">'
                 f'<div style="font-size:11px;font-weight:600;color:{TEXT_SEC};text-transform:uppercase;'
-                f'letter-spacing:.05em;margin-bottom:10px;">Gastos recurrentes</div>'
+                f'letter-spacing:.05em;margin-bottom:10px;">Gastos programados</div>'
                 f'{_gr_rows_html}</div>',
                 unsafe_allow_html=True
             )
